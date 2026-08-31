@@ -1,43 +1,9 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+// @ts-expect-error geo.ts is a legacy script that exposes this utility at runtime.
+import { isWithinOnsiteRange } from '@/lib/geo';
 
-type LocationName = 'Sha' | 'ZB';
-
-const onsiteLocations: Record<LocationName, { lat: number; lng: number }> = {
-  Sha: {
-    lat: Number(process.env.SHA_LOCATION_LAT),
-    lng: Number(process.env.SHA_LOCATION_LNG),
-  },
-  ZB: {
-    lat: Number(process.env.ZB_LOCATION_LAT),
-    lng: Number(process.env.ZB_LOCATION_LNG),
-  },
-};
-
-const ONSITE_RANGE_METERS = Number(process.env.ONSITE_RANGE_METERS) || 100;
-
-function isWithinOnsiteRange(lat: number, lng: number, location: LocationName) {
-  const onsiteLocation = onsiteLocations[location];
-
-  if (!Number.isFinite(onsiteLocation.lat) || !Number.isFinite(onsiteLocation.lng)) {
-    return { allowed: false, distanceMeters: 0 };
-  }
-
-  const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
-  const earthRadiusMeters = 6_371_000;
-  const latitudeDelta = toRadians(onsiteLocation.lat - lat);
-  const longitudeDelta = toRadians(onsiteLocation.lng - lng);
-  const a =
-    Math.sin(latitudeDelta / 2) ** 2 +
-    Math.cos(toRadians(lat)) *
-      Math.cos(toRadians(onsiteLocation.lat)) *
-      Math.sin(longitudeDelta / 2) ** 2;
-  const distanceMeters = Math.round(earthRadiusMeters * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
-
-  return { allowed: distanceMeters <= ONSITE_RANGE_METERS, distanceMeters };
-}
-
-// GET active status for a user
+// GET active log for a specific user
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const userId = searchParams.get('userId');
@@ -69,14 +35,15 @@ export async function POST(request: Request) {
       );
     }
 
-    const targetLocation = (location as LocationName) || 'Sha';
+    const targetLocation = (location as 'Sha' | 'ZB') || 'Sha';
+    
+    // Perform GPS Range Check against venue coordinates in lib/geo.ts
     const geoCheck = isWithinOnsiteRange(userLat, userLng, targetLocation);
 
-    // Block clock-in/out if not onsite
     if (!geoCheck.allowed) {
       return NextResponse.json(
         {
-          error: `Location verification failed. You must be onsite at ${targetLocation} to ${action}. You are currently ${geoCheck.distanceMeters}m away.`,
+          error: `Location verification failed. You must be onsite at ${targetLocation} to ${action}. You are currently ${geoCheck.distanceMeters}m away (max range: ${geoCheck.radiusMeters}m).`,
         },
         { status: 403 }
       );
