@@ -13,36 +13,54 @@ enum Role {
   STAFF
 }
 
-model User {
-  id           String    @id @default(cuid())
-  email        String    @unique
-  name         String
-  role         Role      @default(STAFF)
-  hourlyRate   Float?
-  pinCode      String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CASUAL
+}
 
-  shifts       Shift[]
-  timeLogs     TimeLog[]
+enum Location {
+  Sha
+  ZB
+}
+
+model User {
+  id             String         @id @default(uuid())
+  name           String
+  email          String         @unique
+  role           Role           @default(STAFF)
+  employmentType EmploymentType @default(CASUAL)
+  location       Location       @default(Sha)
+  pinCode        String?
+  shifts         Shift[]
+  timeLogs       TimeLog[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 }
 
 model Shift {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  startTime DateTime
-  endTime   DateTime
-  notes     String?
-  createdAt DateTime @default(now())
+  id           String    @id @default(uuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  startTime    DateTime
+  endTime      DateTime
+  breakMinutes Int       @default(0)
+  location     Location  @default(Sha)
+  roleTag      String?
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 }
 
 model TimeLog {
-  id        String    @id @default(cuid())
+  id        String    @id @default(uuid())
   userId    String
-  user      User      @relation(fields: [userId], references: [id])
-  clockIn   DateTime
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clockIn   DateTime  @default(now())
   clockOut  DateTime?
-  breakMins Int       @default(0)
+  location  Location  @default(Sha)
+  lat       Float?
+  lng       Float?
   createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 }
