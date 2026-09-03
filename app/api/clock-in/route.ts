@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-// @ts-expect-error geo.ts is a legacy script that exposes this utility at runtime.
 import { isWithinOnsiteRange } from '@/lib/geo';
-
 // GET active log for a specific user
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -50,7 +48,7 @@ export async function POST(request: Request) {
     }
 
     if (action === 'clock-in') {
-      const existing = await prisma.timeLog.findFirst({
+      const existing = await prisma.timeLog.findFirst({ //return the very first record that matches the cirteria
         where: { userId, clockOut: null },
       });
 

@@ -2,13 +2,6 @@
 
 import { useState, useEffect } from 'react';
 
-interface User {
-  id: string;
-  name: string;
-  location: string;
-  employmentType: string;
-}
-
 interface TimeLog {
   id: string;
   clockIn: string;
@@ -16,49 +9,65 @@ interface TimeLog {
 }
 
 export default function ClockPage() {
-  const [users, setUsers] = useState<User[]>([]);
-  const [selectedUserId, setSelectedUserId] = useState('');
-  const [selectedLocation, setSelectedLocation] = useState<'Sha' | 'ZB'>('Sha');
-  const [activeLog, setActiveLog] = useState<TimeLog | null>(null);
-  
-  const [loading, setLoading] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+  // Mock current logged-in user (Replace with your actual auth context/state once login page is ready)
+  const [currentUser, setCurrentUser] = useState<{ id: string; name: string } | null>({
+    id: 'user-id-placeholder',
+    name: 'Kelsey Wang',
+  });
 
+  const [selectedLocation, setSelectedLocation] = useState<'Sha / Zushi Bento'>('Sha / Zushi Bento');
+  const [activeLog, setActiveLog] = useState<TimeLog | null>(null);
+
+  const [currentTime, setCurrentTime] = useState<string>('');
+  const [loading, setLoading] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<{
+    type: 'success' | 'error' | 'info';
+    text: string;
+  } | null>(null);
+
+  // Live Clock Display
   useEffect(() => {
-    fetch('/api/users')
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) setUsers(data);
-      });
+    const updateClock = () => {
+      const now = new Date();
+      setCurrentTime(
+        now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      );
+    };
+    updateClock();
+    const interval = setInterval(updateClock, 1000);
+    return () => clearInterval(interval);
   }, []);
 
-  // Fetch active log when selected user changes
+  // Fetch active log for current logged-in user
   useEffect(() => {
-    if (!selectedUserId) {
+    if (!currentUser?.id) {
       setActiveLog(null);
       return;
     }
 
-    fetch(`/api/clock-in?userId=${selectedUserId}`)
+    fetch(`/api/clock-in?userId=${currentUser.id}`)
       .then((res) => res.json())
       .then((data) => {
         setActiveLog(data.activeLog || null);
       });
-  }, [selectedUserId]);
+  }, [currentUser]);
 
   const handleClockAction = (action: 'clock-in' | 'clock-out') => {
-    if (!selectedUserId) {
-      setStatusMessage({ type: 'error', text: 'Please select your name first.' });
+    if (!currentUser) {
+      setStatusMessage({ type: 'error', text: 'No user logged in.' });
       return;
     }
 
     if (!navigator.geolocation) {
-      setStatusMessage({ type: 'error', text: 'Geolocation is not supported by your browser.' });
+      setStatusMessage({
+        type: 'error',
+        text: 'Geolocation is not supported by your browser.',
+      });
       return;
     }
 
     setLoading(true);
-    setStatusMessage({ type: 'info', text: 'Verifying your physical GPS location...' });
+    setStatusMessage({ type: 'info', text: 'Verifying GPS location...' });
 
     navigator.geolocation.getCurrentPosition(
       async (position) => {
@@ -66,13 +75,14 @@ export default function ClockPage() {
         const userLng = position.coords.longitude;
 
         try {
+          // Pass "Sha" as the location key to backend API for geofence validation
           const res = await fetch('/api/clock-in', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              userId: selectedUserId,
+              userId: currentUser.id,
               action,
-              location: selectedLocation,
+              location: 'Sha',
               userLat,
               userLng,
             }),
@@ -83,7 +93,11 @@ export default function ClockPage() {
           if (!res.ok) {
             setStatusMessage({ type: 'error', text: data.error });
           } else {
-            setStatusMessage({ type: 'success', text: data.message });
+            const actionText = action === 'clock-in' ? 'clocked in' : 'clocked out';
+            setStatusMessage({
+              type: 'success',
+              text: `✨ ${currentUser.name} has successfully ${actionText} at ${selectedLocation}.`,
+            });
             setActiveLog(action === 'clock-in' ? data.log : null);
           }
         } catch (err) {
@@ -96,7 +110,7 @@ export default function ClockPage() {
         setLoading(false);
         setStatusMessage({
           type: 'error',
-          text: 'GPS permission denied. Please allow location access on your device to clock in/out.',
+          text: 'GPS permission denied. Please allow location access to clock in or out.',
         });
       },
       { enableHighAccuracy: true, timeout: 10000 }
@@ -104,111 +118,103 @@ export default function ClockPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
-      <div className="max-w-md w-full bg-white rounded-xl shadow-lg border p-6 text-center">
-        <h1 className="text-2xl font-bold text-gray-800 mb-1">Time Kiosk</h1>
-        <p className="text-sm text-gray-500 mb-6">Onsite Location Verification Required</p>
-
-        {/* Staff Selection */}
-        <div className="text-left mb-4">
-          <label className="block text-xs font-semibold text-gray-600 mb-1">Select Staff Member</label>
-          <select
-            value={selectedUserId}
-            onChange={(e) => setSelectedUserId(e.target.value)}
-            className="w-full p-3 border rounded-lg bg-gray-50 text-gray-800 font-medium focus:outline-none focus:ring-2 focus:ring-black"
-          >
-            <option value="">-- Choose Name --</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name} ({u.employmentType})
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Location Selection */}
-        <div className="text-left mb-6">
-          <label className="block text-xs font-semibold text-gray-600 mb-1">Current Venue Location</label>
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => setSelectedLocation('Sha')}
-              className={`p-3 text-sm font-semibold rounded-lg border ${
-                selectedLocation === 'Sha'
-                  ? 'bg-amber-600 text-white border-amber-600'
-                  : 'bg-white text-gray-700 border-gray-200'
-              }`}
-            >
-              Sha Patisserie
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedLocation('ZB')}
-              className={`p-3 text-sm font-semibold rounded-lg border ${
-                selectedLocation === 'ZB'
-                  ? 'bg-purple-600 text-white border-purple-600'
-                  : 'bg-white text-gray-700 border-gray-200'
-              }`}
-            >
-              ZB
-            </button>
-          </div>
-        </div>
-
-        {/* Active Shift Status */}
-        {selectedUserId && (
-          <div className="mb-6 p-4 rounded-lg bg-gray-50 border border-gray-200 text-left">
-            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider block mb-1">
-              Current Status
+    <div className="min-h-screen bg-[#FBF9F5] flex flex-col items-center justify-center p-4 selection:bg-amber-100">
+      {/* Main Kiosk Card */}
+      <div className="max-w-md w-full bg-[#FFFDF9] rounded-3xl shadow-xl shadow-stone-200/50 border border-stone-200/60 overflow-hidden">
+        
+        {/* Soft Clock Banner */}
+        <div className="bg-[#F5EFE6] py-5 px-6 text-center border-b border-stone-200/60">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#EFE8DC] border border-stone-300/50">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="font-mono text-lg text-stone-700 font-semibold tracking-wide">
+              {currentTime || '--:--:--'}
             </span>
-            {activeLog ? (
-              <div>
-                <span className="inline-block w-2.5 h-2.5 rounded-full bg-green-500 mr-2"></span>
-                <span className="font-bold text-green-700">Clocked In</span>
-                <p className="text-xs text-gray-500 mt-1">
-                  Since {new Date(activeLog.clockIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ({activeLog.location})
-                </p>
-              </div>
-            ) : (
-              <div>
-                <span className="inline-block w-2.5 h-2.5 rounded-full bg-gray-400 mr-2"></span>
-                <span className="font-bold text-gray-600">Clocked Out</span>
-              </div>
-            )}
           </div>
-        )}
+        </div>
 
-        {/* Status Alert Banner */}
-        {statusMessage && (
-          <div
-            className={`p-3 rounded-lg text-sm mb-6 ${
-              statusMessage.type === 'error'
-                ? 'bg-red-50 text-red-700 border border-red-200'
-                : statusMessage.type === 'success'
-                ? 'bg-green-50 text-green-700 border border-green-200'
-                : 'bg-blue-50 text-blue-700 border border-blue-200'
-            }`}
-          >
-            {statusMessage.text}
+        <div className="p-6 space-y-5">
+          {/* Combined Venue Card */}
+          <div>
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-500 mb-2">
+              Venue Location
+            </label>
+            <div className="w-full py-3.5 px-4 rounded-2xl text-sm font-bold bg-[#EADBC8] text-stone-800 border border-[#D8C4B6] shadow-sm flex items-center justify-center gap-2">
+              <span>📍</span> Sha / Zushi Bento
+            </div>
           </div>
-        )}
 
-        {/* Action Buttons */}
-        <div className="grid grid-cols-2 gap-4">
-          <button
-            onClick={() => handleClockAction('clock-in')}
-            disabled={loading || !selectedUserId || !!activeLog}
-            className="w-full py-4 bg-green-600 text-white font-bold rounded-lg shadow hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-          >
-            Clock In
-          </button>
-          <button
-            onClick={() => handleClockAction('clock-out')}
-            disabled={loading || !selectedUserId || !activeLog}
-            className="w-full py-4 bg-red-600 text-white font-bold rounded-lg shadow hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-          >
-            Clock Out
-          </button>
+          {/* Active Shift Card */}
+          {currentUser && (
+            <div className="p-4 rounded-2xl bg-[#FBF8F3] border border-stone-200/70 shadow-sm">
+              <div className="flex justify-between items-center mb-1.5">
+                <span className="text-[10px] font-extrabold text-stone-400 uppercase tracking-wider">
+                  Logged In As
+                </span>
+                <span className="text-xs font-bold text-stone-700">
+                  {currentUser.name}
+                </span>
+              </div>
+
+              {activeLog ? (
+                <div>
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100/80 text-emerald-800 border border-emerald-200/60">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                    Clocked In
+                  </span>
+                  <p className="text-xs text-stone-500 mt-2 font-medium">
+                    Since {new Date(activeLog.clockIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} (Sha / Zushi Bento)
+                  </p>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-stone-200/70 text-stone-700">
+                    Clocked Out
+                  </span>
+                  <span className="text-xs text-stone-400 font-medium">Ready for shift</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Detailed Status Confirmation Banner */}
+          {statusMessage && (
+            <div
+              className={`p-3.5 rounded-2xl text-xs font-semibold border transition-all text-center ${
+                statusMessage.type === 'error'
+                  ? 'bg-rose-50 text-rose-800 border-rose-200/80'
+                  : statusMessage.type === 'success'
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200/80'
+                  : 'bg-amber-50 text-amber-800 border-amber-200/80'
+              }`}
+            >
+              {statusMessage.text}
+            </div>
+          )}
+
+          {/* Clock In / Out Action Buttons */}
+          <div className="grid grid-cols-2 gap-3.5 pt-1">
+            <button
+              onClick={() => handleClockAction('clock-in')}
+              disabled={loading || !currentUser || !!activeLog}
+              className="py-3.5 bg-[#82A083] hover:bg-[#729073] text-white font-bold rounded-2xl shadow-sm active:scale-[0.98] disabled:opacity-35 disabled:hover:bg-[#82A083] disabled:cursor-not-allowed transition-all text-sm tracking-wide"
+            >
+              {loading ? 'Verifying...' : 'Clock In'}
+            </button>
+            <button
+              onClick={() => handleClockAction('clock-out')}
+              disabled={loading || !currentUser || !activeLog}
+              className="py-3.5 bg-[#C88EA7] hover:bg-[#B77D96] text-white font-bold rounded-2xl shadow-sm active:scale-[0.98] disabled:opacity-35 disabled:hover:bg-[#C88EA7] disabled:cursor-not-allowed transition-all text-sm tracking-wide"
+            >
+              {loading ? 'Verifying...' : 'Clock Out'}
+            </button>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="bg-[#F8F5F0] border-t border-stone-200/60 p-3 text-center">
+          <p className="text-[11px] text-stone-400 font-medium">
+            🔒 GPS Geofencing active • Onsite location required
+          </p>
         </div>
       </div>
     </div>
