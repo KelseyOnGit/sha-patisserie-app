@@ -1,29 +1,53 @@
 import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma'; // Best practice: use single shared instance
 
 export async function POST(request: Request) {
   try {
     // 1. Parse the incoming request body
     const body = await request.json();
-    
-    const { pinCode, username } = body;
-    // 2. Validate input fields
-    // TODO: Check if fields are provided. If missing, return NextResponse.json with status 400.
+    const { email, pinCode } = body;
+
+    // 2. Validate input fields BEFORE database queries
+    if (!email || !pinCode) {
+      return NextResponse.json(
+        { error: 'Both "email" and "pinCode" fields are required.' },
+        { status: 400 }
+      );
+    }
 
     // 3. Query Database
-    // TODO: Look up user in database (e.g., using Prisma or your database client)
+    const user = await prisma.user.findUnique({
+      where: { email },
+    });
 
-    // 4. Verify Credentials
-    // TODO: Check if user exists and if credentials match. If invalid, return NextResponse.json with status 401.
+    // 4. Verify Credentials AFTER database queries
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Invalid credentials' },
+        { status: 401 }
+      );
+    }
+
+    if (user.pinCode !== pinCode) {
+      return NextResponse.json(
+        { error: 'Invalid credentials' },
+        { status: 401 }
+      );
+    }
 
     // 5. Return Success Response
-    // TODO: Return user data or set session cookies, with status 200
     return NextResponse.json(
-      { message: 'Authentication successful' },
+      {
+        message: 'Authentication successful',
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+        },
+      },
       { status: 200 }
     );
-
   } catch (error) {
-    // Handle unexpected server errors
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
