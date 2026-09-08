@@ -1,22 +1,18 @@
 'use client';
 
-import { useState, type FormEvent } from 'react'; 
+import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
   const router = useRouter();
 
-  // 1. Declare state variables properly
   const [email, setEmail] = useState('');
   const [pinCode, setPinCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  // 2. Pass the FormEvent parameter
   async function handleSubmit(e: FormEvent) {
-    // Prevent default browser form submission (reloads)
     e.preventDefault();
-
     setLoading(true);
     setErrorMessage('');
 
@@ -24,50 +20,63 @@ export default function LoginPage() {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email, pinCode })
+        body: JSON.stringify({ email, pinCode }),
       });
 
-      // Parse JSON payload first
       const data = await response.json();
 
-      // Check if the response was successful
       if (!response.ok) {
-        // Use the error message from your API route response
         setErrorMessage(data.error || 'Login failed');
         return;
       }
 
-      // Successful login -> Navigate to clock-in dashboard
       router.push('/dashboard');
-
     } catch (error) {
-      // Network failures (e.g. lost internet connection)
       setErrorMessage('Something went wrong. Please try again.');
     } finally {
       setLoading(false);
     }
   }
 
-return (
-    <main className="min-h-screen flex items-center justify-center bg-stone-50 p-4">
-      <div className="w-full max-w-md bg-white p-8 rounded-2xl border border-stone-200 shadow-sm">
-        <h1 className="text-2xl font-bold text-stone-800 mb-6 text-center">
-          Staff Sign In
-        </h1>
+  return (
+    <main className="min-h-screen flex items-center justify-center bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-stone-100 via-stone-50 to-stone-100 p-4">
+      {/* Decorative ambient glow background */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-amber-100/40 rounded-full blur-3xl pointer-events-none" />
 
-        {/* Display backend error messages conditionally */}
+      {/* Main Card Container */}
+      <div className="relative w-full max-w-md bg-white/80 backdrop-blur-md p-8 sm:p-10 rounded-3xl border border-stone-200/80 shadow-xl shadow-stone-900/5 transition-all duration-300">
+        
+        {/* Header Section */}
+        <div className="text-center mb-8">
+          <span className="inline-block px-3 py-1 text-xs tracking-widest text-amber-800 uppercase font-medium bg-amber-50 border border-amber-200/50 rounded-full mb-3">
+            Staff Portal
+          </span>
+          <h1 className="text-3xl font-serif text-stone-800 tracking-tight font-normal">
+            Sha Patisserie
+          </h1>
+          <p className="text-xs text-stone-500 mt-1">
+            Sign in with your email and assigned staff PIN
+          </p>
+        </div>
+
+        {/* Muted Error Banner */}
         {errorMessage && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-600 rounded-lg text-sm">
-            {errorMessage}
+          <div className="mb-6 p-4 bg-rose-50/90 border border-rose-200/70 text-rose-700 text-xs rounded-2xl flex items-center gap-3 transition-all">
+            <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0 animate-pulse" />
+            <p className="leading-tight">{errorMessage}</p>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Email Field */}
+        {/* Login Form */}
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {/* Email Input */}
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-stone-700 mb-1">
+            <label
+              htmlFor="email"
+              className="block text-xs font-semibold uppercase tracking-wider text-stone-600 mb-1.5"
+            >
               Email Address
             </label>
             <input
@@ -77,15 +86,18 @@ return (
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               disabled={loading}
-              placeholder="e.g. vanessa@shapatisserie.com.au"
+              placeholder="v.wong@shapatisserie.com.au"
               required
-              className="w-full p-3 border border-stone-300 rounded-xl focus:ring-2 focus:ring-stone-400 focus:outline-none disabled:bg-stone-100"
+              className="w-full px-4 py-3 bg-stone-50/50 border border-stone-200 rounded-xl text-stone-800 text-sm placeholder-stone-400 transition-all duration-200 focus:bg-white focus:border-stone-400 focus:ring-4 focus:ring-stone-100 focus:outline-none disabled:opacity-50"
             />
           </div>
 
-          {/* PIN Code Field */}
+          {/* PIN Input */}
           <div>
-            <label htmlFor="pinCode" className="block text-sm font-medium text-stone-700 mb-1">
+            <label
+              htmlFor="pinCode"
+              className="block text-xs font-semibold uppercase tracking-wider text-stone-600 mb-1.5"
+            >
               PIN Code
             </label>
             <input
@@ -95,9 +107,9 @@ return (
               value={pinCode}
               onChange={(e) => setPinCode(e.target.value)}
               disabled={loading}
-              placeholder="Enter your PIN"
+              placeholder="••••"
               required
-              className="w-full p-3 border border-stone-300 rounded-xl focus:ring-2 focus:ring-stone-400 focus:outline-none disabled:bg-stone-100"
+              className="w-full px-4 py-3 bg-stone-50/50 border border-stone-200 rounded-xl text-stone-800 text-sm placeholder-stone-400 transition-all duration-200 focus:bg-white focus:border-stone-400 focus:ring-4 focus:ring-stone-100 focus:outline-none disabled:opacity-50 tracking-widest"
             />
           </div>
 
@@ -105,13 +117,44 @@ return (
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 bg-stone-800 text-white font-semibold rounded-xl hover:bg-stone-700 transition-colors disabled:opacity-50"
+            className="w-full mt-2 py-3.5 px-4 bg-stone-900 hover:bg-stone-800 text-stone-50 text-sm font-medium rounded-xl transition-all duration-200 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-sm"
           >
-            {loading ? 'Signing in...' : 'Sign In'}
+            {loading ? (
+              <>
+                <svg
+                  className="animate-spin h-4 w-4 text-stone-300"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                  />
+                </svg>
+                <span>Authenticating...</span>
+              </>
+            ) : (
+              'Sign In'
+            )}
           </button>
         </form>
+
+        {/* Footer info */}
+        <div className="mt-8 pt-6 border-t border-stone-100 text-center">
+          <p className="text-[11px] text-stone-400">
+            Protected Staff Terminal &bull; Sha Patisserie App
+          </p>
+        </div>
       </div>
     </main>
   );
 }
-
