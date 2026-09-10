@@ -1,55 +1,45 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma'; // Best practice: use single shared instance
+import { prisma } from '@/lib/prisma'; // Your shared Prisma client
+import { createSession } from '@/lib/session';
 
 export async function POST(request: Request) {
   try {
-    // 1. Parse the incoming request body
-    const body = await request.json();
-    const { email, pinCode } = body;
+    const { email, pinCode } = await request.json();
 
-    // 2. Validate input fields BEFORE database queries
+    // 1. Validate input presence
     if (!email || !pinCode) {
       return NextResponse.json(
-        { error: 'Both "email" and "pinCode" fields are required.' },
+        { error: 'Email and PIN are required.' },
         { status: 400 }
       );
     }
 
-    // 3. Query Database
+    // 2. Lookup user in database
     const user = await prisma.user.findUnique({
       where: { email },
     });
 
-    // 4. Verify Credentials AFTER database queries
-    if (!user) {
+    // 3. Verify user and PIN
+    if (!user || user.pinCode !== pinCode) {
       return NextResponse.json(
-        { error: 'Invalid credentials' },
+        { error: 'Invalid credentials.' },
         { status: 401 }
       );
     }
 
-    if (user.pinCode !== pinCode) {
-      return NextResponse.json(
-        { error: 'Invalid credentials' },
-        { status: 401 }
-      );
-    }
+    // 4. Create HTTP-Only Cookie Session
+    await createSession({
+      userId: user.id,
+      email: user.email,
+    });
 
-    // 5. Return Success Response
     return NextResponse.json(
-      {
-        message: 'Authentication successful',
-        user: {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-        },
-      },
+      { message: 'Login successful' },
       { status: 200 }
     );
   } catch (error) {
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'An unexpected error occurred.' },
       { status: 500 }
     );
   }

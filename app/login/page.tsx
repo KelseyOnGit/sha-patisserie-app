@@ -86,7 +86,7 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               disabled={loading}
-              placeholder="v.wong@shapatisserie.com.au"
+              placeholder="k.wang@shapatisserie.com.au"
               required
               className="w-full px-4 py-3 bg-stone-50/50 border border-stone-200 rounded-xl text-stone-800 text-sm placeholder-stone-400 transition-all duration-200 focus:bg-white focus:border-stone-400 focus:ring-4 focus:ring-stone-100 focus:outline-none disabled:opacity-50"
             />
