@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -42,7 +43,7 @@ export default function LoginPage() {
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-stone-100 via-stone-50 to-stone-100 p-4">
-      {/* Decorative ambient glow background */}
+      {/* Subtle ambient glow background */}
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-amber-100/40 rounded-full blur-3xl pointer-events-none" />
 
       {/* Main Card Container */}
@@ -63,7 +64,7 @@ export default function LoginPage() {
 
         {/* Muted Error Banner */}
         {errorMessage && (
-          <div className="mb-6 p-4 bg-rose-50/90 border border-rose-200/70 text-rose-700 text-xs rounded-2xl flex items-center gap-3 transition-all">
+          <div className="mb-6 p-4 bg-rose-50/90 border border-rose-200/70 text-rose-700 text-xs rounded-2xl flex items-center gap-3">
             <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0 animate-pulse" />
             <p className="leading-tight">{errorMessage}</p>
           </div>
@@ -86,7 +87,7 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               disabled={loading}
-              placeholder="k.wang@shapatisserie.com.au"
+              placeholder="Please enter your email adress here"
               required
               className="w-full px-4 py-3 bg-stone-50/50 border border-stone-200 rounded-xl text-stone-800 text-sm placeholder-stone-400 transition-all duration-200 focus:bg-white focus:border-stone-400 focus:ring-4 focus:ring-stone-100 focus:outline-none disabled:opacity-50"
             />
@@ -148,12 +149,19 @@ export default function LoginPage() {
           </button>
         </form>
 
-        {/* Footer info */}
-        <div className="mt-8 pt-6 border-t border-stone-100 text-center">
+        {/* Footer Section with Registration Link */}
+        <div className="mt-8 pt-6 border-t border-stone-100 text-center space-y-2">
+          <p className="text-xs text-stone-500">
+            Need a staff account?{' '}
+            <Link href="/register" className="font-semibold text-stone-800 hover:underline">
+              Sign Up
+            </Link>
+          </p>
           <p className="text-[11px] text-stone-400">
             Protected Staff Terminal &bull; Sha Patisserie App
           </p>
         </div>
+
       </div>
     </main>
   );
