@@ -25,6 +25,8 @@ export default function ClockPage() {
     text: string;
   } | null>(null);
 
+  const [venue, setVenue] = useState('Sha')
+
   // Live Clock Display
   useEffect(() => {
     const updateClock = () => {
@@ -154,8 +156,16 @@ export default function ClockPage() {
             <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-500 mb-2">
               Venue Location
             </label>
-            <div className="w-full py-3.5 px-4 rounded-2xl text-sm font-bold bg-[#EADBC8] text-stone-800 border border-[#D8C4B6] shadow-sm flex items-center justify-center gap-2">
-              <span>📍</span> Sha / Zushi Bento
+            <div className="relative">
+              <select
+                id="venue-select"
+                value={venue}
+                onChange={(e) => setVenue(e.target.value)}
+                className="w-full py-3.5 px-4 rounded-2xl text-sm font-bold bg-[#EADBC8] text-stone-800 border border-[#D8C4B6] shadow-sm flex items-center justify-center gap-2"
+              >
+                <option value="Sha">Sha</option>
+                <option value="ZB">Zushi Bento</option>
+              </select>
             </div>
           </div>
 
@@ -229,7 +239,7 @@ export default function ClockPage() {
         {/* Footer */}
         <div className="bg-[#F8F5F0] border-t border-stone-200/60 p-3 text-center">
           <p className="text-[11px] text-stone-400 font-medium">
-            🔒 GPS Geofencing active • Onsite location required
+            Onsite location required
           </p>
         </div>
       </div>
