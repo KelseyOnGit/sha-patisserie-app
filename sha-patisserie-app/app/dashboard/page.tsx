@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import LogoutButton from '@/components/LogoutButton';
 import { getSession } from '@/lib/session';
 import { prisma } from '@/lib/prisma';
+import ClockInCard from '@/components/ClockInCard';
 
 export default async function StaffPortalPage() {
   //  Decode the JWT session cookie to extract user information
@@ -25,7 +26,7 @@ export default async function StaffPortalPage() {
     redirect('/login');
   }
   return (
-    <div className="min-h-screen bg-stone-50 p-6 md:p-12 max-w-5xl mx-auto">
+    <div className="min-h-screen bg-stone-50 p-6 md:p-12 max-w-lg mx-auto">
       {/* Top Header Section */}
       <header className="flex justify-between items-start mb-8">
         <div>
@@ -48,16 +49,8 @@ export default async function StaffPortalPage() {
 
   
       {/* Main Shift Card */}
-      <main className="bg-white border border-stone-200/80 shadow-sm rounded-3xl p-12 text-center flex flex-col items-center justify-center min-h-[300px]">
-        <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center mb-4">
-          ⏱️
-        </div>
-        <h2 className="text-xl font-serif text-stone-800 mb-2">
-          Ready for your shift?
-        </h2>
-        <p className="text-sm text-stone-500 max-w-sm">
-          Clock-in feature and shift management will be connected here next.
-        </p>
+      <main className="w-full text-center flex flex-col items-center justify-center min-h-[300px]">
+        <ClockInCard userName={user.name ?? undefined} />
       </main>
     </div>
   );
