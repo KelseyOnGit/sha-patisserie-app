@@ -1,0 +1,95 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  STAFF
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CASUAL
+}
+
+enum Location {
+  Sha
+  ZB
+}
+
+model User {
+  id             String   @id @default(cuid())
+  name           String?
+  email          String   @unique
+  pinCode        String
+  role           Role     @default(STAFF)     // Or make optional: Role?
+  employmentType EmploymentType?              // Optional field
+  location       Location?                    // Optional field
+  isApproved     Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  shifts         Shift[]
+  timeLogs       TimeLog[]
+  rosterShifts   RosterShift[]
+  timeEntries    TimeEntry[]
+}
+model Shift {
+  id           String    @id @default(uuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  startTime    DateTime
+  endTime      DateTime
+  breakMinutes Int       @default(0)
+  location     Location  @default(Sha)
+  roleTag      String?
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model TimeLog {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clockIn   DateTime  @default(now())
+  clockOut  DateTime?
+  location  Location  @default(Sha)
+  lat       Float?
+  lng       Float?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+enum ShiftStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+model RosterShift {
+  id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  startTime DateTime
+  endTime   DateTime
+  notes     String?
+  status    ShiftStatus @default(SCHEDULED)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+}
+
+model TimeEntry {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clockIn   DateTime  @default(now())
+  clockOut  DateTime?
+  notes     String?
+}
