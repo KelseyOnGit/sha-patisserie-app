@@ -19,7 +19,7 @@ export default function PendingUsersList({ initialUsers }: { initialUsers: User[
 
     try {
       // Call the API endpoint created in Part 1
-      const res = await fetch('/api/admin/approve', {
+      const res = await fetch('/api/admin/users', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId }),

@@ -54,3 +54,8 @@ export async function deleteSession() {
   cookieStore.delete('session');
 }
 
+// True for roles allowed into the admin area (roster posting, staff approval)
+export function isPrivilegedRole(role?: string): boolean {
+  return role === 'ADMIN' || role === 'MANAGER';
+}
+

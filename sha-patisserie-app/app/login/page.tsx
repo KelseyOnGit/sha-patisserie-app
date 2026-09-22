@@ -33,7 +33,8 @@ export default function LoginPage() {
         return;
       }
 
-      router.push('/dashboard');
+      const isAdmin = data.role === 'ADMIN' || data.role === 'MANAGER';
+      router.push(isAdmin ? '/admin' : '/dashboard');
     } catch (error) {
       setErrorMessage('Something went wrong. Please try again.');
     } finally {

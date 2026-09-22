@@ -39,10 +39,11 @@ export async function POST(request: Request) {
     await createSession({
       userId: user.id,
       email: user.email,
+      role: user.role,
     });
 
     return NextResponse.json(
-      { message: 'Login successful' },
+      { message: 'Login successful', role: user.role },
       { status: 200 }
     );
   } catch (error) {
