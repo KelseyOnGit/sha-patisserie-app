@@ -2,7 +2,8 @@ import { redirect } from 'next/navigation';
 import LogoutButton from '@/components/LogoutButton';
 import { getSession } from '@/lib/session';
 import { prisma } from '@/lib/prisma';
-import ClockInCard from '@/components/ClockInCard';
+import DashboardTabs from '@/components/DashboardTabs';
+
 
 export default async function StaffPortalPage() {
   //  Decode the JWT session cookie to extract user information
@@ -50,7 +51,7 @@ export default async function StaffPortalPage() {
   
       {/* Main Shift Card */}
       <main className="w-full text-center flex flex-col items-center justify-center min-h-[300px]">
-        <ClockInCard userName={user.name ?? undefined} />
+        < DashboardTabs userName={user.name ?? undefined} />
       </main>
     </div>
   );

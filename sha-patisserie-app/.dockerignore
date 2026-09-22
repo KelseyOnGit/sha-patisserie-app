@@ -1,0 +1,17 @@
+node_modules
+.next
+.git
+.gitignore
+npm-debug.log
+Dockerfile
+.dockerignore
+.env
+.env.local
+.env.*.local
+README.md
+CHANGELOG.md
+.vscode
+.agents
+.claude
+.cursor
+.devin

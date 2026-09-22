@@ -1,25 +1,93 @@
 'use client';
 
+import { useState, useEffect } from 'react';
+
+interface Shift {
+  id: string;
+  location: string;
+  startTime: string;
+  endTime: string;
+  day: string;
+}
+
 export default function RosterView() {
+  const [shifts, setShifts] = useState<Shift[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchRoster() {
+      try {
+        const res = await fetch('/api/roster/mine');
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error || 'Failed to fetch shifts');
+        }
+
+        // Ensure data.shifts is actually an array before saving to state
+        if (Array.isArray(data.shifts)) {
+          setShifts(data.shifts);
+        } else if (Array.isArray(data)) {
+          // If your API returns a raw array [...] instead of { shifts: [...] }
+          setShifts(data);
+        } else {
+          setShifts([]);
+        }
+      } catch (err: any) {
+        setError(err.message || 'Error loading roster');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchRoster();
+  }, []);
+
   return (
     <div className="w-full bg-white border border-stone-200 rounded-3xl p-6 shadow-sm">
-      <h2 className="text-lg font-serif font-bold text-stone-800 mb-4">
+      <h2 className="text-lg font-serif font-bold text-stone-800 mb-1">
         Weekly Roster
       </h2>
-      <div className="space-y-3">
-        <div className="p-3 bg-stone-50 rounded-2xl border border-stone-100 flex justify-between items-center">
-          <div>
-            <p className="text-xs font-bold text-stone-500 uppercase">Today</p>
-            <p className="text-sm font-semibold text-stone-800">Sha Patisserie</p>
-          </div>
-          <span className="text-xs font-bold bg-amber-100 text-amber-800 px-3 py-1 rounded-full">
-            6:30 AM - 2:30 PM
-          </span>
+      <p className="text-xs text-stone-500 mb-4">Your scheduled shifts</p>
+
+      {loading && (
+        <p className="text-center text-xs text-stone-400 py-4">Loading shifts...</p>
+      )}
+
+      {error && (
+        <p className="text-center text-xs text-rose-500 py-4">{error}</p>
+      )}
+
+      {!loading && !error && (!Array.isArray(shifts) || shifts.length === 0) && (
+        <div className="p-6 bg-stone-50 rounded-2xl border border-stone-100 text-center">
+          <p className="text-xs font-medium text-stone-500">No shifts scheduled</p>
+          <p className="text-[11px] text-stone-400 mt-1">Check back later for updates</p>
         </div>
-        <p className="text-center text-xs text-stone-400 pt-2">
-          Full weekly roster syncing coming soon.
-        </p>
-      </div>
+      )}
+
+      {!loading && !error && Array.isArray(shifts) && shifts.length > 0 && (
+        <div className="space-y-3">
+          {shifts.map((shift) => (
+            <div
+              key={shift.id}
+              className="p-3.5 bg-stone-50 rounded-2xl border border-stone-100 flex justify-between items-center"
+            >
+              <div>
+                <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">
+                  {shift.day}
+                </p>
+                <p className="text-sm font-semibold text-stone-800">
+                  {shift.location}
+                </p>
+              </div>
+              <span className="text-xs font-bold bg-amber-100 text-amber-800 px-3 py-1.5 rounded-full">
+                {shift.startTime} - {shift.endTime}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
