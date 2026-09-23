@@ -7,6 +7,10 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// ==========================================
+// ENUMS
+// ==========================================
+
 enum Role {
   ADMIN
   MANAGER
@@ -19,58 +23,113 @@ enum EmploymentType {
   CASUAL
 }
 
-enum Location {
-  Sha
-  ZB
-}
-
-model User {
-  id             String   @id @default(cuid())
-  name           String?
-  email          String   @unique
-  pinCode        String
-  role           Role     @default(STAFF)     // Or make optional: Role?
-  employmentType EmploymentType?              // Optional field
-  location       Location?                    // Optional field
-  isApproved     Boolean  @default(false)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  shifts         Shift[]
-  timeLogs       TimeLog[]
-  rosterShifts   RosterShift[]
-  timeEntries    TimeEntry[]
-}
-model Shift {
-  id           String    @id @default(uuid())
-  userId       String
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  startTime    DateTime
-  endTime      DateTime
-  breakMinutes Int       @default(0)
-  location     Location  @default(Sha)
-  roleTag      String?
-  notes        String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-}
-
-model TimeLog {
-  id        String    @id @default(uuid())
-  userId    String
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  clockIn   DateTime  @default(now())
-  clockOut  DateTime?
-  location  Location  @default(Sha)
-  lat       Float?
-  lng       Float?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+enum UserStatus {
+  PENDING
+  ACTIVE
+  INACTIVE
 }
 
 enum ShiftStatus {
   SCHEDULED
   COMPLETED
   CANCELLED
+}
+
+// ==========================================
+// MODELS
+// ==========================================
+
+model Location {
+  id          String        @id @default(cuid())
+  name        String        @unique // e.g. "Sha Patisserie", "Zushi Bento"
+  code        String        @unique // e.g. "SHA", "ZB"
+  users       User[]
+  shifts      Shift[]
+  timeLogs    TimeLog[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+model User {
+  id              String          @id @default(cuid())
+  name            String?
+  email           String          @unique
+  pinCode         String
+  role            Role            @default(STAFF)
+  employmentType  EmploymentType?
+  
+  // Account Status & Approval
+  status          UserStatus      @default(PENDING)
+  isApproved      Boolean         @default(false)
+  
+  // Contact & MYOB Integration
+  contactNumber   String?         @unique // String to handle formatting and country codes
+  myobEmployeeId  String?         // Nullable until linked in Admin Profile
+  
+  // Primary Venue
+  locationId      String?
+  location        Location?       @relation(fields: [locationId], references: [id])
+  
+  // Timestamps
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // Relations
+  shifts          Shift[]
+  timeLogs        TimeLog[]
+  rosterShifts    RosterShift[]
+  timeEntries     TimeEntry[]
+
+  defaultBreakMinutes Int      @default(30) // Default preset break durationdefaultBreakMinutes Int      @default(30) // Default preset break duration
+
+
+}
+
+model Shift {
+  id                  String       @id @default(uuid())
+  userId              String
+  user                User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Shift Timings
+  startTime           DateTime
+  endTime             DateTime
+  
+  // Break Tracking
+  startBreak          DateTime?    // Nullable until break starts
+  endBreak            DateTime?    // Nullable until break finishes
+  presetBreakMinutes  Int          @default(30)
+  breakMinutes        Int          @default(0)
+  
+  // Venue / Location Link
+  locationId          String?
+  location            Location?    @relation(fields: [locationId], references: [id])
+  
+  // Details & Reports
+  roleTag             String?
+  notes               String?
+  shiftReport         String?      // Optional end-of-shift report text
+  
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  breakApproved       Boolean   @default(false)
+}
+
+model TimeLog {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  clockIn   DateTime  @default(now())
+  clockOut  DateTime?
+  
+  locationId String?
+  location   Location? @relation(fields: [locationId], references: [id])
+  
+  lat       Float?
+  lng       Float?
+  
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 }
 
 model RosterShift {
@@ -92,4 +151,4 @@ model TimeEntry {
   clockIn   DateTime  @default(now())
   clockOut  DateTime?
   notes     String?
-}
+}                                                              
