@@ -1,12 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 interface User {
   id: string;
-  name: string;
-  employmentType: string;
-  location: string;
+  name: string | null;
+  employmentType: string | null;
 }
 
 interface Shift {
@@ -15,243 +14,168 @@ interface Shift {
   startTime: string;
   endTime: string;
   breakMinutes: number;
-  location: string;
   roleTag: string | null;
   notes: string | null;
   user: User;
+  location: { code: string; name: string } | null;
+}
+
+const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+function dateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function mondayOf(value: string) {
+  const date = new Date(`${value}T12:00:00`);
+  const day = date.getDay();
+  date.setDate(date.getDate() + (day === 0 ? -6 : 1 - day));
+  return date;
+}
+
+function localDate(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function localDateTime(date: Date) {
+  return `${localDate(date)}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
 export default function ShiftRoster() {
   const [users, setUsers] = useState<User[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState('');
+  const [weekStart, setWeekStart] = useState(() => localDate(mondayOf(new Date().toISOString().slice(0, 10))));
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [repeatWeeks, setRepeatWeeks] = useState(1);
+  const [formData, setFormData] = useState({ userId: '', startTime: '', endTime: '', breakMinutes: 30, location: 'SHA', roleTag: '', notes: '' });
 
-  const [formData, setFormData] = useState({
-    userId: '',
-    startTime: '',
-    endTime: '',
-    breakMinutes: 30,
-    location: 'Sha',
-    roleTag: '',
-    notes: '',
-  });
-
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
+  const loadData = async () => {
     try {
-      const [usersRes, shiftsRes] = await Promise.all([
-        fetch('/api/users'),
-        fetch('/api/shifts'),
-      ]);
-      const usersData = await usersRes.json();
-      const shiftsData = await shiftsRes.json();
-
+      const [usersResponse, shiftsResponse] = await Promise.all([fetch('/api/users'), fetch('/api/shifts')]);
+      const usersData = await usersResponse.json();
+      const shiftsData = await shiftsResponse.json();
       if (Array.isArray(usersData)) setUsers(usersData);
       if (Array.isArray(shiftsData)) setShifts(shiftsData);
-    } catch (err) {
-      console.error('Failed to load roster data:', err);
+    } catch (error) {
+      console.error('Failed to load roster:', error);
+      setMessage('Failed to load roster.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const res = await fetch('/api/shifts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
-      });
+  useEffect(() => { loadData(); }, []);
 
-      if (res.ok) {
-        setFormData({
-          userId: '',
-          startTime: '',
-          endTime: '',
-          breakMinutes: 30,
-          location: 'Sha',
-          roleTag: '',
-          notes: '',
-        });
-        fetchData();
+  const weekDays = useMemo(() => {
+    const first = mondayOf(weekStart);
+    return days.map((name, index) => {
+      const date = new Date(first);
+      date.setDate(first.getDate() + index);
+      return { name, date, key: dateKey(date) };
+    });
+  }, [weekStart]);
+
+  const shiftsByDay = useMemo(() => weekDays.map((day) => ({
+    ...day,
+    shifts: shifts.filter((shift) => dateKey(new Date(shift.startTime)) === day.key),
+  })), [shifts, weekDays]);
+
+  const resetForm = () => {
+    setEditingId(null);
+    setRepeatWeeks(1);
+    setFormData({ userId: '', startTime: '', endTime: '', breakMinutes: 30, location: 'SHA', roleTag: '', notes: '' });
+  };
+
+  const editShift = (shift: Shift) => {
+    setEditingId(shift.id);
+    setRepeatWeeks(1);
+    setFormData({
+      userId: shift.userId,
+      startTime: localDateTime(new Date(shift.startTime)),
+      endTime: localDateTime(new Date(shift.endTime)),
+      breakMinutes: shift.breakMinutes,
+      location: shift.location?.code || 'SHA',
+      roleTag: shift.roleTag || '',
+      notes: shift.notes || '',
+    });
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setMessage('');
+    const method = editingId ? 'PUT' : 'POST';
+
+    try {
+      const response = await fetch('/api/shifts', {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...formData, id: editingId }),
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to save shift');
       }
-    } catch (err) {
-      console.error(err);
+
+      if (!editingId && repeatWeeks > 1) {
+        const start = new Date(formData.startTime);
+        const end = new Date(formData.endTime);
+        for (let week = 1; week < repeatWeeks; week += 1) {
+          const repeatedStart = new Date(start);
+          const repeatedEnd = new Date(end);
+          repeatedStart.setDate(repeatedStart.getDate() + week * 7);
+          repeatedEnd.setDate(repeatedEnd.getDate() + week * 7);
+          await fetch('/api/shifts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...formData, startTime: repeatedStart.toISOString(), endTime: repeatedEnd.toISOString() }),
+          });
+        }
+      }
+
+      setMessage(editingId ? 'Shift updated.' : repeatWeeks > 1 ? `Shift added for ${repeatWeeks} weeks.` : 'Shift published.');
+      resetForm();
+      await loadData();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to save shift.');
     }
   };
 
-  const renderShiftTable = (type: string, title: string) => {
-    const filteredShifts = shifts.filter(
-      (s) => (s.user?.employmentType || 'CASUAL') === type
-    );
-
-    return (
-      <div className="mb-6">
-        <h3 className="text-lg font-bold bg-gray-100 p-3 rounded-t border text-gray-700">
-          {title} ({filteredShifts.length})
-        </h3>
-        {filteredShifts.length === 0 ? (
-          <p className="p-4 border-x border-b text-gray-400 text-sm bg-white">
-            No shifts scheduled for {title.toLowerCase()}.
-          </p>
-        ) : (
-          <table className="w-full text-left border-collapse bg-white border-x border-b">
-            <thead>
-              <tr className="border-b text-xs text-gray-500 uppercase bg-gray-50">
-                <th className="p-3">Staff Name</th>
-                <th className="p-3">Location</th>
-                <th className="p-3">Station / Tag</th>
-                <th className="p-3">Start Time</th>
-                <th className="p-3">End Time</th>
-                <th className="p-3">Break</th>
-                <th className="p-3">Notes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredShifts.map((shift) => (
-                <tr key={shift.id} className="border-b hover:bg-gray-50 text-sm">
-                  <td className="p-3 font-semibold">{shift.user?.name}</td>
-                  <td className="p-3">
-                    <span className={`px-2 py-0.5 rounded text-xs font-bold ${
-                      shift.location === 'ZB' ? 'bg-purple-100 text-purple-800' : 'bg-amber-100 text-amber-800'
-                    }`}>
-                      {shift.location || 'Sha'}
-                    </span>
-                  </td>
-                  <td className="p-3">
-                    <span className="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded border">
-                      {shift.roleTag || 'General'}
-                    </span>
-                  </td>
-                  <td className="p-3">{new Date(shift.startTime).toLocaleString()}</td>
-                  <td className="p-3">{new Date(shift.endTime).toLocaleString()}</td>
-                  <td className="p-3 font-medium text-gray-600">{shift.breakMinutes} mins</td>
-                  <td className="p-3 text-gray-500">{shift.notes || '-'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-    );
-  };
-
   return (
-    <div className="max-w-5xl mx-auto">
-      <h1 className="text-3xl font-bold mb-6">Shift Roster</h1>
-
-      {/* Assign Shift Form */}
-      <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow-md mb-8 border">
-        <h2 className="text-xl font-semibold mb-4 text-gray-800">Assign New Shift</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1">Employee</label>
-            <select
-              value={formData.userId}
-              onChange={(e) => setFormData({ ...formData, userId: e.target.value })}
-              className="p-2 border rounded w-full"
-              required
-            >
-              <option value="">Select Employee...</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name} ({u.employmentType || 'Casual'})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1">Entity / Location</label>
-            <select
-              value={formData.location}
-              onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-              className="p-2 border rounded w-full"
-            >
-              <option value="Sha">Sha Patisserie</option>
-              <option value="ZB">Zushi Bento</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1">Station / Role</label>
-            <input
-              type="text"
-              value={formData.roleTag}
-              onChange={(e) => setFormData({ ...formData, roleTag: e.target.value })}
-              className="p-2 border rounded w-full"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1">Start Time</label>
-            <input
-              type="datetime-local"
-              value={formData.startTime}
-              onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
-              className="p-2 border rounded w-full"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1">End Time</label>
-            <input
-              type="datetime-local"
-              value={formData.endTime}
-              onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
-              className="p-2 border rounded w-full"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1">Break Time (Mins)</label>
-            <input
-              type="number"
-              placeholder="30"
-              value={formData.breakMinutes}
-              onChange={(e) => setFormData({ ...formData, breakMinutes: Number(e.target.value) })}
-              className="p-2 border rounded w-full"
-            />
-          </div>
+    <div className="mx-auto max-w-7xl space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-widest text-stone-500">Admin scheduling</p>
+          <h1 className="mt-1 text-3xl font-serif text-stone-900">Weekly roster</h1>
         </div>
+        <label className="text-sm font-semibold text-stone-700">Week starting Monday
+          <input type="date" value={weekStart} onChange={(event) => setWeekStart(localDate(mondayOf(event.target.value)))} className="ml-3 rounded-lg border border-stone-300 bg-white px-3 py-2 font-normal" />
+        </label>
+      </div>
 
-        <div className="mt-4">
-          <label className="block text-xs font-semibold text-gray-500 mb-1">Notes (Optional)</label>
-          <input
-            type="text"
-            value={formData.notes}
-            onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-            className="p-2 border rounded w-full"
-          />
+      {message && <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{message}</p>}
+
+      <form onSubmit={handleSubmit} className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-semibold text-stone-900">{editingId ? 'Edit shift' : 'Add shift'}</h2>{editingId && <button type="button" onClick={resetForm} className="text-sm text-stone-500 underline">Cancel edit</button>}</div>
+        <div className="grid gap-4 md:grid-cols-4">
+          <label className="text-xs font-bold uppercase tracking-wide text-stone-500">Staff
+            <select required value={formData.userId} onChange={(event) => setFormData({ ...formData, userId: event.target.value })} className="mt-1 w-full rounded-lg border border-stone-300 p-2 text-sm"><option value="">Select staff</option>{users.map((user) => <option key={user.id} value={user.id}>{user.name || user.id}</option>)}</select>
+          </label>
+          <label className="text-xs font-bold uppercase tracking-wide text-stone-500">Start<input required type="datetime-local" value={formData.startTime} onChange={(event) => setFormData({ ...formData, startTime: event.target.value })} className="mt-1 w-full rounded-lg border border-stone-300 p-2 text-sm" /></label>
+          <label className="text-xs font-bold uppercase tracking-wide text-stone-500">End<input required type="datetime-local" value={formData.endTime} onChange={(event) => setFormData({ ...formData, endTime: event.target.value })} className="mt-1 w-full rounded-lg border border-stone-300 p-2 text-sm" /></label>
+          <label className="text-xs font-bold uppercase tracking-wide text-stone-500">Location<select value={formData.location} onChange={(event) => setFormData({ ...formData, location: event.target.value })} className="mt-1 w-full rounded-lg border border-stone-300 p-2 text-sm"><option value="SHA">Sha Patisserie</option><option value="ZB">Zushi Bento</option></select></label>
+          <label className="text-xs font-bold uppercase tracking-wide text-stone-500">Break minutes<input type="number" min="0" value={formData.breakMinutes} onChange={(event) => setFormData({ ...formData, breakMinutes: Number(event.target.value) })} className="mt-1 w-full rounded-lg border border-stone-300 p-2 text-sm" /></label>
+          <label className="text-xs font-bold uppercase tracking-wide text-stone-500">Role / station<input value={formData.roleTag} onChange={(event) => setFormData({ ...formData, roleTag: event.target.value })} className="mt-1 w-full rounded-lg border border-stone-300 p-2 text-sm" /></label>
+          <label className="text-xs font-bold uppercase tracking-wide text-stone-500 md:col-span-2">Notes<input value={formData.notes} onChange={(event) => setFormData({ ...formData, notes: event.target.value })} className="mt-1 w-full rounded-lg border border-stone-300 p-2 text-sm" /></label>
         </div>
-
-        <button
-          type="submit"
-          className="mt-4 bg-black text-white px-4 py-2 rounded hover:bg-gray-800 font-medium"
-        >
-          Publish Shift
-        </button>
+        {!editingId && <label className="mt-4 inline-flex items-center gap-2 text-sm text-stone-700">Repeat every week<select value={repeatWeeks} onChange={(event) => setRepeatWeeks(Number(event.target.value))} className="rounded-lg border border-stone-300 px-2 py-1"><option value="1">Once</option><option value="2">2 weeks</option><option value="3">3 weeks</option><option value="4">4 weeks</option></select></label>}
+        <button type="submit" className="mt-4 rounded-lg bg-stone-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-stone-700">{editingId ? 'Save changes' : 'Publish shift'}</button>
       </form>
 
-      {/* Roster Tables Grouped by Employment Type */}
-      <div className="bg-white rounded-lg shadow-md border p-6">
-        <h2 className="text-xl font-bold mb-4 text-gray-800">Weekly Schedule</h2>
-        {loading ? (
-          <p className="text-gray-500">Loading roster...</p>
-        ) : (
-          <>
-            {renderShiftTable('FULL_TIME', 'Full-Time Staff')}
-            {renderShiftTable('PART_TIME', 'Part-Time Staff')}
-            {renderShiftTable('CASUAL', 'Casual Staff')}
-          </>
-        )}
-      </div>
+      <section className="overflow-x-auto rounded-2xl border border-stone-200 bg-white shadow-sm"><div className="grid min-w-[1050px] grid-cols-7 divide-x divide-stone-200">
+        {shiftsByDay.map((day) => <div key={day.key} className="min-h-[360px] bg-stone-50/60"><div className="border-b border-stone-200 bg-stone-100 px-3 py-3"><p className="text-sm font-bold text-stone-800">{day.name}</p><p className="text-xs text-stone-500">{day.date.toLocaleDateString([], { month: 'short', day: 'numeric' })}</p></div><div className="space-y-2 p-2">{loading ? <p className="p-2 text-xs text-stone-400">Loading...</p> : day.shifts.map((shift) => <button type="button" key={shift.id} onClick={() => editShift(shift)} className="w-full rounded-xl border border-amber-200 bg-amber-50 p-3 text-left shadow-sm hover:border-amber-400"><p className="text-sm font-bold text-stone-900">{shift.user.name || 'Unnamed staff'}</p><p className="mt-1 text-xs text-stone-700">{new Date(shift.startTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} - {new Date(shift.endTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</p><p className="mt-1 text-[11px] text-stone-500">{shift.location?.code || 'Unassigned'} {shift.roleTag ? `• ${shift.roleTag}` : ''}</p></button>)}{!loading && day.shifts.length === 0 && <p className="p-2 text-xs text-stone-400">No shifts</p>}</div></div>)}
+      </div></section>
     </div>
   );
 }

@@ -12,8 +12,9 @@ export async function GET() {
     const shifts = await prisma.shift.findMany({
       include: {
         user: {
-          select: { id: true, name: true, role: true, employmentType: true, location: true },
+          select: { id: true, name: true, role: true, employmentType: true },
         },
+        location: { select: { code: true, name: true } },
       },
       orderBy: { startTime: 'asc' },
     });
@@ -43,11 +44,19 @@ export async function POST(request: Request) {
 
     const newShift = await prisma.shift.create({
       data: {
-        userId,
+        user: { connect: { id: userId } },
         startTime: new Date(startTime),
         endTime: new Date(endTime),
         breakMinutes: Number(breakMinutes) || 0,
-        location: location || 'Sha',
+        location: {
+          connectOrCreate: {
+            where: { code: location === 'ZB' ? 'ZB' : 'SHA' },
+            create: {
+              code: location === 'ZB' ? 'ZB' : 'SHA',
+              name: location === 'ZB' ? 'Zushi Bento' : 'Sha Patisserie',
+            },
+          },
+        },
         roleTag: roleTag || null,
         notes: notes || null,
       },
@@ -60,5 +69,49 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Failed to create shift:', error);
     return NextResponse.json({ error: 'Failed to create shift' }, { status: 500 });
+  }
+}
+
+export async function PUT(request: Request) {
+  const session = await getSession();
+  if (!session || !isPrivilegedRole(session.role)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+  }
+
+  try {
+    const { id, userId, startTime, endTime, breakMinutes, location, roleTag, notes } = await request.json();
+    if (!id || !userId || !startTime || !endTime) {
+      return NextResponse.json({ error: 'Shift, user, start time, and end time are required' }, { status: 400 });
+    }
+
+    const updatedShift = await prisma.shift.update({
+      where: { id },
+      data: {
+        user: { connect: { id: userId } },
+        startTime: new Date(startTime),
+        endTime: new Date(endTime),
+        breakMinutes: Number(breakMinutes) || 0,
+        location: {
+          connectOrCreate: {
+            where: { code: location === 'ZB' ? 'ZB' : 'SHA' },
+            create: {
+              code: location === 'ZB' ? 'ZB' : 'SHA',
+              name: location === 'ZB' ? 'Zushi Bento' : 'Sha Patisserie',
+            },
+          },
+        },
+        roleTag: roleTag || null,
+        notes: notes || null,
+      },
+      include: {
+        user: true,
+        location: { select: { code: true, name: true } },
+      },
+    });
+
+    return NextResponse.json(updatedShift);
+  } catch (error) {
+    console.error('Failed to update shift:', error);
+    return NextResponse.json({ error: 'Failed to update shift' }, { status: 500 });
   }
 }

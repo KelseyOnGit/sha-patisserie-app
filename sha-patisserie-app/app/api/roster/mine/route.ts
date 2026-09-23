@@ -21,6 +21,11 @@ export async function GET() {
       orderBy: {
         startTime: 'asc',
       },
+      include: {
+        location: {
+          select: { code: true, name: true },
+        },
+      },
     });
 
     // Format timestamps for display
@@ -30,7 +35,7 @@ export async function GET() {
 
       return {
         id: shift.id,
-        venue: shift.location,
+        venue: shift.location?.name || shift.location?.code || 'Unassigned',
         day: start.toLocaleDateString('en-US', {
           weekday: 'short',
           month: 'short',

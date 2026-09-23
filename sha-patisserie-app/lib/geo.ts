@@ -1,8 +1,10 @@
 // Store GPS coordinates
 export const STORE_LOCATIONS = {
-  Sha: { lat: -31.9505, lng: 115.8605, radiusMeters: 200 }, // Replace with exact venue coordinates
+  Sha: { lat: -31.954819, lng: 115.854858, radiusMeters: 200 },
   ZB: { lat: -31.9520, lng: 115.8580, radiusMeters: 200 },
 };
+
+const TEST_LOCATION = { lat: -31.9056, lng: 115.9392, radiusMeters: 200 };
 
 // Haversine formula to calculate distance in meters
 export function getDistanceInMeters(
@@ -30,7 +32,12 @@ export function isWithinOnsiteRange(
   userLng: number,
   location: 'Sha' | 'ZB' = 'Sha'
 ) {
-  const store = STORE_LOCATIONS[location] || STORE_LOCATIONS.Sha;
+  const useTestLocation =
+    process.env.NODE_ENV !== 'production' && process.env.GPS_TEST_MODE === 'true';
+  const store =
+    useTestLocation && location === 'Sha'
+      ? TEST_LOCATION
+      : STORE_LOCATIONS[location] || STORE_LOCATIONS.Sha;
   const distance = getDistanceInMeters(userLat, userLng, store.lat, store.lng);
 
   return {

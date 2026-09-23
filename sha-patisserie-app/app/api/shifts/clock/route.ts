@@ -43,6 +43,7 @@ export async function POST(request: Request) {
     }
 
     const targetLocation = (location as 'Sha' | 'ZB') || 'Sha';
+    const locationCode = targetLocation === 'Sha' ? 'SHA' : 'ZB';
     
     // Perform GPS Range Check against venue coordinates in lib/geo.ts
     const geoCheck = isWithinOnsiteRange(userLat, userLng, targetLocation);
@@ -70,8 +71,18 @@ export async function POST(request: Request) {
 
       const newLog = await prisma.timeLog.create({
         data: {
-          userId,
-          location: targetLocation,
+          user: {
+            connect: { id: userId },
+          },
+          location: {
+            connectOrCreate: {
+              where: { code: locationCode },
+              create: {
+                code: locationCode,
+                name: targetLocation === 'Sha' ? 'Sha Patisserie' : 'Zushi Bento',
+              },
+            },
+          },
           lat: userLat,
           lng: userLng,
           clockIn: new Date(),

@@ -6,11 +6,22 @@ interface ClockInCardProps {
   userName?: string;
 }
 
+interface BreakShift {
+  id: string;
+  startBreak: string | null;
+  endBreak: string | null;
+  presetBreakMinutes: number;
+  breakMinutes: number;
+}
+
 export default function ClockInCard({ userName = 'Team Member' }: ClockInCardProps) {
   const [time, setTime] = useState<string>('');
   const [venue, setVenue] = useState<string>('Sha');
   const [isClockedIn, setIsClockedIn] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
+  const [breakShift, setBreakShift] = useState<BreakShift | null>(null);
+  const [breakSeconds, setBreakSeconds] = useState<number>(0);
+  const [statusMessage, setStatusMessage] = useState<string>('');
 
 
   // Update live clock on client side
@@ -32,28 +43,146 @@ export default function ClockInCard({ userName = 'Team Member' }: ClockInCardPro
     return () => clearInterval(interval);
   }, []);
 
-  const handleClockAction = async (action: 'in' | 'out') => {
-    setLoading(true);
+  const loadBreakStatus = async () => {
     try {
-      const res = await fetch('/api/shifts/clock', {
+      const res = await fetch('/api/shifts/breaks');
+      if (!res.ok) return;
+      const data = await res.json();
+      setBreakShift(data.shift || null);
+    } catch (error) {
+      console.error('Failed to load break status:', error);
+    }
+  };
+
+  useEffect(() => {
+    loadBreakStatus();
+  }, [isClockedIn]);
+
+  useEffect(() => {
+    if (!breakShift?.startBreak || breakShift.endBreak) {
+      setBreakSeconds(0);
+      return;
+    }
+
+    const updateBreakTimer = () => {
+      const elapsed = Math.floor((Date.now() - new Date(breakShift.startBreak as string).getTime()) / 1000);
+      const limit = breakShift.presetBreakMinutes * 60;
+      setBreakSeconds(Math.max(limit - elapsed, 0));
+    };
+
+    updateBreakTimer();
+    const interval = setInterval(updateBreakTimer, 1000);
+    return () => clearInterval(interval);
+  }, [breakShift]);
+
+  const handleBreakToggle = async () => {
+    if (!breakShift) {
+      setStatusMessage('No scheduled shift is active for a break.');
+      return;
+    }
+
+    setLoading(true);
+    const action = breakShift.startBreak && !breakShift.endBreak ? 'FINISH' : 'START';
+
+    try {
+      const res = await fetch('/api/shifts/breaks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, venue }),
+        body: JSON.stringify({ shiftId: breakShift.id, action }),
       });
-
       const data = await res.json();
 
       if (!res.ok) {
-        alert(data.error || 'Failed to process request');
+        setStatusMessage(data.error || 'Unable to update break.');
       } else {
-        setIsClockedIn(action === 'in');
+        setBreakShift(data.shift);
+        setStatusMessage(action === 'START' ? 'Break started successfully.' : 'Break finished successfully.');
       }
-    } catch (err) {
-      console.error('Clocking error:', err);
-      alert('An error occurred while connecting to the server.');
+    } catch (error) {
+      setStatusMessage('Unable to connect to the server.');
     } finally {
       setLoading(false);
     }
+  };
+
+  useEffect(() => {
+    fetch('/api/shifts/clock')
+      .then(async (res) => {
+        if (!res.ok) return null;
+        return res.json();
+      })
+      .then((data) => {
+        setIsClockedIn(Boolean(data?.activeLog));
+      })
+      .catch((error) => {
+        console.error('Failed to load clock status:', error);
+      });
+  }, []);
+
+  const handleClockAction = async (action: 'in' | 'out') => {
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by this browser.');
+      return;
+    }
+
+    setLoading(true);
+
+    const submitClockAction = async (userLat: number, userLng: number) => {
+      try {
+        const res = await fetch('/api/shifts/clock', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: action === 'in' ? 'clock-in' : 'clock-out',
+            location: venue === 'Zushi Bento' ? 'ZB' : 'Sha',
+            userLat,
+            userLng,
+          }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+            if (res.status === 400 && data.error === 'You are already clocked in!') {
+              setIsClockedIn(true);
+            }
+          alert(data.error || 'Failed to process request');
+        } else {
+          setIsClockedIn(action === 'in');
+            setStatusMessage(action === 'in' ? 'You have successfully clocked in.' : 'You have successfully clocked out.');
+            if (action === 'out') setBreakShift(null);
+            await loadBreakStatus();
+        }
+      } catch (err) {
+        console.error('Clocking error:', err);
+        alert('An error occurred while connecting to the server.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => submitClockAction(position.coords.latitude, position.coords.longitude),
+      (error) => {
+        const errorMessage =
+          error.code === error.PERMISSION_DENIED
+            ? 'Location permission was denied.'
+            : error.code === error.POSITION_UNAVAILABLE
+              ? 'Your device could not determine its location.'
+              : 'Location lookup timed out.';
+
+        console.error('Geolocation error:', error.code, error.message);
+
+        if (process.env.NEXT_PUBLIC_GPS_TEST_MODE === 'true') {
+          submitClockAction(-31.9056, 115.9392);
+          return;
+        }
+
+        alert(`${errorMessage} Please allow location access and try again.`);
+        setLoading(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
   };
 
   return (
@@ -124,6 +253,34 @@ export default function ClockInCard({ userName = 'Team Member' }: ClockInCardPro
           {loading ? '...' : 'Clock Out'}
         </button>
       </div>
+
+      {isClockedIn && (
+        <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-center">
+          <button
+            onClick={handleBreakToggle}
+            disabled={loading || !breakShift || Boolean(breakShift.endBreak)}
+            className="w-full rounded-xl bg-amber-700 px-4 py-3 text-sm font-bold text-white transition hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {breakShift?.endBreak
+              ? 'Break Recorded'
+              : breakShift?.startBreak
+                ? 'End Break'
+                : 'Start 30-Minute Break'}
+          </button>
+          {breakShift?.startBreak && !breakShift.endBreak && (
+            <p className="mt-2 text-xs font-semibold text-amber-800">
+              {Math.floor(breakSeconds / 60)}:{String(breakSeconds % 60).padStart(2, '0')} remaining
+            </p>
+          )}
+          {!breakShift && (
+            <p className="mt-2 text-xs text-amber-800">No scheduled shift is active for a break.</p>
+          )}
+        </div>
+      )}
+
+      {statusMessage && (
+        <p className="mt-3 text-center text-xs font-semibold text-emerald-700">{statusMessage}</p>
+      )}
 
       <p className="text-center text-[11px] text-stone-400 mt-4">
         Onsite location required

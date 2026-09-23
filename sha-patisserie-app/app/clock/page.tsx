@@ -3,10 +3,12 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
-interface TimeLog {
+interface ActiveShift {
   id: string;
   clockIn: string;
-  location: string;
+  startBreak?: string | null;
+  endBreak?: string | null;
+  location?: string;
 }
 
 export default function ClockPage() {
@@ -16,7 +18,7 @@ export default function ClockPage() {
   const [currentUser, setCurrentUser] = useState<{ id: string; name: string } | null>(null);
 
   const [selectedLocation, setSelectedLocation] = useState<'Sha / Zushi Bento'>('Sha / Zushi Bento');
-  const [activeLog, setActiveLog] = useState<TimeLog | null>(null);
+  const [activeLog, setActiveLog] = useState<ActiveShift | null>(null);
 
   const [currentTime, setCurrentTime] = useState<string>('');
   const [loading, setLoading] = useState(false);
@@ -25,7 +27,7 @@ export default function ClockPage() {
     text: string;
   } | null>(null);
 
-  const [venue, setVenue] = useState('Sha')
+  const [venue, setVenue] = useState('Sha');
 
   // Live Clock Display
   useEffect(() => {
@@ -58,7 +60,7 @@ export default function ClockPage() {
   }, [router]);
 
   // Fetch active log for current logged-in user
-  useEffect(() => {
+  const fetchActiveLog = () => {
     if (!currentUser?.id) {
       setActiveLog(null);
       return;
@@ -69,8 +71,49 @@ export default function ClockPage() {
       .then((data) => {
         setActiveLog(data.activeLog || null);
       });
+  };
+
+  useEffect(() => {
+    fetchActiveLog();
   }, [currentUser]);
 
+  // Break Handler (Start / End Break)
+  const handleBreakAction = async () => {
+    if (!activeLog?.id) {
+      setStatusMessage({ type: 'error', text: 'No active shift found to toggle break.' });
+      return;
+    }
+
+    const isOnBreak = Boolean(activeLog.startBreak && !activeLog.endBreak);
+    const action = isOnBreak ? 'FINISH' : 'START';
+
+    setLoading(true);
+    try {
+      const res = await fetch('/api/shifts/break', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shiftId: activeLog.id, action }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setStatusMessage({ type: 'error', text: data.error || 'Failed to update break.' });
+      } else {
+        setStatusMessage({
+          type: 'success',
+          text: action === 'START' ? '☕ Break started!' : '✅ Break finished!',
+        });
+        fetchActiveLog();
+      }
+    } catch (err) {
+      setStatusMessage({ type: 'error', text: 'Network error updating break status.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Clock In / Clock Out Handler
   const handleClockAction = (action: 'clock-in' | 'clock-out') => {
     if (!currentUser) {
       setStatusMessage({ type: 'error', text: 'No user logged in.' });
@@ -94,13 +137,12 @@ export default function ClockPage() {
         const userLng = position.coords.longitude;
 
         try {
-          // Pass "Sha" as the location key to backend API for geofence validation; userId comes from the session cookie server-side
           const res = await fetch('/api/shifts/clock', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               action,
-              location: 'Sha',
+              location: venue,
               userLat,
               userLng,
             }),
@@ -114,7 +156,7 @@ export default function ClockPage() {
             const actionText = action === 'clock-in' ? 'clocked in' : 'clocked out';
             setStatusMessage({
               type: 'success',
-              text: `✨ ${currentUser.name} has successfully ${actionText} at ${selectedLocation}.`,
+              text: `✨ ${currentUser.name} has successfully ${actionText} at ${venue}.`,
             });
             setActiveLog(action === 'clock-in' ? data.log : null);
           }
@@ -134,6 +176,10 @@ export default function ClockPage() {
       { enableHighAccuracy: true, timeout: 10000 }
     );
   };
+
+  // Break States
+  const isOnBreak = Boolean(activeLog?.startBreak && !activeLog?.endBreak);
+  const breakCompleted = Boolean(activeLog?.startBreak && activeLog?.endBreak);
 
   return (
     <div className="min-h-screen bg-[#FBF9F5] flex flex-col items-center justify-center p-4 selection:bg-amber-100">
@@ -161,9 +207,10 @@ export default function ClockPage() {
                 id="venue-select"
                 value={venue}
                 onChange={(e) => setVenue(e.target.value)}
-                className="w-full py-3.5 px-4 rounded-2xl text-sm font-bold bg-[#EADBC8] text-stone-800 border border-[#D8C4B6] shadow-sm flex items-center justify-center gap-2"
+                disabled={Boolean(activeLog)} // Lock venue selector while clocked in
+                className="w-full py-3.5 px-4 rounded-2xl text-sm font-bold bg-[#EADBC8] text-stone-800 border border-[#D8C4B6] shadow-sm flex items-center justify-center gap-2 disabled:opacity-60"
               >
-                <option value="Sha">Sha</option>
+                <option value="Sha">Sha Patisserie</option>
                 <option value="ZB">Zushi Bento</option>
               </select>
             </div>
@@ -183,12 +230,20 @@ export default function ClockPage() {
 
               {activeLog ? (
                 <div>
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100/80 text-emerald-800 border border-emerald-200/60">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
-                    Clocked In
-                  </span>
+                  <div className="flex items-center justify-between">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100/80 text-emerald-800 border border-emerald-200/60">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                      {isOnBreak ? 'On Break' : 'Clocked In'}
+                    </span>
+
+                    {breakCompleted && (
+                      <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                        ✓ Break Recorded
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-stone-500 mt-2 font-medium">
-                    Since {new Date(activeLog.clockIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} (Sha / Zushi Bento)
+                    Since {new Date(activeLog.clockIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ({venue})
                   </p>
                 </div>
               ) : (
@@ -217,23 +272,50 @@ export default function ClockPage() {
             </div>
           )}
 
-          {/* Clock In / Out Action Buttons */}
-          <div className="grid grid-cols-2 gap-3.5 pt-1">
+          {/* Actions Section */}
+          {!activeLog ? (
+            /* Single Clock In Button when Clocked Out */
             <button
               onClick={() => handleClockAction('clock-in')}
-              disabled={loading || !currentUser || !!activeLog}
-              className="py-3.5 bg-[#82A083] hover:bg-[#729073] text-white font-bold rounded-2xl shadow-sm active:scale-[0.98] disabled:opacity-35 disabled:hover:bg-[#82A083] disabled:cursor-not-allowed transition-all text-sm tracking-wide"
+              disabled={loading || !currentUser}
+              className="w-full py-4 bg-[#82A083] hover:bg-[#729073] text-white font-bold rounded-2xl shadow-sm active:scale-[0.98] disabled:opacity-35 disabled:cursor-not-allowed transition-all text-sm tracking-wide"
             >
-              {loading ? 'Verifying...' : 'Clock In'}
+              {loading ? 'Verifying GPS...' : 'Clock In'}
             </button>
-            <button
-              onClick={() => handleClockAction('clock-out')}
-              disabled={loading || !currentUser || !activeLog}
-              className="py-3.5 bg-[#C88EA7] hover:bg-[#B77D96] text-white font-bold rounded-2xl shadow-sm active:scale-[0.98] disabled:opacity-35 disabled:hover:bg-[#C88EA7] disabled:cursor-not-allowed transition-all text-sm tracking-wide"
-            >
-              {loading ? 'Verifying...' : 'Clock Out'}
-            </button>
-          </div>
+          ) : (
+            /* Clocked In: Show Break Toggle & Clock Out */
+            <div className="space-y-3">
+              {/* Break Toggle Button */}
+              {!breakCompleted && (
+                <button
+                  onClick={handleBreakAction}
+                  disabled={loading}
+                  className={`w-full py-3.5 font-bold rounded-2xl shadow-sm active:scale-[0.98] transition-all text-sm tracking-wide text-white ${
+                    isOnBreak
+                      ? 'bg-amber-600 hover:bg-amber-700'
+                      : 'bg-stone-800 hover:bg-stone-900'
+                  }`}
+                >
+                  {loading ? 'Updating...' : isOnBreak ? 'End Break' : 'Start Break'}
+                </button>
+              )}
+
+              {/* Clock Out Button */}
+              <button
+                onClick={() => handleClockAction('clock-out')}
+                disabled={loading || isOnBreak}
+                className="w-full py-3.5 bg-[#C88EA7] hover:bg-[#B77D96] text-white font-bold rounded-2xl shadow-sm active:scale-[0.98] disabled:opacity-35 disabled:hover:bg-[#C88EA7] disabled:cursor-not-allowed transition-all text-sm tracking-wide"
+              >
+                {loading ? 'Verifying GPS...' : 'Clock Out'}
+              </button>
+
+              {isOnBreak && (
+                <p className="text-[11px] text-amber-700 font-medium text-center">
+                  ⚠️ Please end your break before clocking out.
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Footer */}

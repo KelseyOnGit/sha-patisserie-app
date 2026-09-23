@@ -4,28 +4,28 @@ import { getSession } from '@/lib/session';
 import { prisma } from '@/lib/prisma';
 import DashboardTabs from '@/components/DashboardTabs';
 
-
 export default async function StaffPortalPage() {
-  //  Decode the JWT session cookie to extract user information
+  // Decode the JWT session cookie to extract user information
   const payload = await getSession();
 
   if (!payload || !payload.userId) {
     redirect('/login');
   }
 
-  //fetch the logged-in user directly from PostgreSQL using Prisma or another database client
-
+  // Fetch the logged-in user
   const user = await prisma.user.findUnique({
-    where: {id: payload.userId},
-    select:{
+    where: { id: payload.userId },
+    select: {
+      id: true,
       name: true,
-      email: true
-    }
+      email: true,
+    },
   });
 
-  if(!user) {
+  if (!user) {
     redirect('/login');
   }
+
   return (
     <div className="min-h-screen bg-stone-50 p-6 md:p-12 max-w-lg mx-auto">
       {/* Top Header Section */}
@@ -48,10 +48,9 @@ export default async function StaffPortalPage() {
         </div>
       </header>
 
-  
-      {/* Main Shift Card */}
+      {/* Main Shift Section */}
       <main className="w-full text-center flex flex-col items-center justify-center min-h-[300px]">
-        < DashboardTabs userName={user.name ?? undefined} />
+        <DashboardTabs userName={user.name ?? undefined} />
       </main>
     </div>
   );

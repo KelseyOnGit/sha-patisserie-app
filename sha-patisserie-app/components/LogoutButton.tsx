@@ -10,9 +10,14 @@ export default function LogoutButton({ children }: { children: ReactNode }) {
   async function handleLogout() {
     setLoading(true);
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
+      const response = await fetch('/api/auth/logout', { method: 'POST' });
+      if (!response.ok) {
+        throw new Error('Logout request failed');
+      }
       router.push('/login');
       router.refresh();
+    } catch (error) {
+      console.error('Logout error:', error);
     } finally {
       setLoading(false);
     }

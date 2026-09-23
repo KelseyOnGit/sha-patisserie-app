@@ -2,29 +2,70 @@
 
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getSession } from '@/lib/session';
+
+async function findCurrentShift(userId: string) {
+  const now = new Date();
+
+  return prisma.shift.findFirst({
+    where: {
+      userId,
+      startTime: { lte: now },
+      endTime: { gte: now },
+    },
+    orderBy: { startTime: 'desc' },
+  });
+}
+
+export async function GET() {
+  const session = await getSession();
+
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  try {
+    const shift = await findCurrentShift(session.userId);
+    return NextResponse.json({ shift });
+  } catch (error) {
+    console.error('Failed to fetch break status:', error);
+    return NextResponse.json({ error: 'Failed to fetch break status' }, { status: 500 });
+  }
+}
 
 export async function POST(req: Request) {
   try {
-    const { shiftId, action, managerOverride } = await req.json(); // action: "START" | "FINISH" | "TOGGLE_APPROVE"
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-    if (!shiftId || !action) {
+    const { shiftId: requestedShiftId, action } = await req.json();
+    const shift = requestedShiftId
+      ? await prisma.shift.findFirst({ where: { id: requestedShiftId, userId: session.userId } })
+      : await findCurrentShift(session.userId);
+
+    if (!shift || !action) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
+    const shiftId = shift.id;
+
     // 1. Manager Manual Checkbox Toggle
     if (action === 'TOGGLE_APPROVE') {
-      const currentShift = await prisma.shift.findUnique({ where: { id: shiftId } });
-      if (!currentShift) return NextResponse.json({ error: 'Shift not found' }, { status: 404 });
-
       const updatedShift = await prisma.shift.update({
         where: { id: shiftId },
-        data: { breakApproved: !currentShift.breakApproved },
+        data: { breakApproved: !shift.breakApproved },
       });
       return NextResponse.json({ message: 'Break approval updated', shift: updatedShift });
     }
 
     // 2. Staff Clocking "Start Break"
     if (action === 'START') {
+      if (shift.startBreak || shift.endBreak) {
+        return NextResponse.json({ error: 'Break has already been recorded.' }, { status: 400 });
+      }
+
       const updatedShift = await prisma.shift.update({
         where: { id: shiftId },
         data: {
