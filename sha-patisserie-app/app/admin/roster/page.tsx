@@ -88,6 +88,25 @@ export default function ShiftRoster() {
     setFormData({ userId: '', startTime: '', endTime: '', breakMinutes: 30, location: 'SHA', roleTag: '', notes: '' });
   };
 
+  const duplicateWeek = async () => {
+    setMessage('');
+    try {
+      const response = await fetch('/api/roster/duplicate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ weekStart: mondayOf(weekStart).toISOString() }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to duplicate roster');
+      }
+      setMessage(data.count ? `Duplicated ${data.count} shift(s) to next week.` : 'No shifts found for this week.');
+      await loadData();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to duplicate roster.');
+    }
+  };
+
   const editShift = (shift: Shift) => {
     setEditingId(shift.id);
     setRepeatWeeks(1);
@@ -152,6 +171,7 @@ export default function ShiftRoster() {
         <label className="text-sm font-semibold text-stone-700">Week starting Monday
           <input type="date" value={weekStart} onChange={(event) => setWeekStart(localDate(mondayOf(event.target.value)))} className="ml-3 rounded-lg border border-stone-300 bg-white px-3 py-2 font-normal" />
         </label>
+        <button type="button" onClick={duplicateWeek} className="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-100">Duplicate to next week</button>
       </div>
 
       {message && <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{message}</p>}
