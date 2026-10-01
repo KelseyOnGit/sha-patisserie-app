@@ -6,6 +6,7 @@ interface User {
   id: string;
   name: string | null;
   employmentType: string | null;
+  location: { code: string; name: string } | null;
 }
 
 interface Shift {
@@ -104,6 +105,10 @@ export default function ShiftRoster() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [repeatWeeks, setRepeatWeeks] = useState(1);
   const [formData, setFormData] = useState({ userId: '', startTime: '', endTime: '', breakMinutes: 30, location: 'SHA', roleTag: ROLE_OPTIONS[0], notes: '' });
+  const locationUsers = useMemo(
+    () => users.filter((user) => user.location?.code === locationFilter),
+    [users, locationFilter]
+  );
 
   const loadData = async () => {
     try {
@@ -151,6 +156,13 @@ export default function ShiftRoster() {
     setFormData({ userId: '', startTime: '', endTime: '', breakMinutes: 30, location: locationFilter, roleTag: ROLE_OPTIONS[0], notes: '' });
   };
 
+  const switchLocation = (code: string) => {
+    setLocationFilter(code);
+    setEditingId(null);
+    setRepeatWeeks(1);
+    setFormData({ userId: '', startTime: '', endTime: '', breakMinutes: 30, location: code, roleTag: ROLE_OPTIONS[0], notes: '' });
+  };
+
   const duplicateWeek = async () => {
     setMessage('');
     try {
@@ -169,6 +181,8 @@ export default function ShiftRoster() {
   };
 
   const editShift = (shift: Shift) => {
+    const location = shift.location?.code || 'SHA';
+    setLocationFilter(location);
     setEditingId(shift.id);
     setRepeatWeeks(1);
     setFormData({
@@ -176,7 +190,7 @@ export default function ShiftRoster() {
       startTime: localDateTime(new Date(shift.startTime)),
       endTime: localDateTime(new Date(shift.endTime)),
       breakMinutes: shift.breakMinutes,
-      location: shift.location?.code || 'SHA',
+      location,
       roleTag: shift.roleTag || ROLE_OPTIONS[0],
       notes: shift.notes || '',
     });
@@ -266,7 +280,7 @@ export default function ShiftRoster() {
           <label className="text-xs font-bold uppercase tracking-wide text-stone-500">Staff
             <select required value={formData.userId} onChange={(event) => setFormData({ ...formData, userId: event.target.value })} className="mt-1 w-full rounded-lg border border-stone-300 p-2 text-sm">
               <option value="">Select staff</option>
-              {users.map((user) => <option key={user.id} value={user.id}>{user.name || user.id}</option>)}
+              {locationUsers.map((user) => <option key={user.id} value={user.id}>{user.name || user.id}</option>)}
             </select>
           </label>
           <label className="text-xs font-bold uppercase tracking-wide text-stone-500">Start
@@ -274,11 +288,6 @@ export default function ShiftRoster() {
           </label>
           <label className="text-xs font-bold uppercase tracking-wide text-stone-500">End
             <input required type="datetime-local" value={formData.endTime} onChange={(event) => setFormData({ ...formData, endTime: event.target.value })} className="mt-1 w-full rounded-lg border border-stone-300 p-2 text-sm" />
-          </label>
-          <label className="text-xs font-bold uppercase tracking-wide text-stone-500">Location
-            <select value={formData.location} onChange={(event) => setFormData({ ...formData, location: event.target.value })} className="mt-1 w-full rounded-lg border border-stone-300 p-2 text-sm">
-              {LOCATIONS.map((loc) => <option key={loc.code} value={loc.code}>{loc.name}</option>)}
-            </select>
           </label>
           <label className="text-xs font-bold uppercase tracking-wide text-stone-500">Break
             <select value={formData.breakMinutes} onChange={(event) => setFormData({ ...formData, breakMinutes: Number(event.target.value) })} className="mt-1 w-full rounded-lg border border-stone-300 p-2 text-sm">
@@ -295,7 +304,7 @@ export default function ShiftRoster() {
           </label>
         </div>
         {!editingId && (
-          <label className="mt-4 inline-flex items-center gap-2 text-sm text-stone-700">
+          <label className="mt-4 mr-8 inline-flex items-center gap-2 text-sm text-stone-700">
             Repeat every week
             <select value={repeatWeeks} onChange={(event) => setRepeatWeeks(Number(event.target.value))} className="rounded-lg border border-stone-300 px-2 py-1">
               <option value="1">Once</option>
@@ -305,13 +314,51 @@ export default function ShiftRoster() {
             </select>
           </label>
         )}
-        <button type="submit" className="mt-4 rounded-lg bg-stone-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-stone-700">
+        <button type="submit" disabled={loading || locationUsers.length === 0} className="mt-4 rounded-lg bg-stone-900 px-5 py-2.5 pr-5 text-sm font-semibold text-white hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-50">
           {editingId ? 'Save changes' : 'Publish shift'}
         </button>
       </form>
 
-      {/* Roster Controls */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="grid items-start gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
+        <aside className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm lg:sticky lg:top-4">
+          <div className="border-b border-stone-200 p-4">
+            <h2 className="text-sm font-semibold text-stone-900">Available staff</h2>
+            <p className="mt-1 text-xs text-stone-500">{locationUsers.length} employees</p>
+          </div>
+          <div className="grid grid-cols-2 gap-1 border-b border-stone-200 bg-stone-50 p-2" aria-label="Select venue">
+            {LOCATIONS.map((loc) => (
+              <button
+                key={loc.code}
+                type="button"
+                aria-pressed={locationFilter === loc.code}
+                onClick={() => switchLocation(loc.code)}
+                className={`rounded-md px-2 py-2 text-xs font-semibold transition ${
+                  locationFilter === loc.code ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-600 hover:bg-white hover:text-stone-900'
+                }`}
+              >
+                {loc.name}
+              </button>
+            ))}
+          </div>
+          {loading ? (
+            <p className="p-4 text-sm text-stone-500">Loading staff...</p>
+          ) : locationUsers.length === 0 ? (
+            <p className="p-4 text-sm text-stone-500">No employees assigned to this venue.</p>
+          ) : (
+            <ul className="max-h-[60vh] divide-y divide-stone-100 overflow-y-auto">
+              {locationUsers.map((user) => (
+                <li key={user.id} className="px-4 py-3">
+                  <p className="text-sm font-medium text-stone-800">{user.name || 'Unnamed staff'}</p>
+                  <p className="mt-0.5 text-xs text-stone-500">{user.employmentType?.replaceAll('_', ' ') || 'Staff'}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </aside>
+
+        <div className="min-w-0 space-y-4">
+          {/* Roster Controls */}
+          <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="inline-flex rounded-lg border border-stone-300 bg-white shadow-sm">
             <button
@@ -341,24 +388,6 @@ export default function ShiftRoster() {
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Location Switcher */}
-          <div className="inline-flex rounded-lg border border-stone-300 bg-stone-100 p-1">
-            {LOCATIONS.map((loc) => (
-              <button
-                key={loc.code}
-                type="button"
-                onClick={() => setLocationFilter(loc.code)}
-                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
-                  locationFilter === loc.code
-                    ? 'bg-white text-stone-900 shadow-sm'
-                    : 'text-stone-600 hover:text-stone-900'
-                }`}
-              >
-                {loc.name}
-              </button>
-            ))}
-          </div>
-
           <button
             type="button"
             onClick={duplicateWeek}
@@ -367,10 +396,10 @@ export default function ShiftRoster() {
             Duplicate to next week
           </button>
         </div>
-      </div>
+          </div>
 
-      {/* Timeline Calendar View */}
-      <section className="overflow-x-auto rounded-2xl border border-stone-200 bg-white shadow-sm">
+        {/* Timeline Calendar View */}
+        <section className="overflow-x-auto rounded-2xl border border-stone-200 bg-white shadow-sm">
         <div className="min-w-[1100px]">
           {/* Header row: empty cell for time column + day columns */}
           <div className="grid grid-cols-[70px_repeat(7,1fr)] border-b border-stone-200 bg-stone-100">
@@ -443,6 +472,8 @@ export default function ShiftRoster() {
           </div>
         </div>
       </section>
+        </div>
+      </div>
     </div>
   );
 }

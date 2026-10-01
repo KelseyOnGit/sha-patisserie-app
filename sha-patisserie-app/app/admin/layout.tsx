@@ -33,7 +33,7 @@ export default async function AdminLayout({
             <Link href="/admin/roster" className="block text-sm hover:text-stone-300">
               Roster
             </Link>
-            <Link href="/admin/staff" className="block text-sm hover:text-stone-300 font-medium text-amber-400 hover:text-amber-300">
+            <Link href="/admin/staff" className="block text-sm hover:text-stone-300">
               Staff Profiles
             </Link>
             <Link href="/admin/reports" className="block text-sm hover:text-stone-300">

@@ -6,7 +6,7 @@ const SECRET_KEY = new TextEncoder().encode(
   process.env.JWT_SECRET || 'fallback-secret-key-change-this'
 );
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const sessionToken = request.cookies.get('session')?.value;
   const isDashboardRoute = request.nextUrl.pathname.startsWith('/dashboard');
 
@@ -16,7 +16,6 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL('/login', request.url));
     }
 
-    
     try {
       await jwtVerify(sessionToken, SECRET_KEY);
       return NextResponse.next();
@@ -29,7 +28,7 @@ export async function middleware(request: NextRequest) {
   return NextResponse.next();
 }
 
-// Specify which paths trigger this middleware
+// Specify which paths trigger this proxy
 export const config = {
   matcher: ['/dashboard/:path*'],
 };

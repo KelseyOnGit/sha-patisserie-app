@@ -59,10 +59,20 @@ export async function POST(request: Request) {
         );
       }
 
+      const locationCode = targetLocation.toUpperCase();
+      const venue = await prisma.location.upsert({
+        where: { code: locationCode },
+        update: {},
+        create: {
+          code: locationCode,
+          name: targetLocation === 'ZB' ? 'Zushi Bento' : 'Sha Patisserie',
+        },
+      });
+
       const newLog = await prisma.timeLog.create({
         data: {
           userId,
-          location: targetLocation,
+          locationId: venue.id,
           lat: userLat,
           lng: userLng,
           clockIn: new Date(),

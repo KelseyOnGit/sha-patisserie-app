@@ -38,6 +38,7 @@ export async function POST(request: Request) {
       { status: 200 }
     );
   } catch (error) {
+    console.error('Login failed:', error);
     return NextResponse.json(
       { error: 'An unexpected error occurred.' },
       { status: 500 }

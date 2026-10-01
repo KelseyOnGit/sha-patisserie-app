@@ -18,6 +18,7 @@ interface StaffProfileData {
   rateLastUpdated: string;
   workingRightStatus: 'Aus Citizen / Permanent Resident' | 'Student Visa' | 'Working Holiday';
   claimTaxFreeThreshold: boolean;
+ 
 }
 
 export default function StaffProfileForm() {
@@ -135,7 +136,7 @@ export default function StaffProfileForm() {
                 required
                 value={formData.fullName}
                 onChange={handleChange}
-                placeholder="e.g. Jane Doe"
+                placeholder="e.g. Julia Wilson"
                 className="w-full rounded-lg border border-stone-300 p-2.5 text-sm focus:border-stone-800 focus:outline-none"
               />
             </div>
@@ -150,7 +151,7 @@ export default function StaffProfileForm() {
                 required
                 value={formData.email}
                 onChange={handleChange}
-                placeholder="jane@example.com"
+                placeholder="julia@example.com"
                 className="w-full rounded-lg border border-stone-300 p-2.5 text-sm focus:border-stone-800 focus:outline-none"
               />
             </div>
@@ -247,7 +248,6 @@ export default function StaffProfileForm() {
                   name="hourlyPayRate"
                   value={formData.hourlyPayRate}
                   onChange={handleChange}
-                  placeholder="28.50"
                   className="w-full rounded-lg border border-stone-300 py-2.5 pl-7 pr-3 text-sm focus:border-stone-800 focus:outline-none"
                 />
               </div>

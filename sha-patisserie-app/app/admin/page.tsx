@@ -13,8 +13,7 @@ export default async function AdminDashboardPage() {
 
   const stats = [
     { label: 'Active staff', value: totalStaff, href: '/admin/staff' },
-    { label: 'Pending approvals', value: pendingUsers, href: '/admin/users' },
-    { label: 'Shifts in next 7 days', value: upcomingShifts, href: '/admin/roster' },
+ 
   ];
 
   return (

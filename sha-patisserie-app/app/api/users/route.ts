@@ -12,11 +12,45 @@ export async function GET() {
   try {
     const users = await prisma.user.findMany({
       orderBy: { createdAt: 'desc' },
+      include: { location: { select: { code: true, name: true } } },
     });
     return NextResponse.json(users);
   } catch (error) {
     console.error('Failed to fetch users:', error);
     return NextResponse.json({ error: 'Failed to fetch users' }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: Request) {
+  const session = await getSession();
+  if (!session || !isPrivilegedRole(session.role)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+  }
+
+  try {
+    const { userId, location } = await request.json();
+    if (!userId || (location !== 'SHA' && location !== 'ZB')) {
+      return NextResponse.json({ error: 'A user and valid venue are required' }, { status: 400 });
+    }
+
+    const locationName = location === 'ZB' ? 'Zushi Bento' : 'Sha Patisserie';
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        location: {
+          connectOrCreate: {
+            where: { code: location },
+            create: { code: location, name: locationName },
+          },
+        },
+      },
+      include: { location: { select: { code: true, name: true } } },
+    });
+
+    return NextResponse.json(updatedUser);
+  } catch (error) {
+    console.error('Failed to update staff venue:', error);
+    return NextResponse.json({ error: 'Failed to update staff venue' }, { status: 500 });
   }
 }
 
@@ -29,10 +63,10 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { name, email, role, hourlyRate, pinCode } = body;
+    const { name, email, role, pinCode, location } = body;
 
-    if (!name || !email) {
-      return NextResponse.json({ error: 'Name and email are required' }, { status: 400 });
+    if (!name || !email || !pinCode) {
+      return NextResponse.json({ error: 'Name, email, and PIN are required' }, { status: 400 });
     }
 
     const newUser = await prisma.user.create({
@@ -40,8 +74,16 @@ export async function POST(request: Request) {
         name,
         email,
         role: role || 'STAFF',
-        hourlyRate: hourlyRate ? parseFloat(hourlyRate) : null,
-        pinCode: pinCode || null,
+        pinCode,
+        location: {
+          connectOrCreate: {
+            where: { code: location === 'ZB' ? 'ZB' : 'SHA' },
+            create: {
+              code: location === 'ZB' ? 'ZB' : 'SHA',
+              name: location === 'ZB' ? 'Zushi Bento' : 'Sha Patisserie',
+            },
+          },
+        },
       },
     });
 

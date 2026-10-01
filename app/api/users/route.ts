@@ -17,10 +17,10 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { name, email, role, hourlyRate, pinCode } = body;
+    const { name, email, role, pinCode } = body;
 
-    if (!name || !email) {
-      return NextResponse.json({ error: 'Name and email are required' }, { status: 400 });
+    if (!name || !email || !pinCode) {
+      return NextResponse.json({ error: 'Name, email, and PIN are required' }, { status: 400 });
     }
 
     const newUser = await prisma.user.create({
@@ -28,8 +28,7 @@ export async function POST(request: Request) {
         name,
         email,
         role: role || 'STAFF',
-        hourlyRate: hourlyRate ? parseFloat(hourlyRate) : null,
-        pinCode: pinCode || null,
+        pinCode,
       },
     });
 

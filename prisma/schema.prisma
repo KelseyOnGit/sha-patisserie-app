@@ -1,10 +1,98 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-generator client {
-  provider = "prisma-client-js"
+model User {
+  id                  String          @id @default(uuid())
+  name                String?
+  email               String          @unique
+  pinCode             String
+  role                Role            @default(STAFF)
+  employmentType      EmploymentType?
+  isApproved          Boolean         @default(false)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  contactNumber       String?         @unique
+  locationId          String?
+  myobEmployeeId      String?
+  status              UserStatus      @default(PENDING)
+  defaultBreakMinutes Int             @default(30)
+  rosterShifts        RosterShift[]
+  shifts              Shift[]
+  timeEntries         TimeEntry[]
+  timeLogs            TimeLog[]
+  location            Location?       @relation(fields: [locationId], references: [id])
+}
+
+model Shift {
+  id                 String    @id @default(uuid())
+  userId             String
+  startTime          DateTime
+  endTime            DateTime
+  breakMinutes       Int       @default(0)
+  roleTag            String?
+  notes              String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  endBreak           DateTime?
+  locationId         String?
+  presetBreakMinutes Int       @default(30)
+  shiftReport        String?
+  startBreak         DateTime?
+  breakApproved      Boolean   @default(false)
+  location           Location? @relation(fields: [locationId], references: [id])
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model TimeLog {
+  id         String    @id @default(uuid())
+  userId     String
+  clockIn    DateTime  @default(now())
+  clockOut   DateTime?
+  lat        Float?
+  lng        Float?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  locationId String?
+  location   Location? @relation(fields: [locationId], references: [id])
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Location {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  code      String    @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  shifts    Shift[]
+  timeLogs  TimeLog[]
+  users     User[]
+}
+
+model RosterShift {
+  id        String      @id @default(cuid())
+  userId    String
+  startTime DateTime
+  endTime   DateTime
+  notes     String?
+  status    ShiftStatus @default(SCHEDULED)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model TimeEntry {
+  id       String    @id @default(uuid())
+  userId   String
+  clockIn  DateTime  @default(now())
+  clockOut DateTime?
+  notes    String?
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 enum Role {
@@ -19,48 +107,14 @@ enum EmploymentType {
   CASUAL
 }
 
-enum Location {
-  Sha
-  ZB
+enum ShiftStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
 }
 
-model User {
-  id             String         @id @default(uuid())
-  name           String
-  email          String         @unique
-  role           Role           @default(STAFF)
-  employmentType EmploymentType @default(CASUAL)
-  location       Location       @default(Sha)
-  pinCode        String?
-  shifts         Shift[]
-  timeLogs       TimeLog[]
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-}
-
-model Shift {
-  id           String    @id @default(uuid())
-  userId       String
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  startTime    DateTime
-  endTime      DateTime
-  breakMinutes Int       @default(0)
-  location     Location  @default(Sha)
-  roleTag      String?
-  notes        String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-}
-
-model TimeLog {
-  id        String    @id @default(uuid())
-  userId    String
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  clockIn   DateTime  @default(now())
-  clockOut  DateTime?
-  location  Location  @default(Sha)
-  lat       Float?
-  lng       Float?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+enum UserStatus {
+  PENDING
+  ACTIVE
+  INACTIVE
 }
