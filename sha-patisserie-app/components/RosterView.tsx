@@ -1,19 +1,39 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-
+interface WorkingHoursConfig {
+  startTime: string;
+  endTime: string;
+  enabled: boolean;
+}
 interface Shift {
   id: string;
   location: string;
   startTime: string;
   endTime: string;
   day: string;
+  role?: string;
+  status: 'DRAFT' | 'PUBLISHED' | 'CANCELLED';
+  regularWorkingHours: Record<string, WorkingHoursConfig> | null;
 }
 
+// Helper function to format name: "Hannah Gibbs" -> "Hannah G."
+function formatShortName(fullName: string | null): string {
+  if (!fullName) return 'Unnamed Staff';
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0];
+  const firstName = parts[0];
+  const lastInitial = parts[parts.length - 1][0].toUpperCase();
+  return `${firstName} ${lastInitial}.`;
+}
+
+function getMonday(d: Date)
 export default function RosterView() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentWeekStart, setCurrentWeekStart] = useState<Date>(() => getMonday(new Date()));
+  const [searchTerm, setSearchTerm] = useState<string>('');
 
   useEffect(() => {
     async function fetchRoster() {

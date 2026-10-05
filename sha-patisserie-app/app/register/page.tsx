@@ -9,6 +9,7 @@ export default function RegisterPage() {
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [contactNumber, setContactNumber] = useState('');
   const [pinCode, setPinCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -26,7 +27,7 @@ export default function RegisterPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ name, email, pinCode }),
+        body: JSON.stringify({ name, email, contactNumber, pinCode }),
       });
 
       const data = await response.json();
@@ -63,7 +64,7 @@ export default function RegisterPage() {
             Create Staff Account
           </h1>
           <p className="text-xs text-stone-500 mt-1">
-            Register your name, email, and 4-digit PIN
+            Register your name, email, optional phone number, and PIN
           </p>
         </div>
 
@@ -97,6 +98,25 @@ export default function RegisterPage() {
               disabled={loading}
               placeholder="Please enter your name here"
               required
+              className="w-full px-4 py-3 bg-stone-50/50 border border-stone-200 rounded-xl text-stone-800 text-sm placeholder-stone-400 focus:bg-white focus:border-stone-400 focus:ring-4 focus:ring-stone-100 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="contactNumber"
+              className="block text-xs font-semibold uppercase tracking-wider text-stone-600 mb-1.5"
+            >
+              Contact Number (Optional)
+            </label>
+            <input
+              id="contactNumber"
+              type="tel"
+              autoComplete="tel"
+              value={contactNumber}
+              onChange={(e) => setContactNumber(e.target.value)}
+              disabled={loading}
+              placeholder="0412 345 678"
               className="w-full px-4 py-3 bg-stone-50/50 border border-stone-200 rounded-xl text-stone-800 text-sm placeholder-stone-400 focus:bg-white focus:border-stone-400 focus:ring-4 focus:ring-stone-100 focus:outline-none"
             />
           </div>

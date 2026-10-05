@@ -29,6 +29,17 @@ enum UserStatus {
   INACTIVE
 }
 
+enum WorkingRightStatus {
+  CITIZEN_OR_PERMANENT_RESIDENT
+  STUDENT_VISA
+  WORKING_HOLIDAY
+}
+
+enum WorkingHoursPolicy {
+  POLICY
+  CUSTOM
+}
+
 enum ShiftStatus {
   SCHEDULED
   COMPLETED
@@ -65,6 +76,12 @@ model User {
   // Contact & MYOB Integration
   contactNumber   String?         @unique // String to handle formatting and country codes
   myobEmployeeId  String?         // Nullable until linked in Admin Profile
+  hourlyPayRate   Decimal?        @db.Decimal(10, 2)
+  rateLastUpdated DateTime?       @db.Date
+  workingRightStatus WorkingRightStatus?
+  claimTaxFreeThreshold Boolean?
+  workingHoursPolicy WorkingHoursPolicy @default(CUSTOM)
+  regularWorkingHours Json?
   
   // Primary Venue
   locationId      String?
@@ -80,7 +97,7 @@ model User {
   rosterShifts    RosterShift[]
   timeEntries     TimeEntry[]
 
-  defaultBreakMinutes Int      @default(30) // Default preset break durationdefaultBreakMinutes Int      @default(30) // Default preset break duration
+  defaultBreakMinutes Int      @default(30) // Default preset break duration
 
 
 }
@@ -93,6 +110,7 @@ model Shift {
   // Shift Timings
   startTime           DateTime
   endTime             DateTime
+  Date                DateTime
   
   // Break Tracking
   startBreak          DateTime?    // Nullable until break starts
@@ -139,6 +157,7 @@ model RosterShift {
   startTime DateTime
   endTime   DateTime
   notes     String?
+  role      String?  // e.g. "Kitchen", "Floor"
   status    ShiftStatus @default(SCHEDULED)
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt

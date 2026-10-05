@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 
 export async function POST(request: Request) {
   try {
-    const { email, pinCode, name } = await request.json();
+    const { email, pinCode, name, contactNumber } = await request.json();
 
     // 1. Email Presence & Format Validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -11,6 +11,13 @@ export async function POST(request: Request) {
     if (!email || !email.trim() || !emailRegex.test(email)) {
       return NextResponse.json(
         { error: "Oops, this email doesn't look right." },
+        { status: 400 }
+      );
+    }
+
+    if (contactNumber !== undefined && typeof contactNumber !== 'string') {
+      return NextResponse.json(
+        { error: 'Contact number must be text.' },
         { status: 400 }
       );
     }
@@ -53,8 +60,9 @@ export async function POST(request: Request) {
     // 4. Create new staff account with Admin Approval Flag
     const user = await prisma.user.create({
       data: {
-        name: name || email.split('@')[0],
+        name: name?.trim() || email.split('@')[0],
         email,
+        contactNumber: contactNumber?.trim() || null,
         pinCode,
         isApproved: false, // Requires admin approval before access is granted
       },
