@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Roster, Working Hours, and Staff Profile Guide</title>
+  <style>
+:root {
+  /* 字体：正文宋体系 serif，标题黑体系（政府公文规范，与 Readmdvue 一致） */
+  --gov-font-body: 'Noto Serif CJK SC', 'Source Han Serif SC', 'Source Han Serif CN',
+    '仿宋', 'FangSong', '仿宋_GB2312', 'FangSong_GB2312',
+    '宋体', 'SimSun', 'STSong', 'Times New Roman', serif;
+  --gov-font-heading: 'Noto Sans CJK SC', 'Source Han Sans SC', 'Source Han Sans CN',
+    '黑体', 'SimHei', 'PingFang SC', 'Microsoft YaHei', 'Microsoft YaHei UI', sans-serif;
+  --gov-font-mono: 'SF Mono', 'Cascadia Code', Consolas, 'Courier New', monospace;
+
+  /* 布局 */
+  --gov-max-width: 1000px;
+  --gov-font-size: 16px;
+  --gov-line-height: 1.8;
+
+  /* 颜色：黑白严谨，无强调色 */
+  --gov-color-text: #1a1a1a;
+  --gov-color-heading: #000000;
+  --gov-color-secondary: #4a4a4a;
+  --gov-color-border: #8a8a8a;
+  --gov-color-border-light: #d0d0d0;
+  --gov-color-table-header-bg: #eaeaea;
+  --gov-color-code-bg: #f5f5f5;
+  --gov-color-quote-bg: #f7f7f7;
+  --gov-color-link: #0563c1;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--gov-font-body);
+  font-size: var(--gov-font-size);
+  line-height: var(--gov-line-height);
+  color: var(--gov-color-text);
+  background: #ffffff;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.gov-container {
+  max-width: var(--gov-max-width);
+  margin: 0 auto;
+  padding: 48px 56px 80px;
+}
+
+/* ===== 标题：黑体、黑色、无阴影无动画（公文规范） ===== */
+.gov-container h1,
+.gov-container h2,
+.gov-container h3,
+.gov-container h4,
+.gov-container h5,
+.gov-container h6 {
+  font-family: var(--gov-font-heading);
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--gov-color-heading);
+  margin: 1.6em 0 0.6em;
+  scroll-margin-top: 20px;
+}
+
+.gov-container h1 {
+  font-size: var(--gov-heading1-size, 1.5em);
+  border-bottom: 1px solid #333333;
+  padding-bottom: 0.3em;
+}
+
+.gov-container h2 {
+  font-size: var(--gov-heading2-size, 1.25em);
+  border-left: 4px solid #333333;
+  padding-left: 0.5em;
+}
+
+.gov-container h3 { font-size: var(--gov-heading3-size, 1.1em); }
+.gov-container h4 { font-size: var(--gov-heading4-size, 1em); }
+.gov-container h5 { font-size: var(--gov-heading5-size, 0.95em); }
+.gov-container h6 { font-size: var(--gov-heading6-size, 0.9em); }
+
+/* ===== 正文段落：首行缩进 2 字符、两端对齐（公文规范） ===== */
+.gov-container p {
+  margin: 0 0 0.75em;
+  text-align: justify;
+  text-justify: inter-ideograph;
+  text-indent: 2em;
+}
+
+/* 列表/引用/表格/目录/代码块内段落不缩进 */
+.gov-container li p,
+.gov-container blockquote p,
+.gov-container td p,
+.gov-container .gov-toc p {
+  text-indent: 0;
+}
+
+/* ===== 列表 ===== */
+.gov-container ul,
+.gov-container ol {
+  margin: 0.5em 0 1em;
+  padding-left: 2em;
+}
+
+.gov-container li {
+  margin: 0.25em 0;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+/* ===== 表格：严谨全边框、表头浅灰居中、无斑马纹 ===== */
+.gov-container table {
+  border-collapse: collapse;
+  width: 100%;
+  max-width: 100%;
+  table-layout: auto;
+  margin: 1em 0;
+  font-size: 0.95em;
+}
+
+.gov-container th,
+.gov-container td {
+  border: 1px solid var(--gov-color-border);
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.gov-container th {
+  background: var(--gov-color-table-header-bg);
+  font-weight: 700;
+  text-align: center;
+  color: var(--gov-color-table-header-text, var(--gov-color-heading));
+}
+
+.gov-container tbody tr:nth-child(even) {
+  background: transparent;
+}
+
+.gov-container tbody tr:hover {
+  background: transparent;
+}
+
+/* ===== Mermaid 图表容器：居中、防溢出、黑白严谨 ===== */
+.gov-container .gov-mermaid {
+  margin: 1em 0;
+  text-align: center;
+  overflow-x: auto;
+}
+
+.gov-container .gov-mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.gov-container .gov-mermaid-error {
+  border: 1px solid #d33;
+  background: #fdf2f2;
+  color: #a00;
+  padding: 8px 12px;
+  font-size: 0.9em;
+  margin: 1em 0;
+  text-align: left;
+}
+
+/* ===== 图片点击放大（与 Readmdvue 一致：双击图片 → 全屏模态框） ===== */
+.gov-container img {
+  cursor: zoom-in;
+}
+
+.gov-image-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  cursor: zoom-out;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.gov-image-modal.show {
+  opacity: 1;
+}
+
+.gov-image-modal .gov-image-modal-content {
+  max-width: 94%;
+  max-height: 94%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+}
+
+.gov-image-modal img {
+  max-width: 90vw;
+  max-height: 90vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  cursor: default;
+  background: #ffffff;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+/* ===== 代码块：简洁灰底等宽，不做彩色高亮（公文不花哨） ===== */
+.gov-container pre {
+  background: var(--gov-color-code-bg);
+  border: 1px solid var(--gov-color-border-light);
+  border-radius: 3px;
+  padding: 12px 16px;
+  overflow-x: auto;
+  font-size: 0.9em;
+  line-height: 1.6;
+  margin: 1em 0;
+}
+
+.gov-container code {
+  font-family: var(--gov-font-mono);
+  background: var(--gov-color-code-bg);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 0.92em;
+}
+
+.gov-container pre code {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  font-size: 1em;
+}
+
+/* ===== 代码高亮主题（GitHub 风格浅色，黑白灰为主，公文不花哨） ===== */
+.hljs {
+  color: #24292e;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-doctag,
+.hljs-name {
+  color: #d73a49;
+}
+.hljs-string,
+.hljs-regexp,
+.hljs-addition {
+  color: #032f62;
+}
+.hljs-title,
+.hljs-section,
+.hljs-title.class_,
+.hljs-title.function_ {
+  color: #6f42c1;
+}
+.hljs-number,
+.hljs-literal,
+.hljs-symbol,
+.hljs-bullet {
+  color: #005cc5;
+}
+.hljs-comment,
+.hljs-quote {
+  color: #6a737d;
+  font-style: italic;
+}
+.hljs-variable,
+.hljs-template-variable,
+.hljs-attr,
+.hljs-attribute {
+  color: #e36209;
+}
+.hljs-built_in,
+.hljs-type {
+  color: #005cc5;
+}
+.hljs-meta {
+  color: #6a737d;
+}
+.hljs-emphasis {
+  font-style: italic;
+}
+.hljs-strong {
+  font-weight: 700;
+}
+
+/* ===== 引用：左侧深灰线 + 浅灰底 ===== */
+.gov-container blockquote {
+  margin: 1em 0;
+  padding: 0.5em 1em;
+  background: var(--gov-color-quote-bg);
+  border-left: 3px solid var(--gov-color-border);
+  color: var(--gov-color-secondary);
+}
+
+/* ===== 链接：严谨下划线，不花哨 ===== */
+.gov-container a {
+  color: var(--gov-color-link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ===== 图片 ===== */
+.gov-container img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* ===== 水平线 ===== */
+.gov-container hr {
+  border: none;
+  border-top: 1px solid var(--gov-color-border);
+  margin: 1.5em 0;
+}
+
+/* ===== 目录：简洁容器 + 缩进层级 ===== */
+.gov-toc {
+  border: 1px solid var(--gov-color-border-light);
+  background: #fafafa;
+  padding: 1em 1.5em;
+  margin: 1em 0 2em;
+}
+
+.gov-toc-title {
+  font-family: var(--gov-font-heading);
+  font-weight: 700;
+  font-size: 1.1em;
+  color: var(--gov-color-heading);
+  text-align: center;
+  letter-spacing: 0.5em;
+  margin-bottom: 0.8em;
+}
+
+.gov-toc .gov-toc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.gov-toc .gov-toc-list ul {
+  list-style: none;
+  margin: 0;
+  padding-left: 1.5em;
+}
+
+.gov-toc li {
+  margin: 0.2em 0;
+}
+
+.gov-toc a {
+  color: var(--gov-color-text);
+  text-decoration: none;
+}
+
+.gov-toc a:hover {
+  color: var(--gov-color-link);
+  text-decoration: underline;
+}
+
+/* ===== 公式（KaTeX 渲染后补充） ===== */
+.gov-container .math-formula {
+  font-family: 'Times New Roman', 'KaTeX_Main', serif;
+}
+
+.gov-container .math-block {
+  display: block;
+  text-align: center;
+  margin: 1em 0;
+  padding: 0.5em;
+  overflow-x: auto;
+  background: #f9f9f9;
+  border-radius: 4px;
+}
+
+/* ===== 打印支持（政府文档经常转 PDF） ===== */
+@media print {
+  body {
+    font-size: 12pt;
+  }
+  .gov-container {
+    max-width: none;
+    padding: 0;
+  }
+  .gov-container a {
+    color: #000;
+  }
+}
+
+/* ===== 移动端 ===== */
+@media (max-width: 768px) {
+  .gov-container {
+    padding: 24px 16px 48px;
+  }
+}
+
+:root {
+  --gov-font-body: SimSun, Noto Serif CJK SC, Source Han Serif SC, Source Han Serif CN, 仿宋, FangSong, 仿宋_GB2312, FangSong_GB2312, 宋体, SimSun, STSong, Times New Roman, serif;
+  --gov-font-heading: SimHei, Noto Sans CJK SC, Source Han Sans SC, Source Han Sans CN, 黑体, SimHei, PingFang SC, Microsoft YaHei, sans-serif;
+  --gov-font-mono: Consolas, SF Mono, Cascadia Code, Consolas, Courier New, monospace;
+  --gov-font-size: 14.67px;
+  --gov-line-height: 1.5;
+  --gov-text-indent: 2em;
+  --gov-heading1-size: 20px;
+  --gov-heading2-size: 17.33px;
+  --gov-heading3-size: 16px;
+  --gov-heading4-size: 16px;
+  --gov-heading5-size: 16px;
+  --gov-heading6-size: 16px;
+  --gov-color-text: #000000;
+  --gov-color-heading: #000000;
+  --gov-color-link: #0563C1;
+  --gov-color-border: #BFBFBF;
+  --gov-color-table-header-bg: #D9D9D9;
+  --gov-color-table-header-text: #000000;
+}</style>
+</head>
+<body>
+  <div class="gov-container">
+    <h1>Roster, Working Hours, and Staff Profile Guide</h1>
+<p>This guide explains the staff scheduling and profile code in the active Next.js app, including where each behavior lives, how the browser and API communicate, and what the stored fields mean.</p>
+<h2>The Main Mental Model</h2>
+<p>There are three related but separate concepts:</p>
+<ol>
+<li><strong>A roster shift</strong> is a specific assignment for one staff member on one date, with a start, end, role, location, and break length. It is stored as a <code>Shift</code> row.</li>
+<li><strong>Regular working hours</strong> are a recurring weekly availability template for a staff member. It is stored as JSON on <code>User</code>. Saving this template does not create actual roster shifts.</li>
+<li><strong>A shift break</strong> is the break attached to one specific roster shift (<code>Shift.breakMinutes</code>). The regular-hours break value is a separate default/planning value and does not automatically create a break event or adjust clock records.</li>
+</ol>
+<p>The roster page is now a staff-by-week grid: staff are rows and dates are columns. Use the <code>+</code> in a cell to add a shift for that staff member on that date. Existing shift cards open for editing.</p>
+<h2>Active App Location</h2>
+<p>The working Next.js app is the nested project folder:</p>
+<pre><code class="language-text">sha-patisserie-app/
+  app/
+  components/
+  lib/
+  prisma/
+</code></pre>
+<p>Run app commands from that directory. In the Next.js App Router, a route file named <code>route.ts</code> maps to the URL formed from the folders above it. For example:</p>
+<pre><code class="language-text">app/api/shifts/route.ts
+</code></pre>
+<p>maps to:</p>
+<pre><code class="language-text">/api/shifts
+</code></pre>
+<p>Avoid adding a <code>routes/</code> folder unless <code>/routes</code> should be part of the URL.</p>
+<h2>File Map</h2>
+<ul>
+<li><a href="../app/admin/roster/page.tsx">Roster page</a>: weekly staff grid, date/location controls, shift modal, staff availability filtering.</li>
+<li><a href="../app/api/shifts/route.ts">Shift API</a>: authenticated shift reads and privileged shift creation/update.</li>
+<li><a href="../components/StaffProfile.tsx">Staff profile component</a>: profile details and recurring working-hours editor.</li>
+<li><a href="../app/api/admin/staff/working-hours/route.ts">Working-hours API</a>: validates and persists recurring schedules.</li>
+<li><a href="../app/api/admin/staff/update/route.ts">Profile update API</a>: loads/saves user profile fields.</li>
+<li><a href="../prisma/schema.prisma">Prisma schema</a>: User, Shift, enums, and JSON fields.</li>
+<li><a href="../prisma/migrations">Prisma migrations</a>: SQL schema changes applied to the database.</li>
+</ul>
+<h2>Roster Grid: Click to Create or Edit</h2>
+<h3>Grid data</h3>
+<p>The roster page loads users and shifts through two requests:</p>
+<pre><code class="language-ts">const [usersResponse, shiftsResponse] = await Promise.all([
+  fetch(&#39;/api/users&#39;),
+  fetch(&#39;/api/shifts&#39;),
+]);
+</code></pre>
+<p>It builds the week with <code>weekDays</code>, then groups shifts by date and selected location in <code>shiftsByDay</code>. The UI displays one row per staff member and one column per day. Each cell filters that day’s shifts to the current staff member.</p>
+<h3>Adding a shift</h3>
+<p>Clicking a cell’s <code>+</code> calls <code>openShiftForm(user.id, day.date)</code>. That function opens the modal with the clicked user and date already selected, and defaults the times to 9:00 am–5:00 pm. The form still lets the manager change the staff member, dates/times, break, role, and notes.</p>
+<p>Saving creates a shift with <code>POST /api/shifts</code>. Editing a shift card opens the same modal and saves with <code>PUT /api/shifts</code>.</p>
+<p>Simplified flow:</p>
+<pre><code class="language-text">Click staff/day +
+  -&gt; openShiftForm(staffId, date)
+  -&gt; select/edit shift details
+  -&gt; POST /api/shifts
+  -&gt; refresh users and shifts
+</code></pre>
+<h3>Availability and overlapping shifts</h3>
+<p><code>availableUsers</code> filters staff assigned to the selected venue and removes people with another shift that overlaps the requested interval. The overlap rule is:</p>
+<pre><code class="language-ts">existingStart &lt; requestedEnd &amp;&amp; existingEnd &gt; requestedStart
+</code></pre>
+<p>This catches partial overlaps and shifts that fully contain one another. When editing, the shift currently being edited is excluded from the conflict check; otherwise a shift would conflict with itself.</p>
+<p>The availability check is in the browser and reflects the shifts currently loaded on the page. If multiple admins can schedule simultaneously, the API should also enforce overlap rules server-side to prevent two requests from racing.</p>
+<h3>Timezone and hydration</h3>
+<p>Shift labels use <code>Australia/Perth</code> explicitly:</p>
+<pre><code class="language-ts">new Intl.DateTimeFormat(&#39;en-AU&#39;, {
+  timeZone: &#39;Australia/Perth&#39;,
+  hour: &#39;numeric&#39;,
+  minute: &#39;2-digit&#39;,
+}).format(new Date(value));
+</code></pre>
+<p>An explicit locale and timezone keep server-rendered and browser-rendered labels consistent. Using the browser’s default <code>toLocaleTimeString()</code> can produce different text between server and client and trigger a React hydration warning.</p>
+<h2>Regular Working Hours</h2>
+<p>A weekly schedule has one record per weekday. Each day includes an enabled flag, a primary time range, optional extra ranges, standard hours, and break minutes. Conceptually:</p>
+<pre><code class="language-ts">{
+  Monday: {
+    enabled: true,
+    startTime: &#39;09:00&#39;,
+    endTime: &#39;17:00&#39;,
+    additionalHours: [{ startTime: &#39;18:00&#39;, endTime: &#39;20:00&#39; }],
+    standardHours: &#39;8&#39;,
+    breakMinutes: 30,
+  },
+}
+</code></pre>
+<p>The actual object contains all seven days. <code>+ Add hours</code> appends another <code>{ startTime, endTime }</code> range for that weekday; up to five extra ranges are supported. These ranges are recurring availability data, not separate <code>Shift</code> rows.</p>
+<p>For backwards compatibility, older saved schedules without <code>additionalHours</code> load with an empty list. Older schedules without <code>breakMinutes</code> use 30 minutes on enabled days and 0 on disabled days.</p>
+<h3>Persistence flow</h3>
+<p>The component loads from <code>GET /api/admin/staff/working-hours?userId=...</code> and saves with <code>POST</code> to the same route. The API:</p>
+<ul>
+<li>requires a valid session;</li>
+<li>allows the user to access their own schedule, and privileged roles to access other users;</li>
+<li>validates weekday objects, time strings, extra ranges, and break minutes;</li>
+<li>normalizes defaults for older schedule objects;</li>
+<li>stores the complete schedule in <code>User.regularWorkingHours</code> as Prisma JSON.</li>
+</ul>
+<p><code>WorkingHoursPolicy</code> records <code>CUSTOM</code> or <code>POLICY</code>. A policy selection currently records the selected mode; it is not a reference to an external policy definition.</p>
+<h3>Break concepts</h3>
+<p>The profile’s recurring working-hours <code>breakMinutes</code> describes the planned break for that weekday. The roster modal has a separate break control, and its value is stored on that specific shift in <code>Shift.breakMinutes</code>.</p>
+<p>Changing the recurring setting does not retroactively alter existing roster shifts. When a new shift should inherit the recurring value automatically, that behavior needs to be implemented explicitly in the roster form or API.</p>
+<h2>Staff Profile and Registration</h2>
+<p>The profile form loads its values from the profile API and starts read-only. <strong>Edit Profile</strong> enables editing; <strong>Cancel</strong> restores the last saved values; <strong>Save Profile</strong> posts the changes. Name, email, and contact number are associated with registration data, so they populate from the user record rather than starting as blank inputs.</p>
+<p>The User model also stores pay and tax information:</p>
+<ul>
+<li><code>hourlyPayRate</code> (<code>Decimal?</code>): hourly rate;</li>
+<li><code>rateLastUpdated</code> (<code>DateTime?</code>): effective/update date;</li>
+<li><code>workingRightStatus</code> (<code>WorkingRightStatus?</code>): work-right category;</li>
+<li><code>claimTaxFreeThreshold</code> (<code>Boolean?</code>): nullable so an unknown/unset answer is not treated as false.</li>
+</ul>
+<p>Signup captures an optional contact number. Existing accounts without one continue to show an empty value until it is supplied.</p>
+<h2>Authentication and Authorization Concepts</h2>
+<p>API routes use the session helpers from <code>lib/session.ts</code>:</p>
+<pre><code class="language-ts">const session = await getSession();
+if (!session) {
+  return NextResponse.json({ error: &#39;Unauthorized&#39; }, { status: 401 });
+}
+</code></pre>
+<p>Some endpoints require <code>isPrivilegedRole(session.role)</code>, which permits admin/manager operations. The working-hours endpoint also allows a signed-in user to access their own record. A <code>401</code> means there is no valid session; a <code>403</code> means the session exists but does not have permission.</p>
+<h2>Prisma Schema and Migrations</h2>
+<p><code>User.regularWorkingHours</code> is a nullable JSON field so older users can have no schedule saved. <code>User.workingHoursPolicy</code> is an enum with a default. The profile pay/tax columns and working-hours fields were added by migrations in <code>prisma/migrations/</code>.</p>
+<p>When changing the Prisma schema:</p>
+<ol>
+<li>Edit <code>prisma/schema.prisma</code>.</li>
+<li>Validate it with <code>npx prisma validate</code>.</li>
+<li>Create/apply a migration using the project’s database workflow.</li>
+<li>Run <code>npx prisma generate</code> so TypeScript and runtime queries use the updated client.</li>
+<li>Restart the dev server if it holds Prisma’s Windows query-engine DLL open.</li>
+</ol>
+<p>A generated-client error such as “field does not exist in <code>UserSelect</code>” often means Prisma Client is stale, even if the schema file already contains the field.</p>
+<h2>Useful Commands</h2>
+<p>Run these from <code>sha-patisserie-app/</code>:</p>
+<pre><code class="language-powershell">npm run dev
+npx prisma validate
+npx prisma generate
+npx prisma migrate deploy
+npx eslint app/admin/roster/page.tsx components/StaffProfile.tsx app/api/shifts/route.ts app/api/admin/staff/working-hours/route.ts
+</code></pre>
+<p>Only use <code>migrate deploy</code> when the intended migration is present and you mean to apply it to the configured database. The local dev app runs at <code>http://localhost:3000</code> unless that port is already occupied.</p>
+<h2>Current Verification Notes</h2>
+<p>The roster page and working-hours route have been type-checked at the editor diagnostics level during development, and the roster page has returned HTTP 200 locally. The roster page has also shown an existing ESLint warning/error around calling <code>loadData()</code> from an effect; that lint finding is separate from the shift-grid behavior.</p>
+
+  </div>
+  <script>
+(function () {
+  'use strict';
+
+  // ===== 1. 表格字号动态计算（与 gov 模板同一逻辑） =====
+  var MIN_FONT = 10.5;
+  var tables = document.querySelectorAll('.gov-container table');
+  for (var t = 0; t < tables.length; t++) {
+    var table = tables[t];
+    var cells = Array.prototype.slice.call(table.querySelectorAll('th, td'));
+    if (cells.length === 0) continue;
+
+    var current = parseFloat(window.getComputedStyle(table).fontSize) || 16;
+    if (current <= MIN_FONT) continue;
+    var avail = table.clientWidth;
+    if (avail <= 0) continue;
+
+    var originals = cells.map(function (c) { return c.style.whiteSpace; });
+    cells.forEach(function (c) { c.style.whiteSpace = 'nowrap'; });
+    var needWidth = table.scrollWidth;
+    cells.forEach(function (c, i) { c.style.whiteSpace = originals[i]; });
+
+    if (needWidth <= avail + 1) continue;
+    var target = current * (avail / needWidth) * 0.97;
+    target = Math.max(MIN_FONT, target);
+    table.style.fontSize = target + 'px';
+  }
+
+  // ===== 2. Mermaid 渲染（若有内嵌 mermaid.min.js 且存在未转图的 mermaid 代码块） =====
+  if (typeof window.mermaid !== 'undefined') {
+    var blocks = document.querySelectorAll('.gov-container pre code.language-mermaid');
+    if (blocks.length) {
+      try {
+        window.mermaid.initialize({
+          startOnLoad: false,
+          theme: 'default',
+          securityLevel: 'loose',
+          fontFamily: 'PingFang SC, Microsoft YaHei UI, Noto Serif CJK SC, SimSun, sans-serif',
+          fontSize: 14,
+          flowchart: { useMaxWidth: true, htmlLabels: true, curve: 'basis' },
+          sequence: { useMaxWidth: true, wrap: true },
+          gantt: { useMaxWidth: true },
+          journey: { useMaxWidth: true },
+          gitGraph: { useMaxWidth: true }
+        });
+      } catch (e) { /* 忽略 */ }
+
+      for (var i = 0; i < blocks.length; i++) {
+        (function (el, idx) {
+          var code = (el.textContent || '').trim();
+          var pre = el.closest('pre');
+          if (!code || !pre) return;
+          var chartId = 'gov-mermaid-' + Date.now() + '-' + idx;
+          window.mermaid.render(chartId, code).then(function (res) {
+            var wrapper = document.createElement('div');
+            wrapper.className = 'gov-mermaid';
+            wrapper.innerHTML = res.svg;
+            pre.parentNode.replaceChild(wrapper, pre);
+          }).catch(function (err) {
+            var errBox = document.createElement('div');
+            errBox.className = 'gov-mermaid-error';
+            errBox.textContent = 'Mermaid 渲染失败: ' + ((err && err.message) || err || '未知错误');
+            pre.parentNode.insertBefore(errBox, pre);
+          });
+        })(blocks[i], i);
+      }
+    }
+  }
+
+  // ===== 3. 图片点击放大（与 gov 模板 / Readmdvue 一致：双击图片 → 全屏模态框） =====
+  var modal = null;
+  function closeModal() {
+    if (!modal) return;
+    modal.classList.remove('show');
+    setTimeout(function () { if (modal && modal.parentNode) modal.parentNode.removeChild(modal); modal = null; }, 250);
+  }
+  function openModal(img) {
+    if (modal) { closeModal(); return; }
+    modal = document.createElement('div');
+    modal.className = 'gov-image-modal';
+    var content = document.createElement('div');
+    content.className = 'gov-image-modal-content';
+    var cloned = img.cloneNode(true);
+    cloned.removeAttribute('style');
+    content.appendChild(cloned);
+    modal.appendChild(content);
+    document.body.appendChild(modal);
+    setTimeout(function () { modal.classList.add('show'); }, 10);
+    modal.addEventListener('click', function (e) {
+      if (e.target === modal) closeModal();
+    });
+    var escHandler = function (e) {
+      if (e.key === 'Escape') { closeModal(); document.removeEventListener('keydown', escHandler); }
+    };
+    document.addEventListener('keydown', escHandler);
+  }
+  document.addEventListener('dblclick', function (e) {
+    var target = e.target;
+    if (target && target.tagName === 'IMG' && target.closest('.gov-container')) {
+      e.preventDefault();
+      openModal(target);
+    }
+  });
+})();
+</script>
+</body>
+</html>

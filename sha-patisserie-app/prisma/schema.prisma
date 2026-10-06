@@ -161,7 +161,9 @@ model RosterShift {
   status    ShiftStatus @default(SCHEDULED)
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
-}
+
+  @@unique([userId, startTime, endTime])
+} 
 
 model TimeEntry {
   id        String    @id @default(cuid())

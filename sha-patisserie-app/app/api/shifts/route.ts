@@ -116,3 +116,23 @@ export async function PUT(request: Request) {
   }
 }
 
+export async function DELETE(request: Request) {
+  const session = await getSession();
+  if (!session || !isPrivilegedRole(session.role)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+  }
+
+  const id = new URL(request.url).searchParams.get('id');
+  if (!id) {
+    return NextResponse.json({ error: 'Shift ID is required' }, { status: 400 });
+  }
+
+  try {
+    await prisma.shift.delete({ where: { id } });
+    return NextResponse.json({ message: 'Shift deleted successfully' });
+  } catch (error) {
+    console.error('Failed to delete shift:', error);
+    return NextResponse.json({ error: 'Failed to delete shift' }, { status: 500 });
+  }
+}
+

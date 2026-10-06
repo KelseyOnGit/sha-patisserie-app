@@ -31,15 +31,6 @@ const LOCATIONS = [
 const ROLE_OPTIONS = ['Barista', 'Chef', 'All-rounder'];
 const BREAK_OPTIONS = [0, 30];
 
-// Time grid settings (6 AM to 10 PM)
-const START_HOUR = 6;
-const END_HOUR = 22;
-const TOTAL_HOURS = END_HOUR - START_HOUR;
-const ROW_HEIGHT_PX = 60; // 60px per hour
-const GRID_HEIGHT_PX = TOTAL_HOURS * ROW_HEIGHT_PX;
-
-const HOURS = Array.from({ length: TOTAL_HOURS }, (_, i) => START_HOUR + i);
-
 const USER_COLOR_PALETTE = [
   { bg: 'bg-amber-100', border: 'border-amber-300', text: 'text-amber-900' },
   { bg: 'bg-sky-100', border: 'border-sky-300', text: 'text-sky-900' },
@@ -89,10 +80,12 @@ function formatDMY(date: Date) {
   return `${day}/${month}/${year}`;
 }
 
-function formatHour(hour: number) {
-  const period = hour >= 12 ? 'PM' : 'AM';
-  const displayHour = hour % 12 === 0 ? 12 : hour % 12;
-  return `${displayHour} ${period}`;
+function formatShiftTime(value: string) {
+  return new Intl.DateTimeFormat('en-AU', {
+    timeZone: 'Australia/Perth',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(value));
 }
 
 export default function ShiftRoster() {
@@ -104,11 +97,23 @@ export default function ShiftRoster() {
   const [locationFilter, setLocationFilter] = useState('SHA');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [repeatWeeks, setRepeatWeeks] = useState(1);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [formData, setFormData] = useState({ userId: '', startTime: '', endTime: '', breakMinutes: 30, location: 'SHA', roleTag: ROLE_OPTIONS[0], notes: '' });
   const locationUsers = useMemo(
     () => users.filter((user) => user.location?.code === locationFilter),
     [users, locationFilter]
   );
+  const availableUsers = useMemo(() => {
+    const start = new Date(formData.startTime).getTime();
+    const end = new Date(formData.endTime).getTime();
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return locationUsers;
+
+    return locationUsers.filter((user) => !shifts.some((shift) => {
+      if (shift.userId !== user.id || shift.id === editingId) return false;
+      return new Date(shift.startTime).getTime() < end && new Date(shift.endTime).getTime() > start;
+    }));
+  }, [locationUsers, shifts, formData.startTime, formData.endTime, editingId]);
 
   const loadData = async () => {
     try {
@@ -154,6 +159,7 @@ export default function ShiftRoster() {
     setEditingId(null);
     setRepeatWeeks(1);
     setFormData({ userId: '', startTime: '', endTime: '', breakMinutes: 30, location: locationFilter, roleTag: ROLE_OPTIONS[0], notes: '' });
+    setIsFormOpen(false);
   };
 
   const switchLocation = (code: string) => {
@@ -161,6 +167,23 @@ export default function ShiftRoster() {
     setEditingId(null);
     setRepeatWeeks(1);
     setFormData({ userId: '', startTime: '', endTime: '', breakMinutes: 30, location: code, roleTag: ROLE_OPTIONS[0], notes: '' });
+    setIsFormOpen(false);
+  };
+
+  const openShiftForm = (userId: string, date: Date) => {
+    setEditingId(null);
+    setRepeatWeeks(1);
+    setFormData({
+      userId,
+      startTime: `${dateKey(date)}T09:00`,
+      endTime: `${dateKey(date)}T17:00`,
+      breakMinutes: 30,
+      location: locationFilter,
+      roleTag: ROLE_OPTIONS[0],
+      notes: '',
+    });
+    setMessage('');
+    setIsFormOpen(true);
   };
 
   const duplicateWeek = async () => {
@@ -194,11 +217,16 @@ export default function ShiftRoster() {
       roleTag: shift.roleTag || ROLE_OPTIONS[0],
       notes: shift.notes || '',
     });
+    setIsFormOpen(true);
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setMessage('');
+    if (!availableUsers.some((user) => user.id === formData.userId)) {
+      setMessage('That staff member is already assigned to an overlapping shift.');
+      return;
+    }
     const method = editingId ? 'PUT' : 'POST';
 
     try {
@@ -236,19 +264,31 @@ export default function ShiftRoster() {
     }
   };
 
-  // Calculates position and height for shifts on the time grid
-  const getShiftStyle = (startTimeStr: string, endTimeStr: string) => {
-    const start = new Date(startTimeStr);
-    const end = new Date(endTimeStr);
+  const handleDeleteShift = async () => {
+    if (!editingId) return;
 
-    const startMinutes = start.getHours() * 60 + start.getMinutes();
-    const endMinutes = end.getHours() * 60 + end.getMinutes();
+    const shift = shifts.find((item) => item.id === editingId);
+    const shiftDate = shift ? formatDMY(new Date(shift.startTime)) : 'this date';
+    const staffName = shift?.user.name || 'this staff member';
+    if (!window.confirm(`Delete ${staffName}'s shift on ${shiftDate}? This cannot be undone.`)) return;
 
-    const gridStartMinutes = START_HOUR * 60;
-    const top = Math.max(0, ((startMinutes - gridStartMinutes) / 60) * ROW_HEIGHT_PX);
-    const height = Math.max(32, ((endMinutes - startMinutes) / 60) * ROW_HEIGHT_PX);
+    setDeleting(true);
+    setMessage('');
+    try {
+      const response = await fetch(`/api/shifts?id=${encodeURIComponent(editingId)}`, {
+        method: 'DELETE',
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to delete shift');
 
-    return { top: `${top}px`, height: `${height}px` };
+      resetForm();
+      setMessage('Shift deleted.');
+      await loadData();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to delete shift.');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -258,222 +298,188 @@ export default function ShiftRoster() {
           <p className="text-xs font-bold uppercase tracking-widest text-stone-500">Admin scheduling</p>
           <h1 className="mt-1 text-3xl font-serif text-stone-900">Weekly roster</h1>
         </div>
-        <label className="text-sm font-semibold text-stone-700">
-          Week starting Monday
-          <input
-            type="date"
-            value={weekStart}
-            onChange={(event) => setWeekStart(localDate(mondayOf(event.target.value)))}
-            className="ml-3 rounded-lg border border-stone-300 bg-white px-3 py-2 font-normal shadow-sm"
-          />
-        </label>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="text-sm font-semibold text-stone-700">
+            Week starting Monday
+            <input
+              type="date"
+              value={weekStart}
+              onChange={(event) => setWeekStart(localDate(mondayOf(event.target.value)))}
+              className="ml-3 rounded-lg border border-stone-300 bg-white px-3 py-2 font-normal shadow-sm"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => openShiftForm('', weekDays[0].date)}
+            disabled={locationUsers.length === 0}
+            className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-semibold text-white hover:bg-stone-700 disabled:opacity-50"
+          >
+            Add shift
+          </button>
+        </div>
       </div>
 
-      {message && <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{message}</p>}
+      {message && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{message}</p>}
 
-      <form onSubmit={handleSubmit} className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-stone-900">{editingId ? 'Edit shift' : 'Add shift'}</h2>
-          {editingId && <button type="button" onClick={resetForm} className="text-sm text-stone-500 underline">Cancel edit</button>}
-        </div>
-        <div className="grid gap-4 md:grid-cols-4">
-          <label className="text-xs font-bold uppercase tracking-wide text-stone-500">Staff
-            <select required value={formData.userId} onChange={(event) => setFormData({ ...formData, userId: event.target.value })} className="mt-1 w-full rounded-lg border border-stone-300 p-2 text-sm">
-              <option value="">Select staff</option>
-              {locationUsers.map((user) => <option key={user.id} value={user.id}>{user.name || user.id}</option>)}
-            </select>
-          </label>
-          <label className="text-xs font-bold uppercase tracking-wide text-stone-500">Start
-            <input required type="datetime-local" value={formData.startTime} onChange={(event) => setFormData({ ...formData, startTime: event.target.value })} className="mt-1 w-full rounded-lg border border-stone-300 p-2 text-sm" />
-          </label>
-          <label className="text-xs font-bold uppercase tracking-wide text-stone-500">End
-            <input required type="datetime-local" value={formData.endTime} onChange={(event) => setFormData({ ...formData, endTime: event.target.value })} className="mt-1 w-full rounded-lg border border-stone-300 p-2 text-sm" />
-          </label>
-          <label className="text-xs font-bold uppercase tracking-wide text-stone-500">Break
-            <select value={formData.breakMinutes} onChange={(event) => setFormData({ ...formData, breakMinutes: Number(event.target.value) })} className="mt-1 w-full rounded-lg border border-stone-300 p-2 text-sm">
-              {BREAK_OPTIONS.map((minutes) => <option key={minutes} value={minutes}>{minutes} min</option>)}
-            </select>
-          </label>
-          <label className="text-xs font-bold uppercase tracking-wide text-stone-500">Role / station
-            <select value={formData.roleTag} onChange={(event) => setFormData({ ...formData, roleTag: event.target.value })} className="mt-1 w-full rounded-lg border border-stone-300 p-2 text-sm">
-              {ROLE_OPTIONS.map((role) => <option key={role} value={role}>{role}</option>)}
-            </select>
-          </label>
-          <label className="text-xs font-bold uppercase tracking-wide text-stone-500 md:col-span-2">Notes
-            <input value={formData.notes} onChange={(event) => setFormData({ ...formData, notes: event.target.value })} className="mt-1 w-full rounded-lg border border-stone-300 p-2 text-sm" />
-          </label>
-        </div>
-        {!editingId && (
-          <label className="mt-4 mr-8 inline-flex items-center gap-2 text-sm text-stone-700">
-            Repeat every week
-            <select value={repeatWeeks} onChange={(event) => setRepeatWeeks(Number(event.target.value))} className="rounded-lg border border-stone-300 px-2 py-1">
-              <option value="1">Once</option>
-              <option value="2">2 weeks</option>
-              <option value="3">3 weeks</option>
-              <option value="4">4 weeks</option>
-            </select>
-          </label>
-        )}
-        <button type="submit" disabled={loading || locationUsers.length === 0} className="mt-4 rounded-lg bg-stone-900 px-5 py-2.5 pr-5 text-sm font-semibold text-white hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-50">
-          {editingId ? 'Save changes' : 'Publish shift'}
-        </button>
-      </form>
-
-      <div className="grid items-start gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
-        <aside className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm lg:sticky lg:top-4">
-          <div className="border-b border-stone-200 p-4">
-            <h2 className="text-sm font-semibold text-stone-900">Available staff</h2>
-            <p className="mt-1 text-xs text-stone-500">{locationUsers.length} employees</p>
-          </div>
-          <div className="grid grid-cols-2 gap-1 border-b border-stone-200 bg-stone-50 p-2" aria-label="Select venue">
-            {LOCATIONS.map((loc) => (
-              <button
-                key={loc.code}
-                type="button"
-                aria-pressed={locationFilter === loc.code}
-                onClick={() => switchLocation(loc.code)}
-                className={`rounded-md px-2 py-2 text-xs font-semibold transition ${
-                  locationFilter === loc.code ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-600 hover:bg-white hover:text-stone-900'
-                }`}
-              >
-                {loc.name}
-              </button>
-            ))}
-          </div>
-          {loading ? (
-            <p className="p-4 text-sm text-stone-500">Loading staff...</p>
-          ) : locationUsers.length === 0 ? (
-            <p className="p-4 text-sm text-stone-500">No employees assigned to this venue.</p>
-          ) : (
-            <ul className="max-h-[60vh] divide-y divide-stone-100 overflow-y-auto">
-              {locationUsers.map((user) => (
-                <li key={user.id} className="px-4 py-3">
-                  <p className="text-sm font-medium text-stone-800">{user.name || 'Unnamed staff'}</p>
-                  <p className="mt-0.5 text-xs text-stone-500">{user.employmentType?.replaceAll('_', ' ') || 'Staff'}</p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </aside>
-
-        <div className="min-w-0 space-y-4">
-          {/* Roster Controls */}
-          <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="inline-flex rounded-lg border border-stone-300 bg-white shadow-sm">
-            <button
-              type="button"
-              onClick={() => goToWeek(-1)}
-              aria-label="Previous week"
-              className="flex items-center justify-center border-r border-stone-200 px-3 py-2 text-stone-600 hover:bg-stone-50 rounded-l-lg transition"
-            >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              onClick={() => goToWeek(1)}
-              aria-label="Next week"
-              className="flex items-center justify-center px-3 py-2 text-stone-600 hover:bg-stone-50 rounded-r-lg transition"
-            >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
+            <button type="button" onClick={() => goToWeek(-1)} aria-label="Previous week" className="border-r border-stone-200 px-3 py-2 text-stone-600 hover:bg-stone-50">&lt;</button>
+            <button type="button" onClick={() => goToWeek(1)} aria-label="Next week" className="px-3 py-2 text-stone-600 hover:bg-stone-50">&gt;</button>
           </div>
-          <p className="text-base font-semibold text-stone-800">
+          <p className="text-sm font-semibold text-stone-800">
             {formatDMY(mondayOf(weekStart))} - {formatDMY(weekDays[6].date)}
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={duplicateWeek}
-            className="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50 shadow-sm"
-          >
+        <div className="flex flex-wrap items-center gap-2">
+          {LOCATIONS.map((location) => (
+            <button
+              key={location.code}
+              type="button"
+              aria-pressed={locationFilter === location.code}
+              onClick={() => switchLocation(location.code)}
+              className={`rounded-md border px-3 py-2 text-sm font-semibold ${locationFilter === location.code ? 'border-stone-900 bg-stone-900 text-white' : 'border-stone-300 bg-white text-stone-700 hover:bg-stone-50'}`}
+            >
+              {location.name}
+            </button>
+          ))}
+          <button type="button" onClick={duplicateWeek} className="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50">
             Duplicate to next week
           </button>
         </div>
-          </div>
+      </div>
 
-        {/* Timeline Calendar View */}
-        <section className="overflow-x-auto rounded-2xl border border-stone-200 bg-white shadow-sm">
-        <div className="min-w-[1100px]">
-          {/* Header row: empty cell for time column + day columns */}
-          <div className="grid grid-cols-[70px_repeat(7,1fr)] border-b border-stone-200 bg-stone-100">
-            <div className="border-r border-stone-200 p-3"></div>
-            {shiftsByDay.map((day) => (
-              <div key={day.key} className="border-r border-stone-200 px-3 py-3 text-center last:border-r-0">
-                <p className="text-sm font-bold text-stone-800">{day.name}</p>
-                <p className="text-xs text-stone-500">{formatDMY(day.date)}</p>
-              </div>
-            ))}
-          </div>
-
-          {/* Body: Side time-axis + 7 day columns */}
-          <div className="grid grid-cols-[70px_repeat(7,1fr)] relative" style={{ height: `${GRID_HEIGHT_PX}px` }}>
-            {/* Time points column on the side */}
-            <div className="border-r border-stone-200 bg-stone-50/50 text-right select-none">
-              {HOURS.map((hour) => (
-                <div
-                  key={hour}
-                  className="pr-2 text-[11px] font-semibold text-stone-400 relative -top-2.5"
-                  style={{ height: `${ROW_HEIGHT_PX}px` }}
-                >
-                  {formatHour(hour)}
-                </div>
+      <section className="overflow-x-auto rounded-xl border border-stone-200 bg-white">
+        <table className="w-full min-w-[1100px] table-fixed border-collapse text-left">
+          <thead className="bg-stone-50">
+            <tr>
+              <th className="sticky left-0 z-20 w-48 border-b border-r border-stone-200 bg-stone-50 px-4 py-3 text-xs font-bold uppercase text-stone-500">Staff</th>
+              {weekDays.map((day) => (
+                <th key={day.key} className="border-b border-r border-stone-200 px-3 py-3 text-center last:border-r-0">
+                  <span className="block text-sm font-bold text-stone-800">{day.name.slice(0, 3)}</span>
+                  <span className="mt-1 block text-xs font-normal text-stone-500">{formatDMY(day.date)}</span>
+                </th>
               ))}
-            </div>
-
-            {/* Horizontal background hour grid lines */}
-            <div className="absolute inset-0 pointer-events-none left-[70px]">
-              {HOURS.map((hour, idx) => (
-                <div
-                  key={hour}
-                  className="border-b border-stone-100 w-full"
-                  style={{ height: `${ROW_HEIGHT_PX}px` }}
-                />
-              ))}
-            </div>
-
-            {/* Day columns containing shifts */}
-            {shiftsByDay.map((day) => (
-              <div key={day.key} className="relative border-r border-stone-200 last:border-r-0">
-                {day.shifts.map((shift) => {
-                  const color = getUserColor(shift.userId);
-                  const style = getShiftStyle(shift.startTime, shift.endTime);
-
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-stone-200">
+            {loading ? (
+              <tr><td colSpan={8} className="p-8 text-center text-sm text-stone-500">Loading roster...</td></tr>
+            ) : locationUsers.length === 0 ? (
+              <tr><td colSpan={8} className="p-8 text-center text-sm text-stone-500">No staff are assigned to this venue.</td></tr>
+            ) : locationUsers.map((user) => (
+              <tr key={user.id}>
+                <th scope="row" className="sticky left-0 z-10 w-48 border-r border-stone-200 bg-white px-4 py-3 align-top">
+                  <span className="block text-sm font-semibold text-stone-900">{user.name || 'Unnamed staff'}</span>
+                  <span className="mt-1 block text-xs font-normal text-stone-500">{user.employmentType?.replaceAll('_', ' ') || 'Staff'}</span>
+                </th>
+                {shiftsByDay.map((day) => {
+                  const userShifts = day.shifts.filter((shift) => shift.userId === user.id);
                   return (
-                    <button
-                      key={shift.id}
-                      type="button"
-                      onClick={() => editShift(shift)}
-                      style={style}
-                      className={`absolute left-1 right-1 z-10 rounded-lg border ${color.border} ${color.bg} p-2 text-left shadow-xs transition hover:z-20 hover:shadow-md overflow-hidden`}
-                    >
-                      <p className={`text-xs font-bold leading-tight ${color.text}`}>
-                        {shift.user.name || 'Unnamed staff'}
-                      </p>
-                      <p className="text-[11px] text-stone-600">
-                        {new Date(shift.startTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} - {new Date(shift.endTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                      </p>
-                      {shift.roleTag && (
-                        <p className="mt-0.5 inline-block text-[10px] font-medium text-stone-500">
-                          {shift.roleTag}
-                        </p>
-                      )}
-                    </button>
+                    <td key={`${user.id}-${day.key}`} className="h-28 border-r border-stone-200 p-2 align-top last:border-r-0">
+                      <div className="flex min-h-24 flex-col gap-2">
+                        {userShifts.map((shift) => {
+                          const color = getUserColor(shift.userId);
+                          return (
+                            <button
+                              key={shift.id}
+                              type="button"
+                              onClick={() => editShift(shift)}
+                              className={`w-full rounded-md border p-2 text-left transition hover:shadow-sm ${color.border} ${color.bg}`}
+                            >
+                              <span className={`block text-xs font-bold ${color.text}`}>
+                                {formatShiftTime(shift.startTime)} - {formatShiftTime(shift.endTime)}
+                              </span>
+                              {shift.roleTag && <span className="mt-1 block text-xs text-stone-700">{shift.roleTag}</span>}
+                              {shift.breakMinutes > 0 && <span className="mt-1 block text-[11px] text-stone-600">{shift.breakMinutes} min break</span>}
+                            </button>
+                          );
+                        })}
+                        <button
+                          type="button"
+                          onClick={() => openShiftForm(user.id, day.date)}
+                          aria-label={`Add ${user.name || 'staff'} shift on ${day.name}`}
+                          className="flex min-h-8 w-full flex-1 items-center justify-center rounded-md border border-dashed border-stone-300 text-xl font-medium text-stone-400 transition hover:border-sky-500 hover:bg-sky-50 hover:text-sky-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </td>
                   );
                 })}
-              </div>
+              </tr>
             ))}
-          </div>
-        </div>
+          </tbody>
+        </table>
       </section>
+
+      {isFormOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) resetForm();
+        }}>
+          <form onSubmit={handleSubmit} role="dialog" aria-modal="true" aria-labelledby="shift-form-title" className="w-full max-w-2xl space-y-5 rounded-xl bg-white p-6 shadow-xl">
+            <div className="flex items-center justify-between border-b border-stone-200 pb-3">
+              <h2 id="shift-form-title" className="text-lg font-semibold text-stone-900">{editingId ? 'Edit shift' : 'Add shift'}</h2>
+              <button type="button" onClick={resetForm} disabled={deleting} className="rounded-md px-3 py-1.5 text-sm font-semibold text-stone-600 hover:bg-stone-100 disabled:opacity-50">Close</button>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="text-xs font-bold uppercase tracking-wide text-stone-500">Staff
+                <select required value={formData.userId} onChange={(event) => setFormData({ ...formData, userId: event.target.value })} className="mt-1 w-full rounded-lg border border-stone-300 p-2.5 text-sm normal-case text-stone-900">
+                  <option value="">Select staff</option>
+                  {availableUsers.map((user) => <option key={user.id} value={user.id}>{user.name || user.id}</option>)}
+                </select>
+              </label>
+              <label className="text-xs font-bold uppercase tracking-wide text-stone-500">Start
+                <input required type="datetime-local" value={formData.startTime} onChange={(event) => setFormData({ ...formData, startTime: event.target.value })} className="mt-1 w-full rounded-lg border border-stone-300 p-2.5 text-sm normal-case text-stone-900" />
+              </label>
+              <label className="text-xs font-bold uppercase tracking-wide text-stone-500">End
+                <input required type="datetime-local" value={formData.endTime} onChange={(event) => setFormData({ ...formData, endTime: event.target.value })} className="mt-1 w-full rounded-lg border border-stone-300 p-2.5 text-sm normal-case text-stone-900" />
+              </label>
+              <label className="text-xs font-bold uppercase tracking-wide text-stone-500">Break
+                <select value={formData.breakMinutes} onChange={(event) => setFormData({ ...formData, breakMinutes: Number(event.target.value) })} className="mt-1 w-full rounded-lg border border-stone-300 p-2.5 text-sm normal-case text-stone-900">
+                  {BREAK_OPTIONS.map((minutes) => <option key={minutes} value={minutes}>{minutes} min</option>)}
+                </select>
+              </label>
+              <label className="text-xs font-bold uppercase tracking-wide text-stone-500">Role / station
+                <select value={formData.roleTag} onChange={(event) => setFormData({ ...formData, roleTag: event.target.value })} className="mt-1 w-full rounded-lg border border-stone-300 p-2.5 text-sm normal-case text-stone-900">
+                  {ROLE_OPTIONS.map((role) => <option key={role} value={role}>{role}</option>)}
+                </select>
+              </label>
+              <label className="text-xs font-bold uppercase tracking-wide text-stone-500">Notes
+                <input value={formData.notes} onChange={(event) => setFormData({ ...formData, notes: event.target.value })} className="mt-1 w-full rounded-lg border border-stone-300 p-2.5 text-sm normal-case text-stone-900" />
+              </label>
+            </div>
+            {!editingId && (
+              <label className="inline-flex items-center gap-2 text-sm text-stone-700">
+                Repeat every week
+                <select value={repeatWeeks} onChange={(event) => setRepeatWeeks(Number(event.target.value))} className="rounded-lg border border-stone-300 px-2 py-1">
+                  <option value="1">Once</option>
+                  <option value="2">2 weeks</option>
+                  <option value="3">3 weeks</option>
+                  <option value="4">4 weeks</option>
+                </select>
+              </label>
+            )}
+            {formData.userId && !availableUsers.some((user) => user.id === formData.userId) && (
+              <p role="alert" className="text-sm text-rose-700">This staff member already has an overlapping shift.</p>
+            )}
+            <div className="flex items-center justify-between gap-3 border-t border-stone-200 pt-4">
+              {editingId ? (
+                <button type="button" onClick={handleDeleteShift} disabled={deleting} className="rounded-lg border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50">
+                  {deleting ? 'Deleting...' : 'Delete shift'}
+                </button>
+              ) : <span />}
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={resetForm} disabled={deleting} className="rounded-lg border border-stone-300 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50 disabled:opacity-50">Cancel</button>
+                <button type="submit" disabled={deleting || loading || availableUsers.length === 0 || !availableUsers.some((user) => user.id === formData.userId)} className="rounded-lg bg-stone-900 px-5 py-2 text-sm font-semibold text-white hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-50">
+                  {editingId ? 'Save changes' : 'Publish shift'}
+                </button>
+              </div>
+            </div>
+          </form>
         </div>
-      </div>
+      )}
     </div>
   );
 }
