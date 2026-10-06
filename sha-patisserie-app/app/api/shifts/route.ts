@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSession, isPrivilegedRole } from '@/lib/session';
+import { findOverlappingShift, overlapMessage } from '@/lib/shiftConflicts';
 
 export async function GET() {
   const session = await getSession();
@@ -42,11 +43,22 @@ export async function POST(request: Request) {
       );
     }
 
+    const start = new Date(startTime);
+    const end = new Date(endTime);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
+      return NextResponse.json({ error: 'End time must be after start time' }, { status: 400 });
+    }
+
+    const conflict = await findOverlappingShift(userId, start, end);
+    if (conflict) {
+      return NextResponse.json({ error: overlapMessage(conflict) }, { status: 409 });
+    }
+
     const newShift = await prisma.shift.create({
       data: {
         user: { connect: { id: userId } },
-        startTime: new Date(startTime),
-        endTime: new Date(endTime),
+        startTime: start,
+        endTime: end,
         breakMinutes: Number(breakMinutes) || 0,
         location: {
           connectOrCreate: {
@@ -84,12 +96,23 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Shift, user, start time, and end time are required' }, { status: 400 });
     }
 
+    const start = new Date(startTime);
+    const end = new Date(endTime);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
+      return NextResponse.json({ error: 'End time must be after start time' }, { status: 400 });
+    }
+
+    const conflict = await findOverlappingShift(userId, start, end, id);
+    if (conflict) {
+      return NextResponse.json({ error: overlapMessage(conflict) }, { status: 409 });
+    }
+
     const updatedShift = await prisma.shift.update({
       where: { id },
       data: {
         user: { connect: { id: userId } },
-        startTime: new Date(startTime),
-        endTime: new Date(endTime),
+        startTime: start,
+        endTime: end,
         breakMinutes: Number(breakMinutes) || 0,
         location: {
           connectOrCreate: {
