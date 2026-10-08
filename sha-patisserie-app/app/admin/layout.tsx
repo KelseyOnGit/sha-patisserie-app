@@ -2,9 +2,8 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import LogoutButton from '@/components/LogoutButton'
 import { getSession, isPrivilegedRole } from '@/lib/session'
+import { prisma } from '@/lib/prisma'
 
-// The navigation area remains static on the screen while {children} updates dynamically 
-// as the admin navigates between sub-pages.
 export default async function AdminLayout({
   children,
 }: {
@@ -18,6 +17,16 @@ export default async function AdminLayout({
 
   if (!isPrivilegedRole(session.role)) {
     redirect('/dashboard');
+  }
+
+  // Query pending user count directly on the server
+  let pendingCount = 0;
+  try {
+    pendingCount = await prisma.user.count({
+      where: { status: 'PENDING' },
+    });
+  } catch (error) {
+    console.error('Failed to fetch pending user count:', error);
   }
 
   return (
@@ -39,8 +48,15 @@ export default async function AdminLayout({
             <Link href="/admin/reports" className="block text-sm hover:text-stone-300">
               Payroll Reports
             </Link>
-            <Link href="/admin/users" className="block text-sm hover:text-stone-300">
-              Pending Users
+            
+            {/* Pending Users Link with Notification Badge */}
+            <Link href="/admin/users" className="flex items-center justify-between text-sm hover:text-stone-300">
+              <span>Pending Users</span>
+              {pendingCount > 0 && (
+                <span className="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-rose-600 px-1.5 text-[11px] font-bold text-white shadow-xs">
+                  {pendingCount > 99 ? '99+' : pendingCount}
+                </span>
+              )}
             </Link>
           </nav>
         </div>

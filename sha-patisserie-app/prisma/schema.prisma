@@ -110,7 +110,6 @@ model Shift {
   // Shift Timings
   startTime           DateTime
   endTime             DateTime
-  Date                DateTime
   
   // Break Tracking
   startBreak          DateTime?    // Nullable until break starts
@@ -130,6 +129,7 @@ model Shift {
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
   breakApproved       Boolean   @default(false)
+  publishedAt         DateTime?    // null = draft, not visible to staff
 }
 
 model TimeLog {

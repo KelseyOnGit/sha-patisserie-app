@@ -9,7 +9,6 @@ const profileSelect = {
   email: true,
   contactNumber: true,
   status: true,
-  defaultBreakMinutes: true,
   hourlyPayRate: true,
   rateLastUpdated: true,
   workingRightStatus: true,
@@ -79,7 +78,6 @@ export async function POST(request: Request) {
       contactNumber,
       accountStatus,
       location,
-      defaultBreak,
       hourlyPayRate,
       rateLastUpdated,
       workingRightStatus,
@@ -102,7 +100,6 @@ export async function POST(request: Request) {
       !email.trim() ||
       !['Active', 'Pending', 'Inactive (Left Company)'].includes(accountStatus) ||
       !['Sha Patisserie', 'Zushi Bento'].includes(location) ||
-      !['30 mins', 'None'].includes(defaultBreak) ||
       (contactNumber !== undefined && typeof contactNumber !== 'string') ||
       !payRateIsValid ||
       !dateIsValid ||
@@ -124,7 +121,6 @@ export async function POST(request: Request) {
           : accountStatus === 'Pending'
             ? 'PENDING'
             : 'INACTIVE',
-        defaultBreakMinutes: defaultBreak === 'None' ? 0 : 30,
         hourlyPayRate: hourlyPayRate === '' ? null : new Prisma.Decimal(hourlyPayRate),
         rateLastUpdated: rateLastUpdated === ''
           ? null

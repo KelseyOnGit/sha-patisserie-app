@@ -27,7 +27,15 @@ function formatShortName(fullName: string | null): string {
   return `${firstName} ${lastInitial}.`;
 }
 
-function getMonday(d: Date)
+function getMonday(d: Date): Date {
+  const monday = new Date(d);
+  const day = monday.getDay();
+  const offset = day === 0 ? -6 : 1 - day;
+  monday.setDate(monday.getDate() + offset);
+  monday.setHours(0, 0, 0, 0);
+  return monday;
+}
+
 export default function RosterView() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [loading, setLoading] = useState<boolean>(true);

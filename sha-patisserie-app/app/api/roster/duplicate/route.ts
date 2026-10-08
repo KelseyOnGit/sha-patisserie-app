@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { getSession, isPrivilegedRole } from '@/lib/session';
 
@@ -11,9 +12,12 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { weekStart } = await request.json();
+    const { weekStart, location } = await request.json();
     if (!weekStart) {
       return NextResponse.json({ error: 'weekStart is required' }, { status: 400 });
+    }
+    if (location !== 'SHA' && location !== 'ZB') {
+      return NextResponse.json({ error: 'A valid venue is required' }, { status: 400 });
     }
 
     const startOfWeek = new Date(weekStart);
@@ -28,6 +32,7 @@ export async function POST(request: Request) {
           gte: startOfWeek,
           lt: endOfWeek,
         },
+        location: { code: location },
       },
     });
 
@@ -46,7 +51,28 @@ export async function POST(request: Request) {
       notes: shift.notes,
     }));
 
-    const result = await prisma.shift.createMany({ data: duplicatedShifts });
+    const result = await prisma.$transaction(async (transaction) => {
+      const existingShift = await transaction.shift.findFirst({
+        where: {
+          startTime: { gte: endOfWeek, lt: new Date(endOfWeek.getTime() + WEEK_MS) },
+          location: { code: location },
+        },
+        select: { id: true },
+      });
+      if (existingShift) return { conflict: true, count: 0 };
+
+      const created = await transaction.shift.createMany({
+        data: duplicatedShifts.map((shift) => ({ ...shift, publishedAt: null })),
+      });
+      return { conflict: false, count: created.count };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+
+    if (result.conflict) {
+      return NextResponse.json(
+        { error: 'The next week already has shifts for this venue. Nothing was duplicated.' },
+        { status: 409 }
+      );
+    }
 
     return NextResponse.json({ message: 'Roster duplicated', count: result.count }, { status: 201 });
   } catch (error) {

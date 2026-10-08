@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSession, isPrivilegedRole } from '@/lib/session';
-import { findOverlappingShift, overlapMessage } from '@/lib/shiftConflicts';
+import { findOverlappingShift, findShiftOnSameDay, overlapMessage, sameDayMessage } from '@/lib/shiftConflicts';
 
 export async function GET() {
   const session = await getSession();
@@ -11,6 +11,7 @@ export async function GET() {
 
   try {
     const shifts = await prisma.shift.findMany({
+      where: isPrivilegedRole(session.role) ? {} : { publishedAt: { not: null } },
       include: {
         user: {
           select: { id: true, name: true, role: true, employmentType: true },
@@ -47,6 +48,11 @@ export async function POST(request: Request) {
     const end = new Date(endTime);
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
       return NextResponse.json({ error: 'End time must be after start time' }, { status: 400 });
+    }
+
+    const sameDay = await findShiftOnSameDay(userId, start);
+    if (sameDay) {
+      return NextResponse.json({ error: sameDayMessage(sameDay) }, { status: 409 });
     }
 
     const conflict = await findOverlappingShift(userId, start, end);
@@ -102,6 +108,11 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'End time must be after start time' }, { status: 400 });
     }
 
+    const sameDay = await findShiftOnSameDay(userId, start, id);
+    if (sameDay) {
+      return NextResponse.json({ error: sameDayMessage(sameDay) }, { status: 409 });
+    }
+
     const conflict = await findOverlappingShift(userId, start, end, id);
     if (conflict) {
       return NextResponse.json({ error: overlapMessage(conflict) }, { status: 409 });
@@ -110,6 +121,7 @@ export async function PUT(request: Request) {
     const updatedShift = await prisma.shift.update({
       where: { id },
       data: {
+        publishedAt: null,
         user: { connect: { id: userId } },
         startTime: start,
         endTime: end,

@@ -1,6 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import {
+  DEFAULT_WORKING_HOURS,
+  type DayOfWeek,
+  type WorkingDayConfig,
+  type WorkingHoursMap,
+  type WorkingTimeRange,
+} from '@/lib/workingHours';
 
 // --- Interfaces for Profile Details ---
 interface StaffProfileData {
@@ -12,7 +19,6 @@ interface StaffProfileData {
 
   // 2. Venue & Work Settings
   location: 'Sha Patisserie' | 'Zushi Bento';
-  defaultBreak: '30 mins' | 'None';
 
   // 3. Pay Rates & Tax Setup
   hourlyPayRate: string;
@@ -32,41 +38,11 @@ interface StaffProfileResponse {
   contactNumber: string | null;
   status: 'ACTIVE' | 'PENDING' | 'INACTIVE';
   location: { code: 'SHA' | 'ZB'; name: string } | null;
-  defaultBreakMinutes: number;
   hourlyPayRate: string;
   rateLastUpdated: string;
   workingRightStatus: StaffProfileData['workingRightStatus'];
   claimTaxFreeThreshold: boolean | null;
 }
-
-// --- Interfaces & Defaults for Regular Working Hours ---
-type DayOfWeek = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
-
-interface WorkingTimeRange {
-  startTime: string;
-  endTime: string;
-}
-
-interface WorkingDayConfig {
-  enabled: boolean;
-  startTime: string;
-  endTime: string;
-  additionalHours: WorkingTimeRange[];
-  standardHours: string;
-  breakMinutes: number;
-}
-
-type WorkingHoursMap = Record<DayOfWeek, WorkingDayConfig>;
-
-const DEFAULT_WORKING_HOURS: WorkingHoursMap = {
-  Monday: { enabled: true, startTime: '09:00', endTime: '17:00', additionalHours: [], standardHours: '', breakMinutes: 30 },
-  Tuesday: { enabled: true, startTime: '09:00', endTime: '17:00', additionalHours: [], standardHours: '', breakMinutes: 30 },
-  Wednesday: { enabled: true, startTime: '09:00', endTime: '17:00', additionalHours: [], standardHours: '', breakMinutes: 30 },
-  Thursday: { enabled: true, startTime: '09:00', endTime: '17:00', additionalHours: [], standardHours: '', breakMinutes: 30 },
-  Friday: { enabled: true, startTime: '09:00', endTime: '17:00', additionalHours: [], standardHours: '', breakMinutes: 30 },
-  Saturday: { enabled: false, startTime: '', endTime: '', additionalHours: [], standardHours: '', breakMinutes: 0 },
-  Sunday: { enabled: false, startTime: '', endTime: '', additionalHours: [], standardHours: '', breakMinutes: 0 },
-};
 
 async function readApiResponse<T>(response: Response): Promise<T> {
   if (!response.headers.get('content-type')?.includes('application/json')) {
@@ -86,7 +62,6 @@ export default function StaffProfileForm({ id }: StaffProfileFormProps) {
     contactNumber: '',
     accountStatus: 'Active',
     location: 'Sha Patisserie',
-    defaultBreak: '30 mins',
     hourlyPayRate: '',
     rateLastUpdated: '',
     workingRightStatus: '',
@@ -126,7 +101,6 @@ export default function StaffProfileForm({ id }: StaffProfileFormProps) {
                 ? 'Pending'
                 : 'Inactive (Left Company)',
           location: user.location?.code === 'ZB' ? 'Zushi Bento' : 'Sha Patisserie',
-          defaultBreak: user.defaultBreakMinutes === 0 ? 'None' : '30 mins',
           hourlyPayRate: user.hourlyPayRate,
           rateLastUpdated: user.rateLastUpdated,
           workingRightStatus: user.workingRightStatus,
@@ -513,21 +487,6 @@ export default function StaffProfileForm({ id }: StaffProfileFormProps) {
                   >
                     <option value="Sha Patisserie">Sha Patisserie</option>
                     <option value="Zushi Bento">Zushi Bento</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase text-stone-600 mb-1">
-                    Default Preset Break
-                  </label>
-                  <select
-                    name="defaultBreak"
-                    value={formData.defaultBreak}
-                    onChange={handleChange}
-                    className="w-full rounded-lg border border-stone-300 p-2.5 text-sm bg-white focus:border-stone-800 focus:outline-none"
-                  >
-                    <option value="30 mins">30 mins</option>
-                    <option value="None">None (0 mins)</option>
                   </select>
                 </div>
               </div>

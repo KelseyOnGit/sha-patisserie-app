@@ -14,6 +14,7 @@ export async function GET() {
     const shifts = await prisma.shift.findMany({
       where: {
         userId: session.userId,
+        publishedAt: { not: null },
         startTime: {
           gte: new Date(new Date().setHours(0, 0, 0, 0)), // Today from 00:00
         },

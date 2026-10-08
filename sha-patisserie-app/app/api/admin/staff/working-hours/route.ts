@@ -2,21 +2,13 @@ import { NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { getSession, isPrivilegedRole } from '@/lib/session';
+import { WORKING_DAYS, type WorkingHoursInput, type WorkingHoursMap } from '@/lib/workingHours';
 
-const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const;
-
-function isWorkingHours(value: unknown): value is Record<string, {
-  enabled: boolean;
-  startTime: string;
-  endTime: string;
-  additionalHours?: { startTime: string; endTime: string }[];
-  standardHours: string;
-  breakMinutes?: number;
-}> {
+function isWorkingHours(value: unknown): value is WorkingHoursInput {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
 
   const schedule = value as Record<string, unknown>;
-  return days.every((day) => {
+  return WORKING_DAYS.every((day) => {
     const config = schedule[day];
     if (!config || typeof config !== 'object' || Array.isArray(config)) return false;
 
@@ -107,7 +99,7 @@ export async function POST(request: Request) {
     }
 
     const scheduleWithBreaks = Object.fromEntries(
-      days.map((day) => {
+      WORKING_DAYS.map((day) => {
         const daySchedule = workingHours[day];
         return [day, {
           ...daySchedule,
@@ -115,7 +107,7 @@ export async function POST(request: Request) {
           breakMinutes: daySchedule.breakMinutes ?? (daySchedule.enabled ? 30 : 0),
         }];
       })
-    );
+    ) as WorkingHoursMap;
 
     const user = await prisma.user.update({
       where: { id: userId },
