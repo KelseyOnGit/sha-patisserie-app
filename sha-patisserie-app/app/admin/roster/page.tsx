@@ -416,7 +416,7 @@ const addSingleRegularShift = async (userId: string, date: Date) => {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-xs font-bold uppercase tracking-widest text-stone-500">Admin scheduling</p>
-          <h1 className="mt-1 text-3xl font-serif text-stone-900">Weekly roster</h1>
+          <h1 className="mt-1 text-3xl font-serif text-stone-900">Upcoming roster</h1>
         </div>
         <div className="flex flex-wrap items-end gap-3">
           <label className="text-sm font-semibold text-stone-700">

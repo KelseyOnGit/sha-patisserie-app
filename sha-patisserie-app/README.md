@@ -16,6 +16,86 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+Run the command from the application directory, not the parent repository directory:
+
+```powershell
+Set-Location C:\Users\kelsey.wang\sha-patisserie-app\sha-patisserie-app
+npm run dev
+```
+
+Keep that terminal running while using the site. If the PowerShell prompt returns,
+the server has stopped and the browser cannot connect; check the terminal output
+and restart it. Press `Ctrl+C` when you want to stop the server.
+
+Use `http://localhost:3000` on the computer running the server. On another device,
+use the Network URL printed by Next.js, on the same local network.
+
+## Worked-hours review and payroll
+
+Admins and managers can use **Payroll Reports > Confirm Worked Hours**. Choose a
+Monday, then filter by venue, staff or review status. All dates/times use Perth
+(UTC+08), including full dates for overnight work.
+
+- Original clock-in/out records and recorded breaks are read-only.
+- Recorded break duration comes from actual break-start/end timestamps, not the
+  roster's break field (which is also used as a preset). If no break was recorded,
+  the preset is clearly shown as a suggestion; a manager must explain any deduction.
+- **Review / Edit** opens separate payable periods and a payable break deduction.
+  Multiple periods exclude clock-out gaps; do not deduct those gaps again as breaks.
+  Explain any changes, missing attendance, or unscheduled work.
+- **Save changes** persists a pending review. **Save & approve** records the
+  approver, timestamp, hourly rate and an audit entry, and includes the hours in payroll.
+- Approved rows are locked. **Reopen for correction** requires a reason, removes
+  the hours from payroll, and retains the previous approval in history.
+- No attendance is not evidence of a no-show. Review it manually; zero periods
+  with a zero break deduction can explicitly approve zero payable hours.
+- Missing clock-outs, unfinished breaks, overlapping roster matches, future
+  payable hours and missing staff rates block approval. Correct source attendance
+  through the staff clock/break workflow; managers do not overwrite raw timestamps.
+- Attendance is matched only when the staff member and venue agree and the log
+  overlaps one published roster shift. Ambiguous logs stay visible and cannot be
+  approved until the roster overlap is resolved. Unscheduled attendance remains visible.
+- Changed attendance, break records or roster details invalidate an existing
+  approval for payroll until it is reopened and reviewed again.
+- Reviewed roster shifts cannot be deleted or reassigned to another staff
+  member, date or venue: their identity and history must remain available.
+- **Payroll Summary**, CSV export, and the legacy `/reports` page use only valid,
+  approved payable periods. Rates are captured at approval, grouped by staff,
+  venue and rate. No scheduled-hours or default-rate fallback is used. This is
+  gross hourly pay, not overtime/award/tax calculation. Hours are not rounded;
+  display/CSV totals are formatted to two decimal places.
+
+### Database setup and tests
+
+The additive SQL is in
+`prisma/migrations/20261012000000_add_timesheet_review/migration.sql`.
+With a complete migration history, deploy migrations and regenerate the client:
+
+```powershell
+npx prisma migrate deploy
+npx prisma generate
+```
+
+This checkout currently has an older empty migration folder
+(`20261007010000_unique_shift_per_staff_time`), which blocks normal deployment.
+Do not reset the database or delete migration history to bypass it. Restore the
+original migration history before normal deployment. For this existing database,
+the new additive SQL can be applied once using `prisma db execute --file` and
+recorded as applied with `prisma migrate resolve --applied
+20261012000000_add_timesheet_review`; neither command requires a data reset.
+
+Focused tests use the existing Node and TypeScript installations:
+
+```powershell
+npm run test:timesheets
+$env:RUN_TIMESHEET_DB_TESTS = 'true'
+npm run test:timesheets
+Remove-Item Env:\RUN_TIMESHEET_DB_TESTS
+```
+
+Database tests create isolated fixture staff/attendance, exercise the actual
+review API and report calculations, then roll back every fixture and change.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

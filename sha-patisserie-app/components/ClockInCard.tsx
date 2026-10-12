@@ -16,6 +16,7 @@ interface BreakShift {
 
 export default function ClockInCard({ userName = 'Team Member' }: ClockInCardProps) {
   const [time, setTime] = useState<string>('');
+  const [currentDate, setCurrentDate] = useState<string>('');
   const [venue, setVenue] = useState<string>('Sha');
   const [isClockedIn, setIsClockedIn] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
@@ -28,14 +29,20 @@ export default function ClockInCard({ userName = 'Team Member' }: ClockInCardPro
   useEffect(() => {
     const updateClock = () => {
       const now = new Date();
-      setTime(
-        now.toLocaleTimeString([], {
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-          hour12: true,
-        })
-      );
+      setCurrentDate(new Intl.DateTimeFormat('en-AU', {
+        timeZone: 'Australia/Perth',
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      }).format(now));
+      setTime(new Intl.DateTimeFormat('en-AU', {
+        timeZone: 'Australia/Perth',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true,
+      }).format(now));
     };
 
     updateClock();
@@ -189,9 +196,12 @@ export default function ClockInCard({ userName = 'Team Member' }: ClockInCardPro
     <div className="w-full bg-[#FAF7F2] border border-[#EADBC8] rounded-3xl p-6 shadow-sm">
       {/* Live Digital Clock Badge */}
       <div className="flex justify-center mb-6">
-        <div className="bg-[#EAE3D2] text-stone-700 px-4 py-1.5 rounded-full text-xs font-mono tracking-wide flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          {time || '12:00:00 PM'}
+        <div className="bg-[#EAE3D2] text-stone-700 px-4 py-2 rounded-xl text-center">
+          <div className="text-[11px] font-semibold text-stone-600">{currentDate || 'Loading date...'}</div>
+          <div className="mt-1 flex items-center justify-center gap-2 font-mono text-xs tracking-wide">
+            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            {time || '12:00:00 PM'}
+          </div>
         </div>
       </div>
 

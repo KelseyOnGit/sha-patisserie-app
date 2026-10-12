@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { getSession, isPrivilegedRole } from '@/lib/session';
 import { findOverlappingShift, findShiftOnSameDay, overlapMessage, sameDayMessage } from '@/lib/shiftConflicts';
+import { perthDate } from '@/lib/timesheets';
 
 export async function GET() {
   const session = await getSession();
@@ -108,6 +110,22 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'End time must be after start time' }, { status: 400 });
     }
 
+    // A saved review owns its original staff/date/venue identity. Allow ordinary
+    // time corrections (which invalidate approval), but not moving payroll to a
+    // different employee, week or venue behind the audit trail.
+    const reviewed = await prisma.timesheet.findUnique({
+      where: { shiftId: id },
+    });
+    const targetCode = location === 'ZB' ? 'ZB' : 'SHA';
+    const targetVenue = reviewed ? await prisma.location.findUnique({ where: { code: targetCode } }) : null;
+    if (reviewed && (reviewed.userId !== userId ||
+        reviewed.workDate.toISOString().slice(0, 10) !== perthDate(start) ||
+        reviewed.site !== targetVenue?.name)) {
+      return NextResponse.json({
+        error: 'A reviewed shift cannot be reassigned to another staff member, date or venue. Keep the original shift for payroll history.',
+      }, { status: 409 });
+    }
+
     const sameDay = await findShiftOnSameDay(userId, start, id);
     if (sameDay) {
       return NextResponse.json({ error: sameDayMessage(sameDay) }, { status: 409 });
@@ -166,8 +184,12 @@ export async function DELETE(request: Request) {
     await prisma.shift.delete({ where: { id } });
     return NextResponse.json({ message: 'Shift deleted successfully' });
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+      return NextResponse.json({
+        error: 'This shift has a saved timesheet review and must be retained for payroll history. Reopen the review to correct its payable hours.',
+      }, { status: 409 });
+    }
     console.error('Failed to delete shift:', error);
     return NextResponse.json({ error: 'Failed to delete shift' }, { status: 500 });
   }
 }
-

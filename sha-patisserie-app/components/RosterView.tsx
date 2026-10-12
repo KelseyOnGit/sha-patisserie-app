@@ -75,7 +75,7 @@ export default function RosterView() {
   return (
     <div className="w-full bg-white border border-stone-200 rounded-3xl p-6 shadow-sm">
       <h2 className="text-lg font-serif font-bold text-stone-800 mb-1">
-        Weekly Roster
+        Upcoming Roster
       </h2>
       <p className="text-xs text-stone-500 mb-4">Your scheduled shifts</p>
 

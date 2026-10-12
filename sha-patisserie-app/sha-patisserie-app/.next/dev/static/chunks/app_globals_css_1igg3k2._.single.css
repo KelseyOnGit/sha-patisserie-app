@@ -67,6 +67,7 @@
 @layer theme {
   :root, :host {
     --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+    --color-red-500: #fb2c36;
     --color-orange-100: #ffedd5;
     --color-orange-300: #ffb96d;
     --color-orange-900: #7e2a0c;
@@ -190,6 +191,7 @@
 
   @supports (color: lab(0% 0 0)) {
     :root, :host {
+      --color-red-500: lab(55.4814% 75.0732 48.8528);
       --color-orange-100: lab(94.7127% 3.58391 14.3151);
       --color-orange-300: lab(80.8059% 21.7313 50.4455);
       --color-orange-900: lab(30.2951% 36.0434 37.671);
@@ -590,6 +592,10 @@
     z-index: 50;
   }
 
+  .m-auto {
+    margin: auto;
+  }
+
   .mx-auto {
     margin-inline: auto;
   }
@@ -612,6 +618,14 @@
 
   .mt-4 {
     margin-top: calc(var(--spacing) * 4);
+  }
+
+  .mt-5 {
+    margin-top: calc(var(--spacing) * 5);
+  }
+
+  .mt-6 {
+    margin-top: calc(var(--spacing) * 6);
   }
 
   .mt-8 {
@@ -674,6 +688,10 @@
     display: grid;
   }
 
+  .hidden {
+    display: none;
+  }
+
   .inline-block {
     display: inline-block;
   }
@@ -724,6 +742,10 @@
 
   .h-full {
     height: 100%;
+  }
+
+  .max-h-\[90vh\] {
+    max-height: 90vh;
   }
 
   .min-h-8 {
@@ -784,6 +806,10 @@
 
   .w-\[100px\] {
     width: 100px;
+  }
+
+  .w-\[calc\(100\%_-_2rem\)\] {
+    width: calc(100% - 2rem);
   }
 
   .w-full {
@@ -1007,12 +1033,24 @@
     border-color: var(--color-stone-200);
   }
 
+  .self-center {
+    align-self: center;
+  }
+
+  .overflow-auto {
+    overflow: auto;
+  }
+
   .overflow-hidden {
     overflow: hidden;
   }
 
   .overflow-x-auto {
     overflow-x: auto;
+  }
+
+  .overflow-y-auto {
+    overflow-y: auto;
   }
 
   .rounded {
@@ -1445,6 +1483,10 @@
     background-color: var(--color-orange-100);
   }
 
+  .bg-red-500 {
+    background-color: var(--color-red-500);
+  }
+
   .bg-rose-50 {
     background-color: var(--color-rose-50);
   }
@@ -1487,10 +1529,6 @@
 
   .bg-sky-100 {
     background-color: var(--color-sky-100);
-  }
-
-  .bg-sky-500 {
-    background-color: var(--color-sky-500);
   }
 
   .bg-sky-600 {
@@ -1541,10 +1579,6 @@
     .bg-stone-200\/70 {
       background-color: color-mix(in oklab, var(--color-stone-200) 70%, transparent);
     }
-  }
-
-  .bg-stone-700 {
-    background-color: var(--color-stone-700);
   }
 
   .bg-stone-800 {
@@ -1745,6 +1779,10 @@
     padding-top: calc(var(--spacing) * 2);
   }
 
+  .pt-3 {
+    padding-top: calc(var(--spacing) * 3);
+  }
+
   .pt-4 {
     padding-top: calc(var(--spacing) * 4);
   }
@@ -1922,6 +1960,10 @@
   .tracking-widest {
     --tw-tracking: var(--tracking-widest);
     letter-spacing: var(--tracking-widest);
+  }
+
+  .whitespace-pre-wrap {
+    white-space: pre-wrap;
   }
 
   .text-amber-700 {
@@ -2142,6 +2184,10 @@
     filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );
   }
 
+  .filter {
+    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );
+  }
+
   .backdrop-blur-md {
     --tw-backdrop-blur: blur(var(--blur-md));
     -webkit-backdrop-filter: var(--tw-backdrop-blur, ) var(--tw-backdrop-brightness, ) var(--tw-backdrop-contrast, ) var(--tw-backdrop-grayscale, ) var(--tw-backdrop-hue-rotate, ) var(--tw-backdrop-invert, ) var(--tw-backdrop-opacity, ) var(--tw-backdrop-saturate, ) var(--tw-backdrop-sepia, );
@@ -2198,6 +2244,16 @@
 
   .selection\:bg-amber-100 ::selection, .selection\:bg-amber-100::selection {
     background-color: var(--color-amber-100);
+  }
+
+  .backdrop\:bg-black\/40::backdrop {
+    background-color: #0006;
+  }
+
+  @supports (color: color-mix(in lab, red, red)) {
+    .backdrop\:bg-black\/40::backdrop {
+      background-color: color-mix(in oklab, var(--color-black) 40%, transparent);
+    }
   }
 
   .last\:border-r-0:last-child {
@@ -2437,6 +2493,10 @@
 
   .disabled\:cursor-not-allowed:disabled {
     cursor: not-allowed;
+  }
+
+  .disabled\:bg-stone-100:disabled {
+    background-color: var(--color-stone-100);
   }
 
   .disabled\:opacity-35:disabled {

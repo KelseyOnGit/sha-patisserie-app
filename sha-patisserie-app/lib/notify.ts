@@ -1,74 +1,104 @@
-const PERTH = 'Australia/Perth';
+import { Resend } from 'resend';
 
-type RosterShift = { startTime: Date; endTime: Date };
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-function perthParts(date: Date) {
-  const parts = new Intl.DateTimeFormat('en-AU', {
-    timeZone: PERTH,
-    weekday: 'short',
-    day: 'numeric',
-    month: 'numeric',
-    hour: 'numeric',
-    minute: 'numeric',
-    hourCycle: 'h23',
-  }).formatToParts(date);
-  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? '';
-  return {
-    weekday: get('weekday'),
-    day: get('day'),
-    month: get('month'),
-    hour: Number(get('hour')),
-    minute: Number(get('minute')),
-  };
+interface ShiftItem {
+  startTime: Date | string;
+  endTime: Date | string;
 }
 
-function formatClock(date: Date) {
-  const { hour, minute } = perthParts(date);
-  const suffix = hour >= 12 ? 'pm' : 'am';
-  const displayHour = hour % 12 === 0 ? 12 : hour % 12;
-  return minute === 0
-    ? `${displayHour}${suffix}`
-    : `${displayHour}:${String(minute).padStart(2, '0')}${suffix}`;
-}
-
-export function buildRosterMessage(name: string | null, shifts: RosterShift[]) {
-  const firstName = name?.trim().split(/\s+/)[0] || 'there';
-  const lines = [...shifts]
-    .sort((a, b) => a.startTime.getTime() - b.startTime.getTime())
-    .map((shift) => {
-      const { weekday, day, month } = perthParts(shift.startTime);
-      return `${weekday} ${day}/${month} ${formatClock(shift.startTime)} - ${formatClock(shift.endTime)}`;
-    });
-
-  return [
-    `Hi ${firstName},`,
-    '',
-    'Your roster for this week is',
-    ...lines,
-    '',
-    'Any issues, please contact your Manager',
-  ].join('\n');
-}
-
-export type SendResult = { sent: boolean; reason?: string };
-
-export async function sendEmail(to: string, subject: string, text: string): Promise<SendResult> {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.EMAIL_FROM;
-  if (!apiKey || !from) {
-    return { sent: false, reason: 'Email is not configured (RESEND_API_KEY / EMAIL_FROM).' };
+/**
+ * Formats published weekly shifts into HTML content for the staff email body.
+ */
+export function buildRosterMessage(
+  name: string | null,
+  shifts: ShiftItem[]
+): string {
+  if (!shifts || shifts.length === 0) {
+    return `<p>Hi ${name || 'Team Member'},</p><p>You have no shifts scheduled for this week.</p>`;
   }
 
+  const shiftRows = shifts
+    .map((s) => {
+      const start = new Date(s.startTime);
+      const end = new Date(s.endTime);
+
+      const dayStr = start.toLocaleDateString('en-AU', {
+        weekday: 'short',
+        day: '2-digit',
+        month: '2-digit',
+        timeZone: 'Australia/Perth',
+      });
+
+      const startTimeStr = start.toLocaleTimeString('en-AU', {
+        hour: 'numeric',
+        minute: '2-digit',
+        timeZone: 'Australia/Perth',
+      });
+
+      const endTimeStr = end.toLocaleTimeString('en-AU', {
+        hour: 'numeric',
+        minute: '2-digit',
+        timeZone: 'Australia/Perth',
+      });
+
+      return `
+        <tr style="border-bottom: 1px solid #e7e5e4;">
+          <td style="padding: 10px; font-weight: bold;">${dayStr}</td>
+          <td style="padding: 10px;">${startTimeStr} - ${endTimeStr}</td>
+        </tr>
+      `;
+    })
+    .join('');
+
+  return `
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #1c1917;">
+      <h2 style="font-family: serif;">Hi ${name || 'Team Member'},</h2>
+      <p>Here is your published work schedule for this week:</p>
+      
+      <table style="width: 100%; border-collapse: collapse; text-align: left; margin-top: 16px;">
+        <thead>
+          <tr style="background-color: #f5f5f4; text-transform: uppercase; font-size: 12px; color: #78716c;">
+            <th style="padding: 10px;">Day & Date</th>
+            <th style="padding: 10px;">Shift Time</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${shiftRows}
+        </tbody>
+      </table>
+
+      <p style="margin-top: 24px; font-size: 13px; color: #78716c;">
+        Please log into the staff portal if you need to request shift changes or swaps.
+      </p>
+    </div>
+  `;
+}
+
+/**
+ * Sends an email using Resend and returns an object matching your POST route expectations:
+ * { sent: boolean, reason?: string }
+ */
+export async function sendEmail(
+  to: string,
+  subject: string,
+  htmlMessage: string
+): Promise<{ sent: boolean; reason?: string }> {
   try {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from, to, subject, text }),
+    const { error } = await resend.emails.send({
+      from: process.env.FROM_EMAIL || 'onboarding@resend.dev',
+      to,
+      subject,
+      html: htmlMessage,
     });
-    if (!response.ok) return { sent: false, reason: `Email provider returned ${response.status}.` };
+
+    if (error) {
+      return { sent: false, reason: error.message };
+    }
+
     return { sent: true };
-  } catch (error) {
-    console.error('Failed to send email:', error);
-    return { sent: false, reason: 'Could not reach the email provider.' };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown email dispatch error';
+    return { sent: false, reason: message };
   }
 }

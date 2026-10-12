@@ -1,0 +1,194 @@
+import { Prisma } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
+import { candidateShifts } from '@/lib/attendance-matching';
+import {
+  actualPeriods, approvalError, paidHours, perthDate, readPeriods, recordedBreakMinutes, weekBounds,
+  type PayrollRow, type ReviewRow,
+} from '@/lib/timesheets';
+
+// The same read model drives GET, transactional saves and payroll. Re-reading it
+// inside the save transaction prevents approving stale browser attendance.
+export async function loadTimesheetReport(weekStart: string, db: Prisma.TransactionClient = prisma) {
+  const { start, end } = weekBounds(weekStart);
+  const dateStart = new Date(`${weekStart}T00:00:00Z`);
+  const dateEnd = new Date(dateStart.getTime() + 7 * 86400000);
+  const now = new Date();
+  const saved = await db.timesheet.findMany({
+    where: { workDate: { gte: dateStart, lt: dateEnd } },
+    include: {
+      user: true,
+      shift: { include: { user: true, location: true } },
+      logs: { include: { user: true, location: true }, orderBy: { clockIn: 'asc' } },
+      history: { include: { actor: { select: { name: true, email: true } } }, orderBy: { createdAt: 'desc' } },
+    },
+  });
+  const logs = await db.timeLog.findMany({
+    where: {
+      // Include overnight logs crossing the week boundary; the row still belongs
+      // to the Perth date its shift (or unscheduled attendance) started.
+      clockIn: { lt: end },
+      OR: [{ clockOut: { gt: start } }, { clockOut: null }, { clockIn: { gte: start } }],
+    },
+    include: { user: true, location: true },
+    orderBy: { clockIn: 'asc' },
+  });
+  const earliest = logs.reduce((date, log) => log.clockIn < date ? log.clockIn : date, start);
+  const latest = logs.reduce((date, log) => (log.clockOut ?? now) > date ? (log.clockOut ?? now) : date, end);
+  const fetchedShifts = await db.shift.findMany({
+    where: {
+      publishedAt: { not: null },
+      startTime: { lt: latest },
+      endTime: { gt: earliest },
+    },
+    include: { user: true, location: true },
+    orderBy: { startTime: 'asc' },
+  });
+  // Saved reviews remain visible even if their roster shift was unpublished.
+  const shifts = Array.from(new Map([
+    ...fetchedShifts.map((shift) => [shift.id, shift] as const),
+    ...saved.flatMap((sheet) => sheet.shift ? [[sheet.shift.id, sheet.shift] as const] : []),
+  ]).values());
+  const savedByKey = new Map(saved.map((sheet) => [sheet.sourceKey, sheet]));
+  const allLogs = Array.from(new Map([
+    ...logs.map((log) => [log.id, log] as const),
+    ...saved.flatMap((sheet) => sheet.logs.map((log) => [log.id, log] as const)),
+  ]).values()).sort((a, b) => a.clockIn.getTime() - b.clockIn.getTime());
+  const grouped = new Map<string, typeof allLogs>();
+  const ambiguousLogs = new Set<string>();
+  const ambiguousShifts = new Set<string>();
+
+  for (const log of allLogs) {
+    const existing = log.timesheetId ? saved.find((sheet) => sheet.id === log.timesheetId) : undefined;
+    // A record already allocated to another week's timesheet cannot be paid twice.
+    if (log.timesheetId && !existing) continue;
+    const matches = candidateShifts(log, shifts.filter((shift) => shift.publishedAt), now);
+    let key: string;
+    if (existing) {
+      key = existing.sourceKey;
+    } else if (matches.length === 1) {
+      key = `shift:${matches[0].id}`;
+    } else {
+      key = `log:${log.id}`;
+    }
+    if (matches.length > 1) {
+      ambiguousLogs.add(log.id);
+      matches.forEach((shift) => ambiguousShifts.add(shift.id));
+    }
+    grouped.set(key, [...(grouped.get(key) ?? []), log]);
+  }
+
+  const rows: ReviewRow[] = [];
+  const makeRow = (key: string, shift: typeof shifts[number] | null, attendance: typeof allLogs) => {
+    const sheet = savedByKey.get(key);
+    const user = sheet?.user ?? shift?.user ?? attendance[0]?.user;
+    if (!user) throw new Error('Timesheet has no staff member.');
+    const origin = shift?.startTime ?? attendance[0]?.clockIn;
+    const workDate = sheet ? sheet.workDate.toISOString().slice(0, 10) : origin ? perthDate(origin) : '';
+    if (!workDate || workDate < weekStart || workDate >= dateEnd.toISOString().slice(0, 10)) return;
+    const actual = attendance.map((log) => ({
+      id: log.id, clockIn: log.clockIn.toISOString(), clockOut: log.clockOut?.toISOString() ?? null,
+    }));
+    const sourceSite = shift?.location?.name ?? attendance[0]?.location?.name ?? sheet?.site ?? 'Unassigned';
+    const site = sheet?.site ?? sourceSite;
+    // Shift.breakMinutes also stores the roster's preset deduction, and the
+    // legacy break handler adds elapsed minutes to it. It is not reliable proof
+    // of an actual break. Derive recorded duration from the raw break timestamps.
+    const actualBreakMinutes = recordedBreakMinutes(shift?.startBreak ?? null, shift?.endBreak ?? null);
+    const scheduledBreakMinutes = shift?.breakMinutes ?? 0;
+    // Canonical source values capture changes relevant to pay, not unrelated GPS
+    // metadata. Historical approved values remain in the append-only audit log.
+    const snapshot = JSON.stringify({
+      userId: shift?.userId ?? user.id, site: sourceSite,
+      scheduledStart: shift?.startTime.toISOString() ?? null,
+      scheduledEnd: shift?.endTime.toISOString() ?? null,
+      published: Boolean(shift?.publishedAt),
+      actual, breakMinutes: actualBreakMinutes, scheduledBreakMinutes,
+      startBreak: shift?.startBreak?.toISOString() ?? null,
+      endBreak: shift?.endBreak?.toISOString() ?? null,
+    });
+    const sourceChanged = Boolean(sheet && sheet.sourceSnapshot !== snapshot);
+    const inProgress = actual.some((log) => !log.clockOut) || Boolean(shift?.startBreak && !shift.endBreak);
+    const ambiguous = attendance.some((log) => ambiguousLogs.has(log.id)) ||
+      Boolean(shift && ambiguousShifts.has(shift.id));
+    const exceptions: string[] = [];
+    const rosterIdentityChanged = Boolean(sheet && shift && (
+      shift.userId !== sheet.userId || perthDate(shift.startTime) !== workDate || sourceSite !== sheet.site
+    ));
+    const approvalBlockedReason = rosterIdentityChanged ?
+      'Reviewed roster staff, venue or date changed. Restore the original roster identity before approving.' :
+      shift && !shift.publishedAt ? 'Publish the roster shift before approving its hours.' : null;
+    if (!shift) exceptions.push('Unscheduled attendance');
+    if (shift && !shift.publishedAt) exceptions.push('Roster shift unpublished');
+    if (actual.length === 0) exceptions.push('No attendance recorded');
+    if (inProgress) exceptions.push('Clock-out or break unfinished');
+    if (ambiguous) exceptions.push('Overlapping roster: resolve before approval');
+    if (sourceChanged) exceptions.push('Source changed: reopen and review');
+    if (rosterIdentityChanged) exceptions.push('Reviewed roster identity changed');
+    if (actual.length > 1) exceptions.push('Multiple attendance periods');
+    if (actualBreakMinutes === null && scheduledBreakMinutes > 0 && actual.length > 0) {
+      exceptions.push('Break not recorded: verify the preset deduction');
+    }
+    if (shift && actual[0] && new Date(actual[0].clockIn) > shift.startTime) {
+      exceptions.push(`Arrived ${Math.ceil((new Date(actual[0].clockIn).getTime() - shift.startTime.getTime()) / 60000)} min after scheduled start`);
+    }
+    const periods = sheet ? readPeriods(sheet.payablePeriods) : actualPeriods(actual);
+    rows.push({
+      sourceKey: key, userId: user.id, staffName: user.name || user.email, site, workDate,
+      scheduledStart: shift?.startTime.toISOString() ?? null,
+      scheduledEnd: shift?.endTime.toISOString() ?? null,
+      actual, actualBreakMinutes, scheduledBreakMinutes, periods,
+      breakMinutes: sheet?.breakMinutes ?? (periods.length ? actualBreakMinutes ?? scheduledBreakMinutes : 0),
+      reason: sheet?.reason ?? '', status: sheet?.status ?? 'PENDING',
+      needsAttention: exceptions.length > 0,
+      exceptions, inProgress, ambiguous, approvalBlockedReason, sourceChanged, snapshot,
+      version: sheet?.version ?? 0,
+      rate: user.hourlyPayRate?.toNumber() ?? null,
+      approvedAt: sheet?.approvedAt?.toISOString() ?? null,
+      approvedBy: sheet?.history.find((entry) => entry.action === 'APPROVE')?.actor.name ??
+        sheet?.history.find((entry) => entry.action === 'APPROVE')?.actor.email ?? null,
+      history: sheet?.history.map((entry) => ({
+        action: entry.action, actor: entry.actor.name || entry.actor.email,
+        at: entry.createdAt.toISOString(), values: entry.values,
+      })) ?? [],
+    });
+  };
+
+  for (const shift of shifts) makeRow(`shift:${shift.id}`, shift, grouped.get(`shift:${shift.id}`) ?? []);
+  for (const [key, attendance] of grouped) if (key.startsWith('log:')) makeRow(key, null, attendance);
+  rows.sort((a, b) => a.workDate.localeCompare(b.workDate) || a.staffName.localeCompare(b.staffName));
+
+  const summary = new Map<string, PayrollRow>();
+  let excludedCount = 0;
+  for (const row of rows) {
+    const sheet = savedByKey.get(row.sourceKey);
+    // No roster-duration fallback. Approval must still match current source
+    // records and must not have newly ambiguous or unfinished attendance.
+    if (!sheet || sheet.status !== 'APPROVED' || row.sourceChanged || row.ambiguous ||
+        row.inProgress || sheet.rateAtApproval === null ||
+        row.approvalBlockedReason) {
+      excludedCount++;
+      continue;
+    }
+    const rate = sheet.rateAtApproval.toNumber();
+    const key = JSON.stringify([row.userId, sheet.site, rate]);
+    const payroll = summary.get(key) ?? {
+      key, userId: row.userId, staffName: row.staffName, site: sheet.site,
+      rate, totalHours: 0, gross: 0,
+    };
+    payroll.totalHours += paidHours(row.periods, row.breakMinutes);
+    payroll.gross = payroll.totalHours * rate;
+    summary.set(key, payroll);
+  }
+  return {
+    shifts: rows, rows: Array.from(summary.values()), excludedCount,
+    approvedCount: rows.length - excludedCount,
+  };
+}
+
+export function validateApproval(row: ReviewRow, periods: Parameters<typeof approvalError>[1]) {
+  const error = approvalError(row, periods);
+  if (error) throw new Error(error);
+  if (row.exceptions.includes('Roster shift unpublished')) {
+    throw new Error('Publish the roster shift before approving its hours.');
+  }
+}

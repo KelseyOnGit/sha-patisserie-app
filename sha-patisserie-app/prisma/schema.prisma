@@ -46,6 +46,11 @@ enum ShiftStatus {
   CANCELLED
 }
 
+enum TimesheetStatus {
+  PENDING
+  APPROVED
+}
+
 // ==========================================
 // MODELS
 // ==========================================
@@ -98,6 +103,8 @@ model User {
   timeEntries     TimeEntry[]
 
   defaultBreakMinutes Int      @default(30) // Default preset break duration
+  timesheets         Timesheet[] @relation("TimesheetStaff")
+  timesheetActions   TimesheetAudit[] @relation("TimesheetActor")
 
 
 }
@@ -130,6 +137,7 @@ model Shift {
   updatedAt           DateTime     @updatedAt
   breakApproved       Boolean   @default(false)
   publishedAt         DateTime?    // null = draft, not visible to staff
+  timesheet           Timesheet?
 }
 
 model TimeLog {
@@ -148,6 +156,54 @@ model TimeLog {
   
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
+  timesheetId String?
+  timesheet   Timesheet? @relation(fields: [timesheetId], references: [id], onDelete: Restrict)
+
+  @@index([userId, clockIn])
+}
+
+// Payable periods are separate from TimeLog: manager corrections never rewrite
+// the original GPS attendance. Multiple periods preserve unpaid clock-out gaps.
+model Timesheet {
+  id                 String          @id @default(cuid())
+  sourceKey          String          @unique
+  shiftId            String?         @unique
+  shift              Shift?          @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  userId             String
+  user               User            @relation("TimesheetStaff", fields: [userId], references: [id], onDelete: Restrict)
+  workDate           DateTime        @db.Date
+  site               String
+  payablePeriods     Json
+  breakMinutes       Int             @default(0)
+  reason             String          @default("")
+  status             TimesheetStatus @default(PENDING)
+  approvedAt         DateTime?
+  approvedBy         String?
+  rateAtApproval     Decimal?        @db.Decimal(10, 2)
+  // A snapshot lets payroll reject stale approvals after attendance/roster edits.
+  sourceSnapshot     String
+  version            Int             @default(1)
+  logs               TimeLog[]
+  history            TimesheetAudit[]
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  @@index([workDate, status])
+}
+
+// Each save/approval/reopening records the resulting values and the real actor.
+// Restrict deletes so staff/roster cleanup cannot silently erase payroll history.
+model TimesheetAudit {
+  id          String    @id @default(cuid())
+  timesheetId String
+  timesheet   Timesheet @relation(fields: [timesheetId], references: [id], onDelete: Restrict)
+  actorId     String
+  actor       User      @relation("TimesheetActor", fields: [actorId], references: [id], onDelete: Restrict)
+  action      String
+  values      Json
+  createdAt   DateTime  @default(now())
+
+  @@index([timesheetId, createdAt])
 }
 
 model RosterShift {
