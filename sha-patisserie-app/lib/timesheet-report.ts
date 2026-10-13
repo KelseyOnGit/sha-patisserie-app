@@ -121,7 +121,6 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
     if (shift && !shift.publishedAt) exceptions.push('Roster shift unpublished');
     if (actual.length === 0) exceptions.push('No attendance recorded');
     if (inProgress) exceptions.push('Clock-out or break unfinished');
-    if (ambiguous) exceptions.push('Overlapping roster: resolve before approval');
     if (sourceChanged) exceptions.push('Source changed: reopen and review');
     if (rosterIdentityChanged) exceptions.push('Reviewed roster identity changed');
     if (actual.length > 1) exceptions.push('Multiple attendance periods');
@@ -153,7 +152,15 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
     });
   };
 
-  for (const shift of shifts) makeRow(`shift:${shift.id}`, shift, grouped.get(`shift:${shift.id}`) ?? []);
+  for (const shift of shifts) {
+    const attendance = grouped.get(`shift:${shift.id}`) ?? [];
+    const sheet = savedByKey.get(`shift:${shift.id}`);
+    // Omit scheduled roster shifts that have no attendance punches, so managers
+    // focus purely on actual clocked hours and payable adjustments.
+    if (attendance.length > 0 || sheet) {
+      makeRow(`shift:${shift.id}`, shift, attendance);
+    }
+  }
   for (const [key, attendance] of grouped) if (key.startsWith('log:')) makeRow(key, null, attendance);
   rows.sort((a, b) => a.workDate.localeCompare(b.workDate) || a.staffName.localeCompare(b.staffName));
 

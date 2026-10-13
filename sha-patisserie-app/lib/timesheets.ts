@@ -86,6 +86,36 @@ export function inputTimestamp(value: string): string {
   return Number.isFinite(date.getTime()) ? date.toISOString() : '';
 }
 
+export function timeInput(value: string): string {
+  return value ? localInput(value).slice(11, 16) : '';
+}
+
+export function editPeriodTime(
+  period: PayablePeriod, field: keyof PayablePeriod, value: string, workDate: string,
+): PayablePeriod {
+  if (!value) return { ...period, [field]: '' };
+  if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value)) {
+    throw new Error('Enter a valid hour and minute.');
+  }
+  // Keep the original Perth day behind the time-only editor. Only edited values
+  // lose seconds; opening or saving an untouched clock record never rounds it.
+  const date = period[field] ? perthDate(period[field]) :
+    period.start ? perthDate(period.start) : workDate;
+  const updated = { ...period, [field]: inputTimestamp(`${date}T${value}:00`) };
+  if (updated.start && updated.end) {
+    const startDay = perthDate(updated.start);
+    const endTime = timeInput(updated.end);
+    const nextDay = endTime < timeInput(updated.start) ||
+      (endTime === timeInput(updated.start) && perthDate(period.end || updated.end) > startDay);
+    const day = new Date(`${startDay}T00:00:00Z`);
+    if (nextDay) day.setUTCDate(day.getUTCDate() + 1);
+    // Preserve the unedited end's seconds and milliseconds, even on rollover.
+    const previousDay = new Date(`${perthDate(updated.end)}T00:00:00Z`);
+    updated.end = new Date(new Date(updated.end).getTime() + day.getTime() - previousDay.getTime()).toISOString();
+  }
+  return updated;
+}
+
 export function readPeriods(value: unknown): PayablePeriod[] {
   if (!Array.isArray(value)) throw new Error('Payable periods must be a list.');
   return value.map((period: unknown) => {

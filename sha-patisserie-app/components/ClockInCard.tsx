@@ -14,6 +14,14 @@ interface BreakShift {
   breakMinutes: number;
 }
 
+interface UpcomingShift {
+  id: string;
+  venue: string;
+  day: string;
+  startTime: string;
+  endTime: string;
+}
+
 export default function ClockInCard({ userName = 'Team Member' }: ClockInCardProps) {
   const [time, setTime] = useState<string>('');
   const [currentDate, setCurrentDate] = useState<string>('');
@@ -23,6 +31,7 @@ export default function ClockInCard({ userName = 'Team Member' }: ClockInCardPro
   const [breakShift, setBreakShift] = useState<BreakShift | null>(null);
   const [breakSeconds, setBreakSeconds] = useState<number>(0);
   const [statusMessage, setStatusMessage] = useState<string>('');
+  const [upcomingShift, setUpcomingShift] = useState<UpcomingShift | null>(null);
 
 
   // Update live clock on client side
@@ -123,6 +132,21 @@ export default function ClockInCard({ userName = 'Team Member' }: ClockInCardPro
       })
       .catch((error) => {
         console.error('Failed to load clock status:', error);
+      });
+
+    // Fetch upcoming shift for the logged-in staff
+    fetch('/api/roster/mine')
+      .then(async (res) => {
+        if (!res.ok) return null;
+        return res.json();
+      })
+      .then((data) => {
+        if (Array.isArray(data?.shifts) && data.shifts.length > 0) {
+          setUpcomingShift(data.shifts[0]);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load upcoming shift:', err);
       });
   }, []);
 
@@ -229,7 +253,7 @@ export default function ClockInCard({ userName = 'Team Member' }: ClockInCardPro
       </div>
 
       {/* User & Status Bar */}
-      <div className="bg-[#EAE3D2]/60 rounded-2xl p-4 flex justify-between items-center mb-6">
+      <div className="bg-[#EAE3D2]/60 rounded-2xl p-4 flex justify-between items-center mb-4">
         <div>
           <span className="block text-[10px] font-bold uppercase tracking-wider text-stone-400">
             Logged in as
@@ -243,6 +267,28 @@ export default function ClockInCard({ userName = 'Team Member' }: ClockInCardPro
             {isClockedIn ? 'Clocked In' : 'Clocked Out'}
           </span>
         </div>
+      </div>
+
+      {/* Upcoming Shift Info */}
+      <div className="mb-6 rounded-2xl bg-[#EAE3D2]/40 border border-[#D8C4B6]/60 p-4 text-left">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500">Upcoming Shift</span>
+          {upcomingShift && (
+            <span className="text-[11px] font-semibold text-amber-900 bg-amber-100/90 px-2 py-0.5 rounded-full">
+              Scheduled
+            </span>
+          )}
+        </div>
+        {upcomingShift ? (
+          <div>
+            <p className="text-sm font-bold text-stone-800">
+              {upcomingShift.day} • {upcomingShift.startTime} - {upcomingShift.endTime}
+            </p>
+            <p className="text-xs text-stone-600 mt-1">📍 {upcomingShift.venue}</p>
+          </div>
+        ) : (
+          <p className="text-xs text-stone-500 italic">No upcoming shifts scheduled soon.</p>
+        )}
       </div>
 
       {/* Action Buttons */}

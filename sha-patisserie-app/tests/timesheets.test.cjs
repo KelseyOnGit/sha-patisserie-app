@@ -37,6 +37,38 @@ test('week selection rejects non-Mondays and impossible dates', () => {
   }
 });
 
+test('time-only editor defaults to attendance minutes and preserves unedited timestamps', () => {
+  const original = { start: '2026-10-05T01:12:37.000Z', end: '2026-10-05T09:08:42.123Z' };
+  assert.equal(rules.timeInput(original.start), '09:12');
+  assert.equal(rules.timeInput(original.end), '17:08');
+  const edited = rules.editPeriodTime(original, 'start', '09:15', '2026-10-05');
+  assert.equal(edited.start, '2026-10-05T01:15:00.000Z');
+  assert.equal(edited.end, original.end);
+  assert.deepEqual(rules.editPeriodTime(original, 'end', '', '2026-10-05'), { ...original, end: '' });
+  assert.throws(() => rules.editPeriodTime(original, 'start', '25:30', '2026-10-05'));
+  assert.equal(original.start, '2026-10-05T01:12:37.000Z');
+});
+
+test('time-only editor uses the work date and handles overnight and next-day periods', () => {
+  let edited = rules.editPeriodTime({ start: '', end: '' }, 'start', '22:00', '2026-10-05');
+  edited = rules.editPeriodTime(edited, 'end', '06:00', '2026-10-05');
+  assert.equal(edited.start, '2026-10-05T14:00:00.000Z');
+  assert.equal(edited.end, '2026-10-05T22:00:00.000Z');
+  rules.validatePayable([edited], 0, '2026-10-05');
+  assert.equal(rules.paidHours([edited], 0), 8);
+  edited = rules.editPeriodTime(edited, 'start', '05:00', '2026-10-05');
+  assert.equal(rules.perthDate(edited.end), '2026-10-05');
+  assert.equal(rules.paidHours([edited], 0), 1);
+  const nextDay = { start: '2026-10-05T18:00:00Z', end: '2026-10-05T22:00:00Z' };
+  const changed = rules.editPeriodTime(nextDay, 'end', '07:00', '2026-10-05');
+  assert.equal(rules.perthDate(changed.start), '2026-10-06');
+  assert.equal(rules.perthDate(changed.end), '2026-10-06');
+  assert.equal(rules.timeInput(changed.end), '07:00');
+  let endFirst = rules.editPeriodTime({ start: '', end: '' }, 'end', '06:00', '2026-10-05');
+  endFirst = rules.editPeriodTime(endFirst, 'start', '22:00', '2026-10-05');
+  assert.equal(rules.paidHours([endFirst], 0), 8);
+});
+
 test('paid hours subtract recorded breaks without rounding attendance', () => {
   assert.equal(rules.paidHours([period('09:12', '17:00')], 30), 7.3);
   assert.equal(rules.paidHours([period('09:00', '12:00'), period('13:00', '17:00')], 0), 7);

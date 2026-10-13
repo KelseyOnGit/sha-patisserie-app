@@ -11,8 +11,9 @@ export async function GET(request: Request) {
   }
 
   try {
+    const sixteenHoursAgo = new Date(Date.now() - 16 * 60 * 60 * 1000);
     const activeLog = await prisma.timeLog.findFirst({
-      where: { userId: session.userId, clockOut: null },
+      where: { userId: session.userId, clockOut: null, clockIn: { gte: sixteenHoursAgo } },
       orderBy: { clockIn: 'desc' },
     });
     return NextResponse.json({ activeLog });
@@ -58,8 +59,9 @@ export async function POST(request: Request) {
     }
 
     if (action === 'clock-in') {
-      const existing = await prisma.timeLog.findFirst({ //return the very first record that matches the cirteria
-        where: { userId, clockOut: null },
+      const sixteenHoursAgo = new Date(Date.now() - 16 * 60 * 60 * 1000);
+      const existing = await prisma.timeLog.findFirst({
+        where: { userId, clockOut: null, clockIn: { gte: sixteenHoursAgo } },
       });
 
       if (existing) {
@@ -68,6 +70,12 @@ export async function POST(request: Request) {
           { status: 400 }
         );
       }
+
+      // If there are stale unclosed punches older than 16 hours, auto-close them with a note or set clockOut to prevent hanging records
+      await prisma.timeLog.updateMany({
+        where: { userId, clockOut: null, clockIn: { lt: sixteenHoursAgo } },
+        data: { clockOut: new Date() },
+      });
 
       const newLog = await prisma.timeLog.create({
         data: {

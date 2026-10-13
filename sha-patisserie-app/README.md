@@ -41,6 +41,11 @@ Monday, then filter by venue, staff or review status. All dates/times use Perth
   roster's break field (which is also used as a preset). If no break was recorded,
   the preset is clearly shown as a suggestion; a manager must explain any deduction.
 - **Review / Edit** opens separate payable periods and a payable break deduction.
+  Time fields show hours/minutes and start from actual attendance on new reviews;
+  existing reviews retain saved payable values. The shift date is kept automatically.
+  Earlier end times roll over to the next day and show a `+1 day` label. Existing
+  overnight periods retain their starting day. Unedited original timestamps keep
+  their seconds; manually edited times use whole minutes.
   Multiple periods exclude clock-out gaps; do not deduct those gaps again as breaks.
   Explain any changes, missing attendance, or unscheduled work.
 - **Save changes** persists a pending review. **Save & approve** records the
