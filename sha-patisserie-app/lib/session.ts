@@ -1,9 +1,9 @@
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 
-const SECRET_KEY = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'fallback-secret-key-change-this'
-);
+const secret = process.env.JWT_SECRET;
+if (!secret?.trim()) throw new Error('JWT_SECRET must be configured before starting the app.');
+const SECRET_KEY = new TextEncoder().encode(secret);
 
 // Payload type for staff sessions
 export type SessionPayload = {
@@ -42,7 +42,7 @@ export async function getSession(): Promise<SessionPayload | null> {
   try {
     const { payload } = await jwtVerify(token, SECRET_KEY);
     return payload as SessionPayload;
-  } catch (error) {
+  } catch {
     // Invalid or expired token
     return null;
   }
@@ -58,4 +58,3 @@ export async function deleteSession() {
 export function isPrivilegedRole(role?: string): boolean {
   return role === 'ADMIN' || role === 'MANAGER';
 }
-

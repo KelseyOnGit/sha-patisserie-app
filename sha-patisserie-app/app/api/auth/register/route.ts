@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { hashPin } from '@/lib/pins';
 
 export async function POST(request: Request) {
   try {
@@ -23,7 +24,7 @@ export async function POST(request: Request) {
     }
 
     // 2. PIN Code / Password Strength Validation
-    if (!pinCode) {
+    if (typeof pinCode !== 'string' || !pinCode) {
       return NextResponse.json(
         { error: 'PIN code is required.' },
         { status: 400 }
@@ -63,7 +64,7 @@ export async function POST(request: Request) {
         name: name?.trim() || email.split('@')[0],
         email,
         contactNumber: contactNumber?.trim() || null,
-        pinCode,
+        pinCode: await hashPin(pinCode),
         isApproved: false, // Requires admin approval before access is granted
       },
     });
@@ -75,7 +76,8 @@ export async function POST(request: Request) {
       },
       { status: 201 }
     );
-  } catch (error) {
+  } catch {
+    console.error('Registration failed.');
     return NextResponse.json(
       { error: 'Failed to create account.' },
       { status: 500 }

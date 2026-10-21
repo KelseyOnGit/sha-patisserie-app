@@ -23,7 +23,7 @@ COPY . .
 
 # Build-time-only placeholder so `prisma generate`/`next build` don't fail on a
 # missing DATABASE_URL. The real value is supplied at runtime, never baked into the image.
-ARG DATABASE_URL="postgresql://user:password@localhost:5432/db"
+ARG DATABASE_URL="postgresql://neondb_owner:npg_FLeMa9JVs4dZ@ep-purple-bonus-azq0maae-pooler.c-3.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
 ENV DATABASE_URL=${DATABASE_URL}
 ENV NEXT_TELEMETRY_DISABLED=1
 

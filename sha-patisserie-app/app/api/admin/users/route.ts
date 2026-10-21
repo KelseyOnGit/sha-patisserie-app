@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSession, isPrivilegedRole } from '@/lib/session';
+import { staffListSelect } from '@/lib/user-select';
 //The API Endpoint
 export async function PATCH(request: Request) {
   const session = await getSession();
@@ -18,6 +19,7 @@ export async function PATCH(request: Request) {
     const updatedUser = await prisma.user.update({
       where: { id: userId },
       data: { isApproved: true, status: 'ACTIVE' },
+      select: staffListSelect,
     });
 
     return NextResponse.json({ message: 'User approved successfully.', user: updatedUser });

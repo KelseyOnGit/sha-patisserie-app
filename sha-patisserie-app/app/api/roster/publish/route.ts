@@ -30,6 +30,7 @@ export async function POST(request: Request) {
 
     const drafts = await prisma.shift.findMany({
       where: {
+        user: { role: { in: ['STAFF', 'MANAGER'] } },
         publishedAt: null,
         startTime: { gte: start, lt: end },
         location: { code: location },
@@ -42,14 +43,14 @@ export async function POST(request: Request) {
     }
 
     await prisma.shift.updateMany({
-      where: { id: { in: drafts.map((shift) => shift.id) } },
+      where: { id: { in: drafts.map((shift) => shift.id) }, user: { role: { in: ['STAFF', 'MANAGER'] } } },
       data: { publishedAt: new Date() },
     });
 
     // Each person gets their whole published week, not only the shifts changed now.
     const userIds = [...new Set(drafts.map((shift) => shift.userId))];
     const users = await prisma.user.findMany({
-      where: { id: { in: userIds } },
+      where: { id: { in: userIds }, role: { in: ['STAFF', 'MANAGER'] } },
       select: {
         id: true,
         name: true,
@@ -85,4 +86,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Failed to publish roster' }, { status: 500 });
   }
 }
-

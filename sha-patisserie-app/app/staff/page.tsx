@@ -9,7 +9,6 @@ interface User {
   email: string;
   role: string;
   hourlyRate: number | null;
-  pinCode: string | null;
 }
 
 export default function StaffDirectory() {
@@ -141,7 +140,6 @@ export default function StaffDirectory() {
                 <th className="p-3">Name</th>
                 <th className="p-3">Email</th>
                 <th className="p-3">Role</th>
-                <th className="p-3">PIN Set?</th>
                 <th className="p-3">Work Type</th>
               </tr>
             </thead>
@@ -154,9 +152,6 @@ export default function StaffDirectory() {
                     <span className="px-2 py-1 bg-gray-200 text-xs rounded font-semibold">
                       {user.role}
                     </span>
-                  </td>
-                  <td className="p-3">
-                    {user.pinCode ? 'Yes' : 'No'}
                   </td>
                   <td className="p-3">{user.workType.replace('_', ' ')}</td>
                 </tr>

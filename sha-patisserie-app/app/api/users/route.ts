@@ -1,18 +1,21 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSession, isPrivilegedRole } from '@/lib/session';
+import { hashPin } from '@/lib/pins';
+import { staffListSelect } from '@/lib/user-select';
 
 // GET /api/users - Fetch all staff members
 export async function GET() {
   const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!session || !isPrivilegedRole(session.role)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: session ? 403 : 401 });
   }
 
   try {
     const users = await prisma.user.findMany({
+      where: { role: { in: ['STAFF', 'MANAGER'] } },
       orderBy: { createdAt: 'desc' },
-      include: { location: { select: { code: true, name: true } } },
+      select: staffListSelect,
     });
     return NextResponse.json(users);
   } catch (error) {
@@ -44,7 +47,7 @@ export async function PATCH(request: Request) {
           },
         },
       },
-      include: { location: { select: { code: true, name: true } } },
+      select: staffListSelect,
     });
 
     return NextResponse.json(updatedUser);
@@ -68,13 +71,16 @@ export async function POST(request: Request) {
     if (!name || !email || !pinCode) {
       return NextResponse.json({ error: 'Name, email, and PIN are required' }, { status: 400 });
     }
+    if (typeof pinCode !== 'string' || !/^\d{4,6}$/.test(pinCode)) {
+      return NextResponse.json({ error: 'PIN must contain 4 to 6 digits.' }, { status: 400 });
+    }
 
     const newUser = await prisma.user.create({
       data: {
         name,
         email,
         role: role || 'STAFF',
-        pinCode,
+        pinCode: await hashPin(pinCode),
         location: {
           connectOrCreate: {
             where: { code: location === 'ZB' ? 'ZB' : 'SHA' },
@@ -85,11 +91,12 @@ export async function POST(request: Request) {
           },
         },
       },
+      select: staffListSelect,
     });
 
     return NextResponse.json(newUser, { status: 201 });
-  } catch (error) {
-    console.error('Failed to create user:', error);
+  } catch {
+    console.error('Failed to create user.');
     return NextResponse.json({ error: 'Failed to create user' }, { status: 500 });
   }
 }

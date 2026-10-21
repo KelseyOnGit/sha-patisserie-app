@@ -11,7 +11,7 @@ export default function BottomNav({ activeTab, setActiveTab }: BottomNavProps) {
   const tabs: { id: TabType; label: string; icon: string }[] = [
     { id: 'clock', label: 'Clock In', icon: '⏱️' },
     { id: 'roster', label: 'Roster', icon: '📅' },
-    { id: 'payslips', label: 'Payslips', icon: '📄' },
+    // { id: 'payslips', label: 'Payslips', icon: '📄' }, // Hidden pending MYOB integration.
     { id: 'leave', label: 'Leave', icon: '📅' },
   ];
 

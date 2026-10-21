@@ -317,11 +317,12 @@ export default function TimesheetReview() {
   };
 
   const download = () => {
-    const leave = (report?.leaveRows || []).filter((row) => (!venue || row.site === venue) && (!staff || row.userId === staff));
+    // Leave export is hidden until leave payroll calculations are verified.
+    // const leave = (report?.leaveRows || []).filter((row) => (!venue || row.site === venue) && (!staff || row.userId === staff));
     const lines = [
-      ['Staff Member', 'Employment Status', 'Site', 'Rate ($/hr)', 'Approved Hours', 'Leave Hours', 'Leave Type', 'Leave Date', 'Gross ($)'],
-      ...payroll.map((row) => [row.staffName, employmentLabel(row.employmentType), row.site, row.rate.toFixed(2), row.totalHours.toFixed(2), '', '', '', row.gross.toFixed(2)]),
-      ...leave.map((row) => [row.staffName, employmentLabel(row.employmentType), row.site, '', '0.00', row.hours.toFixed(2), row.type, row.date, '0.00']),
+      ['Staff Member', 'Employment Status', 'Site', 'Rate ($/hr)', 'Approved Hours', 'Gross ($)'],
+      ...payroll.map((row) => [row.staffName, employmentLabel(row.employmentType), row.site, row.rate.toFixed(2), row.totalHours.toFixed(2), row.gross.toFixed(2)]),
+      // ...leave.map((row) => [row.staffName, employmentLabel(row.employmentType), row.site, '', '0.00', row.hours.toFixed(2), row.type, row.date, '0.00']),
     ].map((line) => line.map(csvCell).join(',')).join('\r\n');
     const url = URL.createObjectURL(new Blob([lines], { type: 'text/csv;charset=utf-8;' }));
     const link = document.createElement('a');
@@ -705,6 +706,7 @@ export default function TimesheetReview() {
               </tfoot>
             </table>
           </div>
+          {/* Hidden until leave payroll calculations are verified.
           <h2 className="pt-4 text-lg font-semibold">Approved Leave</h2>
           <div className="overflow-x-auto border-t border-stone-200">
             <table className="w-full text-left text-sm">
@@ -717,6 +719,7 @@ export default function TimesheetReview() {
               ))}</tbody>
             </table>
           </div>
+          */}
         </div>
       )}
       {selected && <ReviewEditor key={`${selected.sourceKey}:${selected.version}`} row={selected} weekStart={weekStart}

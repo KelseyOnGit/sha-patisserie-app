@@ -28,6 +28,7 @@ export async function POST(request: Request) {
 
     const sourceShifts = await prisma.shift.findMany({
       where: {
+        user: { role: { in: ['STAFF', 'MANAGER'] } },
         startTime: {
           gte: startOfWeek,
           lt: endOfWeek,

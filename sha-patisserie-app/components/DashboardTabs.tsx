@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import ClockInCard from '@/components/ClockInCard';
 import RosterView from '@/components/RosterView';
-import PayslipView from '@/components/PayslipView';
+// import PayslipView from '@/components/PayslipView'; // Hidden pending MYOB integration.
 import BottomNav from '@/components/BottomNav';
 import LeavePanel from '@/components/LeavePanel';
 
@@ -23,7 +23,7 @@ export default function DashboardTabs({ userName }: DashboardTabsProps) {
       <main className="w-full">
         {activeTab === 'clock' && <ClockInCard userName={userName} />}
         {activeTab === 'roster' && <RosterView />}
-        {activeTab === 'payslips' && <PayslipView />}
+        {/* {activeTab === 'payslips' && <PayslipView />} */}
         {activeTab === 'profile' && <StaffProfile />}
         {activeTab === 'leave' && <LeavePanel />}
       </main>

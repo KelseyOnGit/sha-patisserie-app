@@ -4,11 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "test:timesheets": "node --test tests/timesheets.test.cjs",
+    "pins:migrate": "node --env-file=.env scripts/hash-existing-pins.cjs",
     "postinstall": "prisma skills sync || exit 0"
+    
   },
   "dependencies": {
     "@prisma/client": "6.19.3",

@@ -42,6 +42,70 @@ const requests = [
   leaveEntry('next-week', '28', 'APPROVED'),
 ];
 
+test('staff navigation hides Payslips but keeps clock, roster and leave', () => {
+  const BottomNav = require('../components/BottomNav.tsx').default;
+  const html = renderToStaticMarkup(React.createElement(BottomNav, { activeTab: 'clock', setActiveTab: () => {} }));
+  assert.doesNotMatch(html, /Payslips/);
+  for (const label of ['Clock In', 'Roster', 'Leave']) assert.ok(html.includes(label));
+  const source = ts.transpileModule(fs.readFileSync(path.join(root, 'components/DashboardTabs.tsx'), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, removeComments: true },
+  }).outputText;
+  assert.doesNotMatch(source, /PayslipView/);
+});
+
+test('payroll hides leave table and leave export while preserving worked payroll', async (t) => {
+  const report = {
+    shifts: [], rows: [{
+      key: 'pay', userId: 'sam', staffName: 'Sam', employmentType: 'PART_TIME',
+      site: 'Sha Patisserie', rate: 30, totalHours: 8, gross: 240,
+    }],
+    excludedCount: 0, approvedCount: 1, venues: ['Sha Patisserie'],
+    leaveRows: [{
+      id: 'leave', userId: 'sam', staffName: 'Sam', employmentType: 'PART_TIME',
+      site: 'Sha Patisserie', date: '2026-12-21', type: 'ANNUAL', hours: 7.5,
+    }],
+  };
+  let index = 0;
+  const preset = ['payroll', '2026-12-21', report, false];
+  const hookReact = {
+    ...React,
+    useState(initial) {
+      const position = index++;
+      return [position < preset.length ? preset[position] : typeof initial === 'function' ? initial() : initial, () => {}];
+    },
+    useEffect: () => {},
+  };
+  const filename = path.join(root, 'components/TimesheetReview.tsx');
+  const load = Module._load;
+  delete require.cache[filename];
+  let Review;
+  Module._load = function (request, ...args) {
+    return request === 'react' ? hookReact : load.call(this, request, ...args);
+  };
+  try { Review = require(filename).default; }
+  finally { Module._load = load; delete require.cache[filename]; }
+  const tree = Review();
+  const html = renderToStaticMarkup(tree);
+  assert.doesNotMatch(html, /Approved Leave|Leave hours|ANNUAL/);
+  assert.match(html, /240\.00/);
+  assert.match(html, /Confirm Worked Hours/);
+  let csvBlob;
+  t.mock.method(URL, 'createObjectURL', (blob) => { csvBlob = blob; return 'blob:test'; });
+  t.mock.method(URL, 'revokeObjectURL', () => {});
+  const previousDocument = globalThis.document;
+  globalThis.document = { createElement: () => ({ click() {} }) };
+  try {
+    findElement(tree, (node) => node.type === 'button' && node.props.children === 'Download approved CSV').props.onClick();
+    const csv = await csvBlob.text();
+    assert.match(csv, /Approved Hours/);
+    assert.match(csv, /"Sam","Part Time","Sha Patisserie","30\.00","8\.00","240\.00"/);
+    assert.doesNotMatch(csv, /Leave Hours|Leave Type|Leave Date|ANNUAL|7\.50/);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+});
+
 test('roster leave loads reviewed requests and includes only effective approvals', async (t) => {
   t.mock.method(globalThis, 'fetch', async (url) => {
     assert.equal(url, '/api/leave?view=review');

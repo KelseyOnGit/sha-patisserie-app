@@ -30,9 +30,52 @@ and restart it. Press `Ctrl+C` when you want to stop the server.
 Use `http://localhost:3000` on the computer running the server. On another device,
 use the Network URL printed by Next.js, on the same local network.
 
+## Authentication deployment checklist
+
+- Set a strong, unique `JWT_SECRET` in each environment. The app refuses to start
+  without it; no default signing key is used. Rotate the secret before launch if
+  the fallback was previously used; rotation signs everyone out.
+- GPS test coordinates are ignored when `NODE_ENV=production`, even if
+  `GPS_TEST_MODE=true`. Leave GPS test mode unset in production.
+- New PINs are salted and hashed with scrypt. Login accepts only hashes, never
+  plaintext credentials. PINs and hashes are excluded from user and shift API
+  responses; the staff directory endpoint requires Admin or Manager access.
+- Before enabling the new login code against an existing database, stop older
+  app versions from writing plaintext PINs and take a database backup. Confirm
+  the application `.env` `DATABASE_URL` targets the intended database, then run:
+
+  ```powershell
+  npm run pins:migrate
+  npm run pins:migrate -- --apply
+  ```
+
+  The first command reports counts only without changing records. The second
+  verifies each hash against the existing PIN, then updates credentials in one
+  transaction. It is safe to repeat and never prints PINs or hashes. It uses
+  `DATABASE_URL`, not Prisma's migration connection setting. Run separately for
+  development and production; do not copy production credentials into source.
+  No schema migration is needed because the existing PIN column is text.
+- Previously exposed PINs must be treated as compromised. Hashing does not
+  revoke a known PIN: arrange credential resets before launch. This change does
+  not implement a reset workflow or login rate limiting, and is not a complete
+  launch security assessment.
+
+Focused checks: `node --test tests/auth-security.test.cjs`.
+
 ## Worked-hours review and payroll
 
+Staff Payslips navigation and content are temporarily commented out pending MYOB
+integration. The payroll Approved Leave table and leave CSV rows are also hidden
+until leave calculations are verified. Worked-hours review, worked-payroll totals
+and exports, leave requests, and roster leave cards remain available.
+
 ### Admin weekly roster
+
+Staff Profiles and shift rosters include Staff and Manager accounts, not Admin
+accounts, using each user's current role. Promoting a user to Admin removes them
+from these lists on refresh and prevents assigning, auto-filling, duplicating or
+publishing roster shifts for them. Existing shifts, attendance and payroll history
+are retained; changing a role does not delete historical records.
 
 The admin roster shows WA public holidays from [the holiday list](lib/holidays.ts)
 in each matching date header. Approved leave appears in green on the staff member's
@@ -47,6 +90,13 @@ This is a roster display, not a change to payroll calculations or shift creation
 Returning to the roster browser tab refreshes staff, shifts and leave.
 
 Run the focused roster tests with `node --test tests/roster.test.cjs`.
+
+If the staff roster returns HTTP 500 with `invalid input value for enum
+"LeaveStatus": "CANCEL_REQUESTED"` in the server log, deploy the
+`20261021000000_correct_leave_cancellation_status` migration with
+`npx prisma migrate deploy`. It corrects the legacy database spelling
+`CANCLE_REQUESTED` without deleting leave records and leaves correctly spelled
+databases unchanged. Do not edit an already-applied migration or reset the database.
 
 ### Worked-hours review
 
@@ -89,6 +139,16 @@ Monday, then filter by venue, staff or review status. All dates/times use Perth
   display/CSV totals are formatted to two decimal places.
 
 ### Database setup and tests
+
+Run commands from the application directory. In its untracked `.env`, set
+`DATABASE_URL` to the Neon pooled connection string and `DIRECT_URL` to the direct
+connection string for the same branch and database. The app uses `DATABASE_URL`;
+Prisma migrations use `DIRECT_URL`. Copy both strings from Neon and do not commit
+them. Local development should use the development branch, not production.
+Avoid defining these variables again in `.env.local`, where Next.js overrides
+`.env` while the Prisma CLI does not load `.env.local`. Configure both variables
+in the corresponding Vercel environment as well, keeping Preview databases
+separate from Production. After changing the environment, restart the dev server.
 
 The additive SQL is in
 `prisma/migrations/20261012000000_add_timesheet_review/migration.sql`.

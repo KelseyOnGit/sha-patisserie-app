@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma'; // Your shared Prisma client
 import { createSession } from '@/lib/session';
+import { verifyPin } from '@/lib/pins';
 
 export async function POST(request: Request) {
   try {
     const { email, pinCode } = await request.json();
 
     // 1. Validate input presence
-    if (!email || !pinCode) {
+    if (typeof email !== 'string' || !email || typeof pinCode !== 'string' || !/^\d{4,6}$/.test(pinCode)) {
       return NextResponse.json(
         { error: 'Email and PIN are required.' },
         { status: 400 }
@@ -20,7 +21,7 @@ export async function POST(request: Request) {
     });
 
     // 3. Verify user and PIN
-    if (!user || user.pinCode !== pinCode) {
+    if (!user || !await verifyPin(pinCode, user.pinCode)) {
       return NextResponse.json(
         { error: 'Invalid credentials.' },
         { status: 401 }
@@ -46,7 +47,8 @@ export async function POST(request: Request) {
       { message: 'Login successful', role: user.role },
       { status: 200 }
     );
-  } catch (error) {
+  } catch {
+    console.error('Login failed.');
     return NextResponse.json(
       { error: 'An unexpected error occurred.' },
       { status: 500 }

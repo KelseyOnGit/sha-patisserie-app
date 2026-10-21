@@ -13,9 +13,9 @@ export async function GET() {
     const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
     const [totalStaff, pendingUsers, upcomingShifts] = await Promise.all([
-      prisma.user.count({ where: { status: 'ACTIVE' } }),
+      prisma.user.count({ where: { status: 'ACTIVE', role: { in: ['STAFF', 'MANAGER'] } } }),
       prisma.user.count({ where: { isApproved: false } }),
-      prisma.shift.count({ where: { startTime: { gte: now, lt: weekFromNow } } }),
+      prisma.shift.count({ where: { user: { role: { in: ['STAFF', 'MANAGER'] } }, startTime: { gte: now, lt: weekFromNow } } }),
     ]);
 
     return NextResponse.json({
@@ -28,4 +28,3 @@ export async function GET() {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
-
