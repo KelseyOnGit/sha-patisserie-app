@@ -21,7 +21,122 @@ Module._resolveFilename = function (request, ...args) {
 };
 const rules = require('../lib/timesheets.ts');
 const { candidateShifts } = require('../lib/attendance-matching.ts');
+const { leavePeriod } = require('../lib/leave.ts');
+
+test('leave periods include both endpoints and validate reversed, invalid and overlong ranges', () => {
+  assert.equal(leavePeriod('2026-10-19', '2026-10-19').length, 1);
+  assert.deepEqual(leavePeriod('2026-10-30', '2026-11-02').map((date) => date.toISOString().slice(0, 10)),
+    ['2026-10-30', '2026-10-31', '2026-11-01', '2026-11-02']);
+  for (const pair of [['2026-10-20', '2026-10-19'], ['2026-02-30', '2026-03-02'], ['2026-10-01', '2026-11-02'], ['', '']]) {
+    assert.throws(() => leavePeriod(...pair));
+  }
+});
 const period = (start, end) => ({ start: `2026-10-05T${start}:00+08:00`, end: `2026-10-05T${end}:00+08:00` });
+
+test('leave workflow enforces eligibility, balances, review permissions and one-time deductions', async () => {
+  const { Prisma } = require('@prisma/client');
+  let session = { userId: 'staff', role: 'STAFF' };
+  let existing = null;
+  const person = { id: 'staff', name: 'Test', employmentType: 'PART_TIME', annualLeaveHours: new Prisma.Decimal(15), personalLeaveHours: new Prisma.Decimal(7.5) };
+  const leave = { id: 'request', userId: 'staff', type: 'ANNUAL', hours: new Prisma.Decimal(7.5), status: 'PENDING', user: person };
+  let deductions = 0;
+  let created = [];
+  let grouped = [];
+  let staffFilter;
+  let requestFilter;
+  const tx = {
+    user: {
+      findMany: async ({ where }) => { staffFilter = where; return [person]; },
+      findUnique: async () => person,
+      updateMany: async ({ where, data }) => {
+        const field = Object.keys(data)[0];
+        if (person[field].lt(where[field].gte)) return { count: 0 };
+        person[field] = person[field].minus(data[field].decrement);
+        deductions++;
+        return { count: 1 };
+      },
+    },
+    leaveRequest: {
+      findMany: async ({ where }) => { requestFilter = where; return grouped; },
+      findFirst: async () => existing,
+      findUnique: async () => leave,
+      createMany: async ({ data }) => { created = data; return { count: data.length }; },
+      update: async ({ data }) => Object.assign(leave, data),
+      updateMany: async ({ data }) => { grouped.forEach((entry) => Object.assign(entry, data)); return { count: grouped.length }; },
+    },
+  };
+  const load = Module._load;
+  const filename = path.join(root, 'app/api/leave/route.ts');
+  delete require.cache[filename];
+  Module._load = function (request, ...args) {
+    if (request === '@/lib/session') return { getSession: async () => session, isPrivilegedRole: (role) => ['ADMIN', 'MANAGER'].includes(role) };
+    if (request === '@/lib/prisma') return { prisma: { ...tx, $transaction: async (callback) => callback(tx) } };
+    return load.call(this, request, ...args);
+  };
+  let route;
+  try { route = require(filename); } finally { Module._load = load; delete require.cache[filename]; }
+  const request = (method, body) => new Request('http://localhost/api/leave', {
+    method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  const payload = { dates: ['2026-10-19', '2026-10-20'], type: 'ANNUAL', hours: 7.5 };
+  assert.equal((await route.POST(request('POST', payload))).status, 201);
+  assert.equal(created.length, 2);
+  assert.equal(created[0].userId, 'staff');
+  assert.equal((await route.POST(request('POST', { ...payload, dates: ['2026-02-30'] }))).status, 400);
+  assert.equal((await route.POST(request('POST', { ...payload, hours: -1 }))).status, 400);
+  assert.equal((await route.POST(request('POST', { ...payload, dates: ['2026-10-19', '2026-10-19'] }))).status, 400);
+  person.employmentType = 'CASUAL';
+  assert.equal((await route.POST(request('POST', payload))).status, 400);
+  assert.equal((await route.POST(request('POST', { ...payload, type: 'UNPAID' }))).status, 201);
+  person.employmentType = 'PART_TIME';
+  existing = { id: 'already-requested' };
+  assert.equal((await route.POST(request('POST', payload))).status, 409);
+  existing = null;
+  const approval = { id: 'request', status: 'APPROVED' };
+  assert.equal((await route.PATCH(request('PATCH', approval))).status, 403);
+  session = { userId: 'staff', role: 'ADMIN' };
+  assert.equal((await route.PATCH(request('PATCH', approval))).status, 403);
+  session = { userId: 'manager', role: 'MANAGER' };
+  assert.equal((await route.PATCH(request('PATCH', approval))).status, 200);
+  assert.equal(person.annualLeaveHours.toNumber(), 7.5);
+  assert.equal(deductions, 1);
+  assert.equal((await route.PATCH(request('PATCH', approval))).status, 409);
+  assert.equal(deductions, 1);
+  leave.status = 'PENDING'; leave.hours = new Prisma.Decimal(20);
+  assert.equal((await route.PATCH(request('PATCH', approval))).status, 409);
+  assert.equal(deductions, 1);
+  assert.equal((await route.PATCH(request('PATCH', { id: 'request', status: 'REJECTED' }))).status, 200);
+  assert.equal(deductions, 1);
+
+  const range = { startDate: '2026-10-19', endDate: '2026-10-20', type: 'ANNUAL', hours: 7.5, userId: 'someone-else' };
+  session = { userId: 'staff', role: 'STAFF' };
+  assert.equal((await route.POST(request('POST', range))).status, 201);
+  assert.equal(created.length, 2);
+  assert.ok(created[0].requestGroupId);
+  assert.equal(created[0].requestGroupId, created[1].requestGroupId);
+  assert.equal(created[0].userId, 'staff');
+  assert.equal((await route.POST(request('POST', { ...range, endDate: '2026-10-18' }))).status, 400);
+  assert.equal((await route.GET(new Request('http://localhost/api/leave?view=review'))).status, 403);
+  assert.equal((await route.GET(new Request('http://localhost/api/leave'))).status, 200);
+  assert.deepEqual(staffFilter, { id: 'staff' });
+  assert.deepEqual(requestFilter, { userId: 'staff' });
+  session = { userId: 'manager', role: 'MANAGER' };
+  await route.GET(new Request('http://localhost/api/leave'));
+  assert.deepEqual(staffFilter, { id: 'manager' });
+  await route.GET(new Request('http://localhost/api/leave?view=review'));
+  assert.deepEqual(requestFilter, {});
+  leave.status = 'PENDING'; leave.hours = new Prisma.Decimal(7.5); leave.requestGroupId = 'period';
+  grouped = [leave, { ...leave, id: 'second-day' }];
+  assert.equal((await route.PATCH(request('PATCH', approval))).status, 409);
+  assert.equal(deductions, 1);
+  person.annualLeaveHours = new Prisma.Decimal(15);
+  assert.equal((await route.PATCH(request('PATCH', approval))).status, 200);
+  assert.equal(person.annualLeaveHours.toNumber(), 0);
+  assert.equal(deductions, 2);
+  assert.ok(grouped.every((entry) => entry.status === 'APPROVED'));
+  assert.equal((await route.PATCH(request('PATCH', approval))).status, 409);
+  assert.equal(deductions, 2);
+});
 
 test('Perth inputs preserve the date, offset and seconds independently of browser timezone', () => {
   assert.equal(rules.perthDate('2026-10-04T17:00:00Z'), '2026-10-05');
@@ -246,7 +361,27 @@ test('database-backed save, approve, reopen and payroll workflow', {
       assert.equal(missingRow.actual.length, 0);
       assert.equal(missingRow.periods.length, 0);
       assert.equal(missingRow.breakMinutes, 0);
-      assert.equal((await send(missingRow, 'APPROVE', { reason: 'Manager verified absence; zero pay.' })).status, 200);
+      assert.equal((await send(missingRow, 'SAVE', { attendanceStatus: 'NO_SHOW', reason: 'Manager verified absence.' })).status, 200);
+      const classified = await getRow(`shift:${missing.id}`);
+      assert.equal(classified.attendanceStatus, 'NO_SHOW');
+      assert.equal((await send(classified, 'APPROVE', { reason: 'Manager verified absence; zero pay.' })).status, 200);
+      await tx.user.update({ where: { id: user.id }, data: { employmentType: 'PART_TIME', annualLeaveHours: 15 } });
+      const reviewer = await tx.user.create({ data: { email: `${token}-reviewer@example.invalid`, name: 'Reviewer', pinCode: 'test-only', role: 'MANAGER' } });
+      const leaveRoute = require('../app/api/leave/route.ts');
+      session = { userId: user.id, role: 'STAFF' };
+      const leaveRequest = (method, body) => new Request('http://localhost/api/leave', { method, body: JSON.stringify(body) });
+      assert.equal((await leaveRoute.POST(leaveRequest('POST', { dates: ['2026-10-10'], type: 'ANNUAL', hours: 7.5 }))).status, 201);
+      const requested = await tx.leaveRequest.findFirstOrThrow({ where: { userId: user.id } });
+      const before = (await load()).rows.filter((entry) => entry.userId === user.id).reduce((sum, entry) => sum + entry.gross, 0);
+      session = { userId: reviewer.id, role: 'MANAGER' };
+      assert.equal((await leaveRoute.PATCH(leaveRequest('PATCH', { id: requested.id, status: 'APPROVED' }))).status, 200);
+      assert.equal((await tx.user.findUniqueOrThrow({ where: { id: user.id } })).annualLeaveHours.toNumber(), 7.5);
+      assert.equal((await leaveRoute.PATCH(leaveRequest('PATCH', { id: requested.id, status: 'APPROVED' }))).status, 409);
+      const after = await load();
+      const exportedLeave = after.leaveRows.find((entry) => entry.userId === user.id);
+      assert.equal(exportedLeave.hours, 7.5);
+      assert.equal(exportedLeave.employmentType, 'PART_TIME');
+      assert.equal(after.rows.filter((entry) => entry.userId === user.id).reduce((sum, entry) => sum + entry.gross, 0), before);
       assertionsCompleted = true;
       throw rollback;
     }, { timeout: 220000, isolationLevel: Prisma.TransactionIsolationLevel.Serializable });

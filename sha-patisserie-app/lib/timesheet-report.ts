@@ -13,6 +13,11 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
   const dateStart = new Date(`${weekStart}T00:00:00Z`);
   const dateEnd = new Date(dateStart.getTime() + 7 * 86400000);
   const now = new Date();
+  const approvedLeave = await db.leaveRequest.findMany({
+    where: { status: 'APPROVED', workDate: { gte: dateStart, lt: dateEnd } },
+    include: { user: { select: { name: true, employmentType: true, location: { select: { name: true } } } } },
+    orderBy: { workDate: 'asc' },
+  });
   const saved = await db.timesheet.findMany({
     where: { workDate: { gte: dateStart, lt: dateEnd } },
     include: {
@@ -133,6 +138,8 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
     const periods = sheet ? readPeriods(sheet.payablePeriods) : actualPeriods(actual);
     rows.push({
       sourceKey: key, userId: user.id, staffName: user.name || user.email, site, workDate,
+      employmentType: user.employmentType,
+      attendanceStatus: sheet?.attendanceStatus ?? 'UNCLASSIFIED',
       scheduledStart: shift?.startTime.toISOString() ?? null,
       scheduledEnd: shift?.endTime.toISOString() ?? null,
       actual, actualBreakMinutes, scheduledBreakMinutes, periods,
@@ -154,12 +161,7 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
 
   for (const shift of shifts) {
     const attendance = grouped.get(`shift:${shift.id}`) ?? [];
-    const sheet = savedByKey.get(`shift:${shift.id}`);
-    // Omit scheduled roster shifts that have no attendance punches, so managers
-    // focus purely on actual clocked hours and payable adjustments.
-    if (attendance.length > 0 || sheet) {
-      makeRow(`shift:${shift.id}`, shift, attendance);
-    }
+    makeRow(`shift:${shift.id}`, shift, attendance);
   }
   for (const [key, attendance] of grouped) if (key.startsWith('log:')) makeRow(key, null, attendance);
   rows.sort((a, b) => a.workDate.localeCompare(b.workDate) || a.staffName.localeCompare(b.staffName));
@@ -180,15 +182,33 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
     const key = JSON.stringify([row.userId, sheet.site, rate]);
     const payroll = summary.get(key) ?? {
       key, userId: row.userId, staffName: row.staffName, site: sheet.site,
+      employmentType: row.employmentType,
       rate, totalHours: 0, gross: 0,
     };
     payroll.totalHours += paidHours(row.periods, row.breakMinutes);
     payroll.gross = payroll.totalHours * rate;
     summary.set(key, payroll);
   }
+
+  const allLocations = await db.location.findMany({
+    select: { name: true },
+    orderBy: { name: 'asc' },
+  });
+  const venues = Array.from(new Set([
+    ...allLocations.map((loc) => loc.name),
+    ...shifts.map((s) => s.location?.name).filter(Boolean) as string[],
+    ...rows.map((r) => r.site).filter(Boolean),
+  ])).sort();
+
   return {
     shifts: rows, rows: Array.from(summary.values()), excludedCount,
     approvedCount: rows.length - excludedCount,
+    leaveRows: approvedLeave.map((entry) => ({
+      id: entry.id, userId: entry.userId, staffName: entry.user.name || 'Unnamed staff',
+      employmentType: entry.user.employmentType, site: entry.user.location?.name || 'Unassigned',
+      date: entry.workDate.toISOString().slice(0, 10), type: entry.type, hours: entry.hours.toNumber(),
+    })),
+    venues,
   };
 }
 

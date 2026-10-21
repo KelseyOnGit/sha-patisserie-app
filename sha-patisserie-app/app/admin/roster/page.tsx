@@ -1,7 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DEFAULT_WORKING_HOURS, WORKING_DAYS, regularHoursFor, type WorkingHoursMap } from '@/lib/workingHours';
+import { WA_PUBLIC_HOLIDAYS } from '@/lib/holidays';
+import { fetchRosterLeave, type RosterLeave } from '@/lib/roster-leave';
+import RosterLeaveCard from '@/components/RosterLeaveCard';
 
 interface User {
   id: string;
@@ -77,6 +80,7 @@ function formatClock(value: string) {
 export default function ShiftRoster() {
   const [users, setUsers] = useState<User[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
+  const [leave, setLeave] = useState<RosterLeave[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
   const [weekStart, setWeekStart] = useState(() => localDate(mondayOf(new Date().toISOString().slice(0, 10))));
@@ -113,22 +117,33 @@ export default function ShiftRoster() {
     setIsError(error);
   };
 
-  const loadData = async () => {
-    try {
-      const [usersResponse, shiftsResponse] = await Promise.all([fetch('/api/users'), fetch('/api/shifts')]);
+  const loadData = useCallback(() => {
+    return Promise.all([
+      fetch('/api/users'), fetch('/api/shifts'), fetchRosterLeave(),
+    ]).then(async ([usersResponse, shiftsResponse, leaveData]) => {
       const usersData = await usersResponse.json();
       const shiftsData = await shiftsResponse.json();
-      if (Array.isArray(usersData)) setUsers(usersData);
-      if (Array.isArray(shiftsData)) setShifts(shiftsData);
-    } catch (error) {
+      if (!usersResponse.ok) throw new Error(usersData.error || 'Failed to load roster staff.');
+      if (!shiftsResponse.ok) throw new Error(shiftsData.error || 'Failed to load roster shifts.');
+      if (!Array.isArray(usersData) || !Array.isArray(shiftsData)) throw new Error('Invalid roster response.');
+      setUsers(usersData);
+      setShifts(shiftsData);
+      setLeave(leaveData);
+    }).catch((error: unknown) => {
       console.error('Failed to load roster:', error);
-      report('Failed to load roster.', true);
-    } finally {
+      setMessage(error instanceof Error ? error.message : 'Failed to load roster.');
+      setIsError(true);
+    }).finally(() => {
       setLoading(false);
-    }
-  };
+    });
+  }, []);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    loadData();
+    const refresh = () => { void loadData(); };
+    window.addEventListener('focus', refresh);
+    return () => window.removeEventListener('focus', refresh);
+  }, [loadData]);
 
   const weekDays = useMemo(() => {
     const first = mondayOf(weekStart);
@@ -508,6 +523,11 @@ const addSingleRegularShift = async (userId: string, date: Date) => {
                 <th key={day.key} className="border-b border-r border-stone-300 px-3 py-3 text-center last:border-r-0">
                   <span className="block text-sm font-bold text-stone-800">{day.name.slice(0, 3)}</span>
                   <span className="mt-1 block text-xs font-normal text-stone-500">{formatDMY(day.date)}</span>
+                  {WA_PUBLIC_HOLIDAYS[day.key] && (
+                    <span className="mt-2 block rounded-md bg-indigo-100 px-2 py-1 text-xs font-semibold text-indigo-900">
+                      Public holiday: {WA_PUBLIC_HOLIDAYS[day.key]}
+                    </span>
+                  )}
                 </th>
               ))}
             </tr>
@@ -524,6 +544,8 @@ const addSingleRegularShift = async (userId: string, date: Date) => {
                   <span className="mt-1 block text-xs font-normal text-stone-500">{user.employmentType?.replaceAll('_', ' ') || 'Staff'}</span>
                 </th>
                 {shiftsByDay.map((day) => {
+                  const userLeave = leave.filter((entry) => entry.userId === user.id && entry.workDate.slice(0, 10) === day.key);
+                  const showShifts = !WA_PUBLIC_HOLIDAYS[day.key] && userLeave.length === 0;
                   const userShifts = shifts.filter((shift) =>
                     shift.userId === user.id && dateKey(new Date(shift.startTime)) === day.key
                   );
@@ -533,7 +555,8 @@ const addSingleRegularShift = async (userId: string, date: Date) => {
                   return (
                     <td key={`${user.id}-${day.key}`} className="h-28 border-r border-stone-200 p-2 align-top last:border-r-0">
                       <div className="flex min-h-24 flex-col gap-2">
-                        {userShifts.map((shift) => {
+                        {userLeave.map((entry) => <RosterLeaveCard key={entry.id} leave={entry} />)}
+                        {showShifts && userShifts.map((shift) => {
                           return (
                             <button
                               key={shift.id}
@@ -552,7 +575,7 @@ const addSingleRegularShift = async (userId: string, date: Date) => {
                             </button>
                           );
                         })}
-                        {userShifts.length === 0 && regular ? (
+                        {showShifts && userShifts.length === 0 && regular ? (
                           <div className="group relative w-full rounded-md border border-dashed border-stone-300 bg-stone-50 p-2 text-left text-stone-500 transition hover:border-sky-500 hover:bg-sky-50">
                             <span className="block text-xs font-semibold text-stone-700 group-hover:text-sky-900">
                               {formatClock(regular.startTime)} - {formatClock(regular.endTime)}
@@ -581,7 +604,7 @@ const addSingleRegularShift = async (userId: string, date: Date) => {
                               </button>
                           </div>
                           </div>
-                        ) : userShifts.length === 0 ? (
+                        ) : showShifts && userShifts.length === 0 ? (
                           <button
                             type="button"
                             onClick={() => openShiftForm(user.id, day.date)}
@@ -671,4 +694,3 @@ const addSingleRegularShift = async (userId: string, date: Date) => {
     </div>
   );
 }
-

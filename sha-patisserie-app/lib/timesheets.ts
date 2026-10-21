@@ -15,6 +15,8 @@ export interface ReviewRow {
   sourceKey: string;
   userId: string;
   staffName: string;
+  employmentType?: string | null;
+  attendanceStatus?: string;
   site: string;
   workDate: string;
   scheduledStart: string | null;
@@ -49,10 +51,25 @@ export interface PayrollRow {
   key: string;
   userId: string;
   staffName: string;
+  employmentType?: string | null;
   site: string;
   rate: number;
   totalHours: number;
   gross: number;
+}
+
+export const ATTENDANCE_OPTIONS = [
+  ['UNCLASSIFIED', 'Not classified'],
+  ['WORKED', 'Worked'],
+  ['LATE_CLOCK_IN', 'Late clock-in'],
+  ['NO_SHOW', 'No show'],
+  ['PERSONAL_LEAVE', 'Personal leave'],
+  ['ANNUAL_LEAVE', 'Annual leave'],
+  ['UNPAID_LEAVE', 'Unpaid leave'],
+] as const;
+
+export function employmentLabel(value: string | null | undefined) {
+  return value === 'PART_TIME' ? 'Part Time' : value === 'FULL_TIME' ? 'Full Time' : value === 'CASUAL' ? 'Casual' : 'Not set';
 }
 
 export function perthDate(value: Date | string): string {

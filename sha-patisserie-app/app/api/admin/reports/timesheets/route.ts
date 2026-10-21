@@ -3,7 +3,8 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSession, isPrivilegedRole } from '@/lib/session';
 import { loadTimesheetReport, validateApproval } from '@/lib/timesheet-report';
-import { paidHours, readPeriods, requiresReason, validatePayable, weekBounds } from '@/lib/timesheets';
+import { actualPeriods, paidHours, readPeriods, requiresReason, samePeriods, validatePayable, weekBounds } from '@/lib/timesheets';
+import { ATTENDANCE_OPTIONS } from '@/lib/timesheets';
 
 class ReviewError extends Error {
   constructor(message: string, public status = 400) { super(message); }
@@ -41,6 +42,10 @@ export async function POST(req: Request) {
         throw new ReviewError('Missing or invalid timesheet fields in request.');
       }
       const reason = item.reason.trim();
+      const attendanceStatus = 'attendanceStatus' in item ? item.attendanceStatus : undefined;
+      if (attendanceStatus !== undefined && !ATTENDANCE_OPTIONS.some(([value]) => value === attendanceStatus)) {
+        throw new ReviewError('Choose a valid attendance classification.');
+      }
       if (reason.length > 2000) throw new ReviewError('Reason must be 2,000 characters or fewer.');
       weekBounds(item.weekStart);
       const periods = readPeriods(item.periods);
@@ -53,6 +58,7 @@ export async function POST(req: Request) {
         breakMinutes: item.breakMinutes,
         reason,
         periods,
+        attendanceStatus: attendanceStatus as string | undefined,
       };
     });
 
@@ -72,6 +78,11 @@ export async function POST(req: Request) {
           throw new ReviewError(`Timesheet for ${row.staffName} (${row.workDate}) changed. Refresh before saving.`, 409);
         }
 
+        let finalReason = reason;
+        const attendanceStatus = item.attendanceStatus ?? row.attendanceStatus ?? 'UNCLASSIFIED';
+        if (action !== 'REOPEN' && attendanceStatus === 'NO_SHOW' && periods.length > 0) {
+          throw new ReviewError('No show cannot have payable worked periods. Review the actual attendance first.');
+        }
         if (action === 'REOPEN') {
           if (row.status !== 'APPROVED') throw new ReviewError('Only approved timesheets can be reopened.');
           if (!reason) throw new ReviewError('Enter a reason for reopening this approval.');
@@ -86,7 +97,11 @@ export async function POST(req: Request) {
           }
           try {
             validatePayable(periods, breakMinutes, row.workDate);
-            if (requiresReason(row, periods, breakMinutes) && !reason) {
+            const isOnlyBreakChange = samePeriods(periods, actualPeriods(row.actual)) && row.actual.length > 0;
+            if (!finalReason && isOnlyBreakChange) {
+              finalReason = 'Break adjusted';
+            }
+            if (requiresReason(row, periods, breakMinutes) && !finalReason) {
               throw new Error(`Explain adjustments, missing attendance or unscheduled work for ${row.staffName} (${row.workDate}) before saving.`);
             }
             if (action === 'APPROVE') validateApproval(row, periods);
@@ -110,9 +125,10 @@ export async function POST(req: Request) {
 
         const approved = action === 'APPROVE';
         const data = {
+          attendanceStatus: action === 'REOPEN' ? row.attendanceStatus : attendanceStatus,
           payablePeriods: periods.map((period) => ({ ...period })),
           breakMinutes: action === 'REOPEN' ? row.breakMinutes : breakMinutes,
-          reason,
+          reason: finalReason,
           status: approved ? ('APPROVED' as const) : ('PENDING' as const),
           approvedAt: approved ? new Date() : null,
           approvedBy: approved ? session.userId : null,
@@ -191,3 +207,5 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unable to save timesheet. No changes were committed.' }, { status: 500 });
   }
 }
+
+

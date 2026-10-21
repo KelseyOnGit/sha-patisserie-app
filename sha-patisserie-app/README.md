@@ -32,6 +32,24 @@ use the Network URL printed by Next.js, on the same local network.
 
 ## Worked-hours review and payroll
 
+### Admin weekly roster
+
+The admin roster shows WA public holidays from [the holiday list](lib/holidays.ts)
+in each matching date header. Approved leave appears in green on the staff member's
+leave dates, showing only the leave type, without a status label or hours. Leave awaiting cancellation stays
+visible until the cancellation is approved; pending, rejected and cancelled leave
+are not shown as approved time off. Existing shifts and regular-hours suggestions
+are hidden on leave dates. Saved shifts are not deleted and reappear if the leave
+is cancelled (unless the date is a public holiday). Public holiday columns hide
+all shifts, regular-hours suggestions and add-shift buttons, while retaining
+holiday labels and leave cards. Saved shifts are not deleted.
+This is a roster display, not a change to payroll calculations or shift creation.
+Returning to the roster browser tab refreshes staff, shifts and leave.
+
+Run the focused roster tests with `node --test tests/roster.test.cjs`.
+
+### Worked-hours review
+
 Admins and managers can use **Payroll Reports > Confirm Worked Hours**. Choose a
 Monday, then filter by venue, staff or review status. All dates/times use Perth
 (UTC+08), including full dates for overnight work.

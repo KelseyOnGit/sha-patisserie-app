@@ -3,15 +3,18 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   actualPeriods, approvalError, csvCell, currentWeek, editPeriodTime, perthDate, timeInput,
-  paidHours, requiresReason, validatePayable,
+  paidHours, requiresReason, samePeriods, validatePayable,
   type PayablePeriod, type PayrollRow, type ReviewRow,
+  ATTENDANCE_OPTIONS, employmentLabel,
 } from '@/lib/timesheets';
 
 interface Report {
+  leaveRows?: { id: string; userId: string; staffName: string; employmentType: string | null; site: string; date: string; type: string; hours: number }[];
   shifts: ReviewRow[];
   rows: PayrollRow[];
   excludedCount: number;
   approvedCount: number;
+  venues?: string[];
 }
 
 interface WeekDay {
@@ -135,8 +138,15 @@ export default function TimesheetReview() {
     (!staff || row.userId === staff) && (!statusFilter || status(row) === statusFilter));
   const payroll = (report?.rows ?? []).filter((row) =>
     (!venue || row.site === venue) && (!staff || row.userId === staff));
-  const sites = [...new Set(shifts.map((row) => row.site))].sort();
-  const people = [...new Map(shifts.map((row) => [row.userId, row.staffName])).entries()]
+  const sites = Array.from(new Set([
+    ...(report?.venues ?? []),
+    ...shifts.map((row) => row.site),
+    ...(report?.leaveRows ?? []).map((row) => row.site),
+  ])).filter(Boolean).sort();
+  const people = [...new Map([
+    ...shifts.map((row) => [row.userId, row.staffName] as const),
+    ...(report?.leaveRows ?? []).map((row) => [row.userId, row.staffName] as const),
+  ]).entries()]
     .sort((a, b) => a[1].localeCompare(b[1]));
   const totalHours = payroll.reduce((sum, row) => sum + row.totalHours, 0);
   const totalGross = payroll.reduce((sum, row) => sum + row.gross, 0);
@@ -146,6 +156,7 @@ export default function TimesheetReview() {
     const staffMap = new Map<string, {
       userId: string;
       staffName: string;
+      employmentType?: string | null;
       site: string;
       rate: number | null;
       shiftMap: Map<string, ReviewRow>;
@@ -157,6 +168,7 @@ export default function TimesheetReview() {
         existing = {
           userId: row.userId,
           staffName: row.staffName,
+          employmentType: row.employmentType,
           site: row.site,
           rate: row.rate,
           shiftMap: new Map(),
@@ -174,6 +186,26 @@ export default function TimesheetReview() {
       ...prev,
       [sourceKey]: value,
     }));
+  };
+
+  const saveAttendance = async (row: ReviewRow, attendanceStatus: string) => {
+    setError(''); setSavingBatch(true);
+    try {
+      const response = await fetch('/api/admin/reports/timesheets', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sourceKey: row.sourceKey, weekStart, version: row.version, snapshot: row.snapshot,
+          action: 'SAVE', periods: row.periods, breakMinutes: row.breakMinutes,
+          reason: row.reason || `Attendance classified as ${attendanceStatus.replaceAll('_', ' ').toLowerCase()}`,
+          attendanceStatus,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Unable to save attendance classification.');
+      setMessage('Attendance classification saved. Leave approval is managed in Leave Requests.');
+      setRefresh((value) => value + 1);
+    } catch (error) { setError(error instanceof Error ? error.message : 'Unable to classify attendance.'); }
+    finally { setSavingBatch(false); }
   };
 
   // Bulk Save and Approve for a specific staff member or all staff
@@ -285,9 +317,11 @@ export default function TimesheetReview() {
   };
 
   const download = () => {
+    const leave = (report?.leaveRows || []).filter((row) => (!venue || row.site === venue) && (!staff || row.userId === staff));
     const lines = [
-      ['Staff Member', 'Site', 'Rate ($/hr)', 'Approved Hours', 'Gross ($)'],
-      ...payroll.map((row) => [row.staffName, row.site, row.rate.toFixed(2), row.totalHours.toFixed(2), row.gross.toFixed(2)]),
+      ['Staff Member', 'Employment Status', 'Site', 'Rate ($/hr)', 'Approved Hours', 'Leave Hours', 'Leave Type', 'Leave Date', 'Gross ($)'],
+      ...payroll.map((row) => [row.staffName, employmentLabel(row.employmentType), row.site, row.rate.toFixed(2), row.totalHours.toFixed(2), '', '', '', row.gross.toFixed(2)]),
+      ...leave.map((row) => [row.staffName, employmentLabel(row.employmentType), row.site, '', '0.00', row.hours.toFixed(2), row.type, row.date, '0.00']),
     ].map((line) => line.map(csvCell).join(',')).join('\r\n');
     const url = URL.createObjectURL(new Blob([lines], { type: 'text/csv;charset=utf-8;' }));
     const link = document.createElement('a');
@@ -392,7 +426,7 @@ export default function TimesheetReview() {
         {tab === 'payroll' && (
           <button
             onClick={download}
-            disabled={loading || payroll.length === 0}
+            disabled={loading || (payroll.length === 0 && !(report?.leaveRows || []).some((row) => (!venue || row.site === venue) && (!staff || row.userId === staff)))}
             className={`${buttonClass} bg-stone-900 text-white`}
           >
             Download approved CSV
@@ -407,7 +441,7 @@ export default function TimesheetReview() {
       {report && (
         <div className="grid gap-3 sm:grid-cols-3">
           {[
-            ['Staff with punches this week', consolidatedStaffList.length],
+            ['Staff with shifts thisweek', consolidatedStaffList.length],
             ['Awaiting approval / pending', shifts.filter((row) => row.status !== 'APPROVED').length],
             ['Approved hours (selected venue/staff)', `${totalHours.toFixed(2)} h`],
           ].map(([label, value]) => (
@@ -481,6 +515,7 @@ export default function TimesheetReview() {
                         {/* Staff Name & Site */}
                         <td className="p-3.5 align-top">
                           <p className="font-bold text-stone-900 text-sm">{staffItem.staffName}</p>
+                          <p className="mt-0.5 text-[11px] font-semibold text-stone-600">{employmentLabel(staffItem.employmentType)}</p>
                           <p className="text-stone-500 text-[11px] mt-0.5">{staffItem.site}</p>
                           {staffItem.rate !== null && (
                             <p className="text-stone-400 text-[10px] mt-0.5">${staffItem.rate.toFixed(2)} / hr</p>
@@ -519,6 +554,15 @@ export default function TimesheetReview() {
                               }`}
                             >
                               <div className="space-y-1 text-[11px]">
+                                <select
+                                  aria-label={`Attendance for ${row.staffName} on ${row.workDate}`}
+                                  value={row.attendanceStatus || 'UNCLASSIFIED'}
+                                  disabled={row.status === 'APPROVED' || savingBatch || row.inProgress}
+                                  onChange={(event) => void saveAttendance(row, event.target.value)}
+                                  className="mb-1 w-full rounded border border-stone-300 bg-white p-1 text-[10px] disabled:bg-stone-100"
+                                >
+                                  {ATTENDANCE_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                                </select>
                                 <div className="flex justify-between">
                                   <span className="font-semibold text-stone-500">In:</span>
                                   <span className="font-mono text-stone-800">{clockInTime}</span>
@@ -529,7 +573,7 @@ export default function TimesheetReview() {
                                     <span className="font-mono text-stone-800">{clockOutTime}</span>
                                   ) : (
                                     <span className="inline-block px-1 rounded bg-amber-100 text-amber-900 text-[10px] font-bold">
-                                      Clock in
+                                      {row.actual.length ? 'In progress' : 'No clock record'}
                                     </span>
                                   )}
                                 </div>
@@ -592,9 +636,10 @@ export default function TimesheetReview() {
                               <button
                                 onClick={() => handleReopenStaff(staffItem.userId)}
                                 disabled={savingBatch}
-                                className="text-[11px] text-stone-500 hover:text-stone-800 underline"
+                                className="w-full rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold px-2 py-1 text-xs shadow-xs transition-colors flex items-center justify-center gap-1"
+                                title="Unlock to modify hours or breaks"
                               >
-                                Reopen
+                                <span>✏️</span> Modify / Unlock
                               </button>
                             </div>
                           ) : (
@@ -642,7 +687,7 @@ export default function TimesheetReview() {
                 ) : (
                   payroll.map((row) => (
                     <tr key={row.key} className="border-t border-stone-100">
-                      <td className="p-4 font-semibold">{row.staffName}</td>
+                      <td className="p-4 font-semibold">{row.staffName}<span className="block text-xs font-normal text-stone-500">{employmentLabel(row.employmentType)}</span></td>
                       <td className="p-4 text-stone-600">{row.site}</td>
                       <td className="p-4 font-mono">${row.rate.toFixed(2)}</td>
                       <td className="p-4 font-mono font-bold">{row.totalHours.toFixed(2)} h</td>
@@ -658,6 +703,18 @@ export default function TimesheetReview() {
                   <td className="p-4 font-mono font-extrabold text-emerald-900">${totalGross.toFixed(2)}</td>
                 </tr>
               </tfoot>
+            </table>
+          </div>
+          <h2 className="pt-4 text-lg font-semibold">Approved Leave</h2>
+          <div className="overflow-x-auto border-t border-stone-200">
+            <table className="w-full text-left text-sm">
+              <thead><tr>{['Staff / employment', 'Date', 'Leave type', 'Leave hours'].map((label) => <th key={label} className="p-3">{label}</th>)}</tr></thead>
+              <tbody>{(report.leaveRows || []).filter((row) => (!venue || row.site === venue) && (!staff || row.userId === staff)).map((row) => (
+                <tr key={row.id} className="border-t border-stone-100">
+                  <td className="p-3">{row.staffName}<span className="block text-xs text-stone-500">{employmentLabel(row.employmentType)}</span></td>
+                  <td className="p-3">{row.date}</td><td className="p-3">{row.type}</td><td className="p-3">{row.hours.toFixed(2)}</td>
+                </tr>
+              ))}</tbody>
             </table>
           </div>
         </div>
@@ -709,21 +766,24 @@ function ReviewEditor({ row, weekStart, onClose, onSaved }: {
   const submit = async (action: 'SAVE' | 'APPROVE' | 'REOPEN') => {
     setError('');
     try {
+      const isOnlyBreakChange = samePeriods(periods, actualPeriods(row.actual));
       if (action !== 'REOPEN') {
         validatePayable(periods, breakMinutes, row.workDate);
-        if (requiresReason(row, periods, breakMinutes) && !reason.trim()) {
+        if (!isOnlyBreakChange && requiresReason(row, periods, breakMinutes) && !reason.trim()) {
           throw new Error('Explain adjusted times, missing attendance or unscheduled work.');
         }
         if (action === 'APPROVE' && blocked) throw new Error(blocked);
-      } else if (!reopenReason.trim()) {
-        throw new Error('Enter a reason for reopening this approval.');
       }
       setBusy(true);
+      const effectiveReason = action === 'REOPEN'
+        ? (reopenReason.trim() || 'Reopened by manager for modification')
+        : (reason.trim() || (isOnlyBreakChange ? 'Break adjusted' : 'Hours adjusted by manager'));
+
       const res = await fetch('/api/admin/reports/timesheets', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sourceKey: row.sourceKey, weekStart, version: row.version, snapshot: row.snapshot,
-          action, periods, breakMinutes, reason: action === 'REOPEN' ? reopenReason : reason,
+          action, periods, breakMinutes, reason: effectiveReason,
         }),
       });
       if (!res.headers.get('content-type')?.includes('application/json')) {
@@ -758,9 +818,28 @@ function ReviewEditor({ row, weekStart, onClose, onSaved }: {
           !exception.startsWith('Break not recorded:')).map((exception) =>
           <p key={exception} className="mt-1 text-amber-800">{exception}</p>)}
       </div>
-      {row.approvedAt && <p className="mt-3 text-sm text-emerald-800">
-        Approved by {row.approvedBy} · {perthDate(row.approvedAt)} {time(row.approvedAt)}
-      </p>}
+      {locked && (
+        <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <p className="font-bold text-emerald-900">✓ Timesheet is Approved</p>
+              <p className="text-xs text-emerald-700 mt-0.5">
+                {row.approvedBy ? `Approved by ${row.approvedBy} · ` : ''}
+                {row.approvedAt ? `${perthDate(row.approvedAt)} ${time(row.approvedAt)} · ` : ''}
+                Click Unlock to modify hours or breaks.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => submit('REOPEN')}
+              disabled={busy}
+              className="rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold px-4 py-2 text-xs shadow-xs transition-colors self-start sm:self-auto"
+            >
+              {busy ? 'Unlocking...' : '✏️ Unlock to Modify'}
+            </button>
+          </div>
+        </div>
+      )}
       <fieldset disabled={busy || locked} className="mt-5 space-y-3">
         <legend className="font-semibold">Payable hours</legend>
         {periods.map((period, index) => <div key={index} className="flex flex-wrap items-end gap-3">
@@ -792,17 +871,23 @@ function ReviewEditor({ row, weekStart, onClose, onSaved }: {
       </fieldset>
       <p className="mt-4 font-semibold">Total: {Number.isFinite(hours) && hours >= 0 ? hours.toFixed(2) : '--'} hours</p>
       {!locked && blocked && <p className="mt-2 text-sm text-amber-800">{blocked}</p>}
-      {locked && <label className="mt-4 grid gap-1 text-sm">Reason for reopening
-        <textarea value={reopenReason} onChange={(e) => setReopenReason(e.target.value)} disabled={busy}
-          maxLength={2000} className={inputClass} placeholder="Why reopen this approval?" />
-      </label>}
       {error && <p role="alert" className="mt-3 rounded-lg bg-rose-50 p-3 text-rose-800">{error}</p>}
       <div className="mt-4 flex flex-wrap gap-3">
-        {locked ? <button onClick={() => submit('REOPEN')} disabled={busy} className={`${buttonClass} bg-amber-50`}>Reopen for correction</button> : <>
-          <button onClick={() => submit('SAVE')} disabled={busy} className={buttonClass}>Save changes</button>
-          <button onClick={() => submit('APPROVE')} disabled={busy || Boolean(blocked)}
-            className={`${buttonClass} bg-emerald-700 text-white`}>Save &amp; approve</button>
-        </>}
+        {locked ? (
+          <button
+            onClick={() => submit('REOPEN')}
+            disabled={busy}
+            className="rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 px-4 py-2 text-sm font-bold text-amber-900 transition-colors"
+          >
+            {busy ? 'Unlocking...' : '✏️ Unlock to Modify Timesheet'}
+          </button>
+        ) : (
+          <>
+            <button onClick={() => submit('SAVE')} disabled={busy} className={buttonClass}>Save changes</button>
+            <button onClick={() => submit('APPROVE')} disabled={busy || Boolean(blocked)}
+              className={`${buttonClass} bg-emerald-700 text-white`}>Save &amp; approve</button>
+          </>
+        )}
         {busy && <span role="status" className="self-center text-sm">Saving...</span>}
       </div>
       {row.history.length > 0 && <details className="mt-6 border-t border-stone-200 pt-3">

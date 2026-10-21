@@ -23,7 +23,7 @@ export default async function AdminLayout({
   let pendingCount = 0;
   try {
     pendingCount = await prisma.user.count({
-      where: { status: 'PENDING' },
+      where: { isApproved: false },
     });
   } catch (error) {
     console.error('Failed to fetch pending user count:', error);
@@ -47,6 +47,9 @@ export default async function AdminLayout({
             </Link>
             <Link href="/admin/reports" className="block text-sm hover:text-stone-300">
               Payroll Reports
+            </Link>
+            <Link href="/admin/leave" className="block text-sm hover:text-stone-300">
+              Leave Requests
             </Link>
             
             {/* Pending Users Link with Notification Badge */}

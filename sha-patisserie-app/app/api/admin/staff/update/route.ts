@@ -9,6 +9,9 @@ const profileSelect = {
   email: true,
   contactNumber: true,
   status: true,
+  employmentType: true,
+  annualLeaveHours: true,
+  personalLeaveHours: true,
   hourlyPayRate: true,
   rateLastUpdated: true,
   workingRightStatus: true,
@@ -44,6 +47,7 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.json({
+      canManageEmployment: isPrivilegedRole(session.role),
       user: {
         ...user,
         hourlyPayRate: user.hourlyPayRate?.toString() ?? '',
@@ -110,9 +114,22 @@ export async function POST(request: Request) {
     }
 
     const locationCode = location === 'Zushi Bento' ? 'ZB' : 'SHA';
+    const employment = body.employmentType;
+    const balances = [body.annualLeaveHours, body.personalLeaveHours];
+    if (isPrivilegedRole(session.role) && (
+      !['', 'FULL_TIME', 'PART_TIME', 'CASUAL'].includes(employment) ||
+      balances.some((value) => typeof value !== 'string' || !/^\d+(\.\d{1,2})?$/.test(value))
+    )) {
+      return NextResponse.json({ error: 'Choose an employment type and non-negative leave hours (up to two decimal places).' }, { status: 400 });
+    }
     const updatedUser = await prisma.user.update({
       where: { id: userId },
       data: {
+        ...(isPrivilegedRole(session.role) ? {
+          employmentType: employment || null,
+          annualLeaveHours: new Prisma.Decimal(body.annualLeaveHours),
+          personalLeaveHours: new Prisma.Decimal(body.personalLeaveHours),
+        } : {}),
         name: fullName.trim(),
         email: email.trim(),
         contactNumber: contactNumber?.trim() || null,

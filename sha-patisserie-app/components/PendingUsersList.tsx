@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 interface User {
   id: string;
@@ -10,6 +11,7 @@ interface User {
 }
 
 export default function PendingUsersList({ initialUsers }: { initialUsers: User[] }) {
+  const router = useRouter();
   // Store the list of pending users in state
   const [users, setUsers] = useState<User[]>(initialUsers);
   const [loadingId, setLoadingId] = useState<string | null>(null);
@@ -27,7 +29,8 @@ export default function PendingUsersList({ initialUsers }: { initialUsers: User[
 
       if (res.ok) {
         // Remove the approved user from screen without reloading the page
-        setUsers(users.filter((user) => user.id !== userId));
+        setUsers((current) => current.filter((user) => user.id !== userId));
+        router.refresh();
       }
     } catch (error) {
       console.error('Failed to approve user:', error);

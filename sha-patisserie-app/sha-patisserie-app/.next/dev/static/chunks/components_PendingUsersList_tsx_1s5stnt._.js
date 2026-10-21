@@ -8,12 +8,15 @@ __turbopack_context__.s([
 ]);
 var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/node_modules/next/dist/compiled/react/jsx-dev-runtime.js [app-client] (ecmascript)");
 var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/node_modules/next/dist/compiled/react/index.js [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$navigation$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/node_modules/next/navigation.js [app-client] (ecmascript)");
 ;
 var _s = __turbopack_context__.k.signature();
 'use client';
 ;
+;
 function PendingUsersList({ initialUsers }) {
     _s();
+    const router = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$navigation$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRouter"])();
     // Store the list of pending users in state
     const [users, setUsers] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(initialUsers);
     const [loadingId, setLoadingId] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
@@ -32,7 +35,8 @@ function PendingUsersList({ initialUsers }) {
             });
             if (res.ok) {
                 // Remove the approved user from screen without reloading the page
-                setUsers(users.filter((user)=>user.id !== userId));
+                setUsers((current)=>current.filter((user)=>user.id !== userId));
+                router.refresh();
             }
         } catch (error) {
             console.error('Failed to approve user:', error);
@@ -49,12 +53,12 @@ function PendingUsersList({ initialUsers }) {
                 children: "No staff members are currently awaiting approval."
             }, void 0, false, {
                 fileName: "[project]/components/PendingUsersList.tsx",
-                lineNumber: 43,
+                lineNumber: 46,
                 columnNumber: 9
             }, this)
         }, void 0, false, {
             fileName: "[project]/components/PendingUsersList.tsx",
-            lineNumber: 42,
+            lineNumber: 45,
             columnNumber: 7
         }, this);
     }
@@ -70,7 +74,7 @@ function PendingUsersList({ initialUsers }) {
                                 children: user.name || 'Unnamed Staff'
                             }, void 0, false, {
                                 fileName: "[project]/components/PendingUsersList.tsx",
-                                lineNumber: 56,
+                                lineNumber: 59,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -78,13 +82,13 @@ function PendingUsersList({ initialUsers }) {
                                 children: user.email
                             }, void 0, false, {
                                 fileName: "[project]/components/PendingUsersList.tsx",
-                                lineNumber: 57,
+                                lineNumber: 60,
                                 columnNumber: 13
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/PendingUsersList.tsx",
-                        lineNumber: 55,
+                        lineNumber: 58,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -94,22 +98,26 @@ function PendingUsersList({ initialUsers }) {
                         children: loadingId === user.id ? 'Approving...' : 'Approve Staff'
                     }, void 0, false, {
                         fileName: "[project]/components/PendingUsersList.tsx",
-                        lineNumber: 59,
+                        lineNumber: 62,
                         columnNumber: 11
                     }, this)
                 ]
             }, user.id, true, {
                 fileName: "[project]/components/PendingUsersList.tsx",
-                lineNumber: 51,
+                lineNumber: 54,
                 columnNumber: 9
             }, this))
     }, void 0, false, {
         fileName: "[project]/components/PendingUsersList.tsx",
-        lineNumber: 49,
+        lineNumber: 52,
         columnNumber: 5
     }, this);
 }
-_s(PendingUsersList, "p4q4+FNBj9aiKkZXTm2IvR5rGxc=");
+_s(PendingUsersList, "/zXo+zQMO7cs9nYGY4V0dc68bm4=", false, function() {
+    return [
+        __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$navigation$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRouter"]
+    ];
+});
 _c = PendingUsersList;
 var _c;
 __turbopack_context__.k.register(_c, "PendingUsersList");

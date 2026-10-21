@@ -1,6 +1,6 @@
 'use client';
 
-type TabType = 'clock' | 'roster' | 'payslips';
+type TabType = 'clock' | 'roster' | 'payslips' | 'leave';
 
 interface BottomNavProps {
   activeTab: TabType;
@@ -12,6 +12,7 @@ export default function BottomNav({ activeTab, setActiveTab }: BottomNavProps) {
     { id: 'clock', label: 'Clock In', icon: '⏱️' },
     { id: 'roster', label: 'Roster', icon: '📅' },
     { id: 'payslips', label: 'Payslips', icon: '📄' },
+    { id: 'leave', label: 'Leave', icon: '📅' },
   ];
 
   return (

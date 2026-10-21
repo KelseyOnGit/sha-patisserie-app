@@ -17,7 +17,7 @@ export async function PATCH(request: Request) {
 
     const updatedUser = await prisma.user.update({
       where: { id: userId },
-      data: { isApproved: true },
+      data: { isApproved: true, status: 'ACTIVE' },
     });
 
     return NextResponse.json({ message: 'User approved successfully.', user: updatedUser });

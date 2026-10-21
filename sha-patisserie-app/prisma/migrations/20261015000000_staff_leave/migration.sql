@@ -1,0 +1,20 @@
+CREATE TYPE "LeaveType" AS ENUM ('ANNUAL', 'PERSONAL', 'UNPAID');
+CREATE TYPE "LeaveStatus" AS ENUM ('PENDING', 'APPROVED', 'REJECTED');
+ALTER TABLE "User"
+ADD COLUMN "annualLeaveHours" DECIMAL(10,2) NOT NULL DEFAULT 0,
+ADD COLUMN "personalLeaveHours" DECIMAL(10,2) NOT NULL DEFAULT 0;
+CREATE TABLE "LeaveRequest" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "userId" TEXT NOT NULL REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+  "workDate" DATE NOT NULL,
+  "type" "LeaveType" NOT NULL,
+  "hours" DECIMAL(10,2) NOT NULL,
+  "status" "LeaveStatus" NOT NULL DEFAULT 'PENDING',
+  "note" TEXT NOT NULL DEFAULT '',
+  "reviewNote" TEXT NOT NULL DEFAULT '',
+  "reviewedBy" TEXT REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+  "reviewedAt" TIMESTAMP(3),
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX "LeaveRequest_userId_workDate_status_idx" ON "LeaveRequest"("userId", "workDate", "status");
+ALTER TABLE "Timesheet" ADD COLUMN "attendanceStatus" TEXT NOT NULL DEFAULT 'UNCLASSIFIED';

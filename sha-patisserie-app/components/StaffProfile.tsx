@@ -19,6 +19,9 @@ interface StaffProfileData {
 
   // 2. Venue & Work Settings
   location: 'Sha Patisserie' | 'Zushi Bento';
+  employmentType: '' | 'FULL_TIME' | 'PART_TIME' | 'CASUAL';
+  annualLeaveHours: string;
+  personalLeaveHours: string;
 
   // 3. Pay Rates & Tax Setup
   hourlyPayRate: string;
@@ -37,6 +40,9 @@ interface StaffProfileResponse {
   email: string;
   contactNumber: string | null;
   status: 'ACTIVE' | 'PENDING' | 'INACTIVE';
+  employmentType: StaffProfileData['employmentType'] | null;
+  annualLeaveHours: string;
+  personalLeaveHours: string;
   location: { code: 'SHA' | 'ZB'; name: string } | null;
   hourlyPayRate: string;
   rateLastUpdated: string;
@@ -62,6 +68,9 @@ export default function StaffProfileForm({ id }: StaffProfileFormProps) {
     contactNumber: '',
     accountStatus: 'Active',
     location: 'Sha Patisserie',
+    employmentType: '',
+    annualLeaveHours: '0',
+    personalLeaveHours: '0',
     hourlyPayRate: '',
     rateLastUpdated: '',
     workingRightStatus: '',
@@ -73,6 +82,7 @@ export default function StaffProfileForm({ id }: StaffProfileFormProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [savedFormData, setSavedFormData] = useState<StaffProfileData | null>(null);
   const [message, setMessage] = useState('');
+  const [canManageEmployment, setCanManageEmployment] = useState(false);
 
   // --- Regular Working Hours State ---
   const [workingHoursPolicy, setWorkingHoursPolicy] = useState<'policy' | 'custom'>('custom');
@@ -86,8 +96,9 @@ export default function StaffProfileForm({ id }: StaffProfileFormProps) {
       try {
         const query = id ? `?userId=${encodeURIComponent(id)}` : '';
         const response = await fetch(`/api/admin/staff/update${query}`);
-        const data = await readApiResponse<{ user: StaffProfileResponse; error?: string }>(response);
+        const data = await readApiResponse<{ user: StaffProfileResponse; canManageEmployment: boolean; error?: string }>(response);
         if (!response.ok) throw new Error(data.error || 'Failed to load staff profile');
+        setCanManageEmployment(data.canManageEmployment);
 
         const user = data.user as StaffProfileResponse;
         const loadedFormData = {
@@ -101,6 +112,9 @@ export default function StaffProfileForm({ id }: StaffProfileFormProps) {
                 ? 'Pending'
                 : 'Inactive (Left Company)',
           location: user.location?.code === 'ZB' ? 'Zushi Bento' : 'Sha Patisserie',
+          employmentType: user.employmentType ?? '',
+          annualLeaveHours: String(user.annualLeaveHours),
+          personalLeaveHours: String(user.personalLeaveHours),
           hourlyPayRate: user.hourlyPayRate,
           rateLastUpdated: user.rateLastUpdated,
           workingRightStatus: user.workingRightStatus,
@@ -493,6 +507,28 @@ export default function StaffProfileForm({ id }: StaffProfileFormProps) {
             </section>
 
             {/* SECTION 3: Pay Rates & Tax Setup */}
+            <section className="space-y-4 border-t border-stone-200 pt-5">
+              <h2 className="text-lg font-semibold text-stone-900">Employment &amp; Leave Entitlement</h2>
+              <label className="block text-sm font-medium text-stone-700">
+                Employment Status
+                <select name="employmentType" value={formData.employmentType} onChange={handleChange} disabled={!canManageEmployment} className="mt-1 block w-full rounded-lg border border-stone-300 bg-white p-2.5 text-sm disabled:bg-stone-50">
+                  <option value="">Not set</option>
+                  <option value="PART_TIME">Part Time</option>
+                  <option value="FULL_TIME">Full Time</option>
+                  <option value="CASUAL">Casual</option>
+                </select>
+              </label>
+              {formData.employmentType === 'PART_TIME' || formData.employmentType === 'FULL_TIME' ? (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="text-sm text-stone-700">Annual leave balance (hours)
+                    <input name="annualLeaveHours" type="number" min="0" max="99999999" step="0.01" value={formData.annualLeaveHours} onChange={handleChange} disabled={!canManageEmployment} className="mt-1 block w-full rounded-lg border border-stone-300 p-2.5 text-sm" />
+                  </label>
+                  <label className="text-sm text-stone-700">Personal leave balance (hours)
+                    <input name="personalLeaveHours" type="number" min="0" max="99999999" step="0.01" value={formData.personalLeaveHours} onChange={handleChange} disabled={!canManageEmployment} className="mt-1 block w-full rounded-lg border border-stone-300 p-2.5 text-sm" />
+                  </label>
+                </div>
+              ) : <p className="text-sm text-stone-500">Leave entitlement: {formData.employmentType === 'CASUAL' ? 'None (unpaid time off only)' : 'Employment status not set'}</p>}
+            </section>
             <section className="rounded-2xl border border-stone-200 bg-white p-6 shadow-xs space-y-6">
               <h2 className="text-lg font-semibold text-stone-900 border-b border-stone-100 pb-3">
                 3. Pay Rates & Tax Setup

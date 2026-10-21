@@ -14,7 +14,7 @@ export async function GET() {
 
     const [totalStaff, pendingUsers, upcomingShifts] = await Promise.all([
       prisma.user.count({ where: { status: 'ACTIVE' } }),
-      prisma.user.count({ where: { status: 'PENDING' } }),
+      prisma.user.count({ where: { isApproved: false } }),
       prisma.shift.count({ where: { startTime: { gte: now, lt: weekFromNow } } }),
     ]);
 
@@ -28,3 +28,4 @@ export async function GET() {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
+
