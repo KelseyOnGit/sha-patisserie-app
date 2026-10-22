@@ -69,6 +69,23 @@ integration. The payroll Approved Leave table and leave CSV rows are also hidden
 until leave calculations are verified. Worked-hours review, worked-payroll totals
 and exports, leave requests, and roster leave cards remain available.
 
+### Account approval and role management
+
+In Pending Users, select Staff or Admin before approval. Only Admins can approve
+Admin accounts; Managers can approve registrations as Staff only. Admins can use
+Move to Admin in Staff Profiles and Move to Staff in the separate Admin Users
+list. Pending accounts must go through approval first. Role changes retain venue,
+profile, shifts, leave, attendance and payroll records; returning to Staff makes
+the account schedulable at its saved venue again.
+
+You cannot change your own role, and the last active approved Admin cannot be
+demoted. Role changes use a serializable transaction. Sessions read the current
+role and active/approved state from the database on each request, so an old cookie
+cannot retain Admin access after demotion. Existing Managers retain their role
+unless an Admin explicitly moves them; this workflow does not assign Manager.
+
+Run `node --test tests/account-management.test.cjs tests/auth-security.test.cjs`.
+
 ### Admin weekly roster
 
 Staff Profiles and shift rosters include Staff and Manager accounts, not Admin

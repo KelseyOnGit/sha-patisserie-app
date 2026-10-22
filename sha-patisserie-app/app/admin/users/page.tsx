@@ -1,8 +1,12 @@
 import {prisma} from '@/lib/prisma';
 import PendingUsersList from '@/components/PendingUsersList';
+import { getSession, isPrivilegedRole } from '@/lib/session';
+import { redirect } from 'next/navigation';
 
 //pass a select object directly inside findMany
 export default async function AdminUserPage() {
+    const session = await getSession();
+    if (!session || !isPrivilegedRole(session.role)) redirect('/dashboard');
     const pendingUsers = await prisma.user.findMany({
         where: {isApproved : false},
         select: {
@@ -26,7 +30,7 @@ export default async function AdminUserPage() {
     return (
         <main className="max-w-4xl mx-auto p-6">
             <h1 className="text-xl front-medium mb-4">Pending Approvals</h1>
-            <PendingUsersList initialUsers={formattedUsers} />
+            <PendingUsersList initialUsers={formattedUsers} canAssignAdmin={session.role === 'ADMIN'} />
 
         
         </main>

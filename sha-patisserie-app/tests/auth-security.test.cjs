@@ -57,7 +57,7 @@ test('PIN hashes are salted, verify correctly and never accept plaintext or malf
 });
 
 test('session configuration fails closed without a nonempty JWT secret', (t) => {
-  const mocks = { jose: {}, 'next/headers': {} };
+  const mocks = { jose: {}, 'next/headers': {}, '@/lib/prisma': {} };
   setEnv(t, 'JWT_SECRET', '');
   assert.throws(() => loadFile('lib/session.ts', mocks), /JWT_SECRET must be configured/);
   delete process.env.JWT_SECRET;

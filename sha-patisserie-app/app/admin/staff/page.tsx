@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import AccountRoleButton from '@/components/AccountRoleButton';
 
 interface StaffMember {
   id: string;
@@ -9,6 +10,7 @@ interface StaffMember {
   email: string | null;
   location: { code: 'SHA' | 'ZB'; name: string } | null;
   status: string;
+  isApproved: boolean;
 }
 
 export default function StaffListPage() {
@@ -16,17 +18,22 @@ export default function StaffListPage() {
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
+  const [canManageRoles, setCanManageRoles] = useState(false);
 
   useEffect(() => {
     async function fetchStaff() {
       try {
-        const res = await fetch('/api/users');
+        const [res, sessionResponse] = await Promise.all([fetch('/api/users'), fetch('/api/auth/me')]);
         const data = await res.json();
-        if (Array.isArray(data)) {
-          setStaffList(data);
-        }
+        const sessionData = await sessionResponse.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to load staff.');
+        if (!sessionResponse.ok) throw new Error(sessionData.error || 'Failed to load account permissions.');
+        if (!Array.isArray(data)) throw new Error('Invalid staff response.');
+        setStaffList(data);
+        setCanManageRoles(sessionData.user?.role === 'ADMIN');
       } catch (err) {
         console.error('Failed to load staff list', err);
+        setMessage(err instanceof Error ? err.message : 'Failed to load staff list.');
       } finally {
         setLoading(false);
       }
@@ -119,6 +126,14 @@ export default function StaffListPage() {
                     >
                       View Profile
                     </Link>
+                    {canManageRoles && staff.isApproved && (
+                      <span className="ml-3 inline-block">
+                        <AccountRoleButton userId={staff.id} name={staff.name || staff.email || 'this user'} role="ADMIN" onMoved={() => {
+                          setStaffList((current) => current.filter((person) => person.id !== staff.id));
+                          setMessage('Account moved to Admin Users.');
+                        }} />
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}

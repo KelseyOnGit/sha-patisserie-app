@@ -45,6 +45,11 @@ export default async function AdminLayout({
             <Link href="/admin/staff" className="block text-sm hover:text-stone-300">
               Staff Profiles
             </Link>
+            {session.role === 'ADMIN' && (
+              <Link href="/admin/admin-users" className="block text-sm hover:text-stone-300">
+                Admin Users
+              </Link>
+            )}
             <Link href="/admin/reports" className="block text-sm hover:text-stone-300">
               Payroll Reports
             </Link>

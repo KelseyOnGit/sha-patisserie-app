@@ -74,6 +74,12 @@ export async function POST(request: Request) {
     if (typeof pinCode !== 'string' || !/^\d{4,6}$/.test(pinCode)) {
       return NextResponse.json({ error: 'PIN must contain 4 to 6 digits.' }, { status: 400 });
     }
+    if (role !== undefined && !['STAFF', 'MANAGER', 'ADMIN'].includes(role)) {
+      return NextResponse.json({ error: 'Choose a valid account role.' }, { status: 400 });
+    }
+    if (role === 'ADMIN' && session.role !== 'ADMIN') {
+      return NextResponse.json({ error: 'Only Admins can assign the Admin role.' }, { status: 403 });
+    }
 
     const newUser = await prisma.user.create({
       data: {

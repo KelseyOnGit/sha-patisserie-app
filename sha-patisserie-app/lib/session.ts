@@ -1,5 +1,6 @@
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
+import { prisma } from '@/lib/prisma';
 
 const secret = process.env.JWT_SECRET;
 if (!secret?.trim()) throw new Error('JWT_SECRET must be configured before starting the app.');
@@ -39,13 +40,21 @@ export async function getSession(): Promise<SessionPayload | null> {
 
   if (!token) return null;
 
+  let userId: string;
   try {
     const { payload } = await jwtVerify(token, SECRET_KEY);
-    return payload as SessionPayload;
+    if (typeof payload.userId !== 'string') return null;
+    userId = payload.userId;
   } catch {
     // Invalid or expired token
     return null;
   }
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, email: true, role: true, isApproved: true, status: true },
+  });
+  if (!user?.isApproved || user.status !== 'ACTIVE') return null;
+  return { userId: user.id, email: user.email, role: user.role };
 }
 
 // 3. Clear session cookie (Logout)
