@@ -30,14 +30,12 @@ export function getDistanceInMeters(
 export function isWithinOnsiteRange(
   userLat: number,
   userLng: number,
-  location: 'Sha' | 'ZB' = 'Sha'
+  location: 'Sha' | 'ZB' | 'Test' = 'Sha'
 ) {
-  const useTestLocation =
-    process.env.NODE_ENV !== 'production' && process.env.GPS_TEST_MODE === 'true';
-  const store =
-    useTestLocation && location === 'Sha'
-      ? TEST_LOCATION
-      : STORE_LOCATIONS[location] || STORE_LOCATIONS.Sha;
+  if (location === 'Test') {
+    return { allowed: TEST_LOCATION, distanceMeters: getDistanceInMeters(userLat, userLng, TEST_LOCATION.lat, TEST_LOCATION.lng), radiusMeters: TEST_LOCATION.radiusMeters };
+  }
+  const store = STORE_LOCATIONS[location] ?? STORE_LOCATIONS.Sha;
   const distance = getDistanceInMeters(userLat, userLng, store.lat, store.lng);
 
   return {

@@ -24,6 +24,11 @@ function getPerthToday(): string {
 
 export default function AdminDashboardPage() {
   const [selectedDate] = useState<string>(getPerthToday());
+  const weekday = new Intl.DateTimeFormat('en-AU', {
+    timeZone: 'Australia/Perth',
+    weekday: 'long',
+  }).format(new Date(`${selectedDate}T12:00:00+08:00`));
+  const displayDate = `${weekday} ${selectedDate.split('-').reverse().join('-')}`;
 
   // Fetch admin stats counts
   const { data: statsData } = useQuery({
@@ -109,7 +114,7 @@ export default function AdminDashboardPage() {
               Live updates
             </span>
           </div>
-          <span className="text-xs text-stone-500">Date: {selectedDate} (Perth)</span>
+          <span className="text-xs text-stone-500">{displayDate}</span>
         </div>
 
         {/* Live Notification Banners */}
