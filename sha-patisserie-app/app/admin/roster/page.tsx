@@ -5,6 +5,8 @@ import { DEFAULT_WORKING_HOURS, WORKING_DAYS, regularHoursFor, type WorkingHours
 import { WA_PUBLIC_HOLIDAYS } from '@/lib/holidays';
 import { fetchRosterLeave, type RosterLeave } from '@/lib/roster-leave';
 import RosterLeaveCard from '@/components/RosterLeaveCard';
+import { parseRosterTime, perthDateTime } from '@/lib/roster-time';
+import { currentWeek, perthDate } from '@/lib/timesheets';
 
 interface User {
   id: string;
@@ -53,10 +55,6 @@ function localDate(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-function localDateTime(date: Date) {
-  return `${localDate(date)}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-}
-
 function formatDMY(date: Date) {
   const day = String(date.getDate()).padStart(2, '0');
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -83,7 +81,7 @@ export default function ShiftRoster() {
   const [leave, setLeave] = useState<RosterLeave[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
-  const [weekStart, setWeekStart] = useState(() => localDate(mondayOf(new Date().toISOString().slice(0, 10))));
+  const [weekStart, setWeekStart] = useState(currentWeek);
   const [locationFilter, setLocationFilter] = useState('SHA');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [repeatWeeks, setRepeatWeeks] = useState(1);
@@ -99,16 +97,16 @@ export default function ShiftRoster() {
     [users, locationFilter]
   );
   const availableUsers = useMemo(() => {
-    const start = new Date(formData.startTime).getTime();
-    const end = new Date(formData.endTime).getTime();
+    const start = parseRosterTime(formData.startTime).getTime();
+    const end = parseRosterTime(formData.endTime).getTime();
     if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return locationUsers;
 
-    const startDay = dateKey(new Date(formData.startTime));
+    const startDay = perthDate(new Date(start));
 
     return locationUsers.filter((user) => !shifts.some((shift) => {
       if (shift.userId !== user.id || shift.id === editingId) return false;
       const overlaps = new Date(shift.startTime).getTime() < end && new Date(shift.endTime).getTime() > start;
-      return overlaps || dateKey(new Date(shift.startTime)) === startDay;
+      return overlaps || perthDate(shift.startTime) === startDay;
     }));
   }, [locationUsers, shifts, formData.startTime, formData.endTime, editingId]);
 
@@ -157,7 +155,7 @@ export default function ShiftRoster() {
   const shiftsByDay = useMemo(() => weekDays.map((day) => ({
     ...day,
     shifts: shifts.filter((shift) =>
-      dateKey(new Date(shift.startTime)) === day.key &&
+      perthDate(shift.startTime) === day.key &&
       shift.location?.code === locationFilter
     ),
   })), [shifts, weekDays, locationFilter]);
@@ -340,8 +338,8 @@ const addSingleRegularShift = async (userId: string, date: Date) => {
     setRepeatWeeks(1);
     setFormData({
       userId: shift.userId,
-      startTime: localDateTime(new Date(shift.startTime)),
-      endTime: localDateTime(new Date(shift.endTime)),
+      startTime: perthDateTime(shift.startTime),
+      endTime: perthDateTime(shift.endTime),
       breakMinutes: shift.breakMinutes,
       location,
       roleTag: shift.roleTag || ROLE_OPTIONS[0],
@@ -366,7 +364,11 @@ const addSingleRegularShift = async (userId: string, date: Date) => {
       const response = await fetch('/api/shifts', {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...formData, id: editingId }),
+        body: JSON.stringify({
+          ...formData, id: editingId,
+          startTime: parseRosterTime(formData.startTime).toISOString(),
+          endTime: parseRosterTime(formData.endTime).toISOString(),
+        }),
       });
       if (!response.ok) {
         const data = await response.json();
@@ -374,13 +376,13 @@ const addSingleRegularShift = async (userId: string, date: Date) => {
       }
 
       if (!editingId && repeatWeeks > 1) {
-        const start = new Date(formData.startTime);
-        const end = new Date(formData.endTime);
+        const start = parseRosterTime(formData.startTime);
+        const end = parseRosterTime(formData.endTime);
         for (let week = 1; week < repeatWeeks; week += 1) {
           const repeatedStart = new Date(start);
           const repeatedEnd = new Date(end);
-          repeatedStart.setDate(repeatedStart.getDate() + week * 7);
-          repeatedEnd.setDate(repeatedEnd.getDate() + week * 7);
+          repeatedStart.setUTCDate(repeatedStart.getUTCDate() + week * 7);
+          repeatedEnd.setUTCDate(repeatedEnd.getUTCDate() + week * 7);
           const repeatResponse = await fetch('/api/shifts', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -403,7 +405,7 @@ const addSingleRegularShift = async (userId: string, date: Date) => {
     if (!editingId) return;
 
     const shift = shifts.find((item) => item.id === editingId);
-    const shiftDate = shift ? formatDMY(new Date(shift.startTime)) : 'this date';
+    const shiftDate = shift ? formatDMY(new Date(`${perthDate(shift.startTime)}T12:00:00`)) : 'this date';
     const staffName = shift?.user.name || 'this staff member';
     if (!window.confirm(`Delete ${staffName}'s shift on ${shiftDate}? This cannot be undone.`)) return;
 
@@ -451,7 +453,7 @@ const addSingleRegularShift = async (userId: string, date: Date) => {
               const staff = locationUsers.find((user) =>
                 user.status !== 'INACTIVE' &&
                 !shifts.some((shift) =>
-                  shift.userId === user.id && dateKey(new Date(shift.startTime)) === dayKey
+                  shift.userId === user.id && perthDate(shift.startTime) === dayKey
                 )
               );
               if (!staff) {
@@ -547,7 +549,7 @@ const addSingleRegularShift = async (userId: string, date: Date) => {
                   const userLeave = leave.filter((entry) => entry.userId === user.id && entry.workDate.slice(0, 10) === day.key);
                   const showShifts = !WA_PUBLIC_HOLIDAYS[day.key] && userLeave.length === 0;
                   const userShifts = shifts.filter((shift) =>
-                    shift.userId === user.id && dateKey(new Date(shift.startTime)) === day.key
+                    shift.userId === user.id && perthDate(shift.startTime) === day.key
                   );
                   const regular = user.status === 'INACTIVE'
                     ? null

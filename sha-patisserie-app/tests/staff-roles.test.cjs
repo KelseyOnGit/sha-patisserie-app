@@ -49,6 +49,53 @@ const shiftBody = {
 };
 const weekBody = { weekStart: '2026-10-26', location: 'SHA' };
 
+test('roster time conversion is independent of server/browser timezone', () => {
+  const { parseRosterTime, perthDateTime } = require('../lib/roster-time.ts');
+  const previous = process.env.TZ;
+  try {
+    for (const zone of ['UTC', 'Australia/Perth', 'America/New_York']) {
+      process.env.TZ = zone;
+      assert.equal(parseRosterTime('2026-10-22T09:00').toISOString(), '2026-10-22T01:00:00.000Z');
+      assert.equal(parseRosterTime('2026-10-22T15:00').toISOString(), '2026-10-22T07:00:00.000Z');
+      assert.equal(perthDateTime('2026-10-22T01:00:00Z'), '2026-10-22T09:00');
+      assert.equal(perthDateTime('2026-10-21T17:00:00Z'), '2026-10-22T01:00');
+      for (const value of ['2026-10-22T09:00+08:00', '2026-10-22T01:00:00.000Z']) {
+        assert.equal(parseRosterTime(value).toISOString(), '2026-10-22T01:00:00.000Z');
+      }
+      for (const invalid of [null, 123, '', 'invalid', '2026-10-22', '2026-10-22T25:00']) {
+        assert.ok(Number.isNaN(parseRosterTime(invalid).getTime()));
+      }
+    }
+  } finally {
+    if (previous === undefined) delete process.env.TZ;
+    else process.env.TZ = previous;
+  }
+});
+
+for (const method of ['POST', 'PUT']) {
+  test(`${method} shifts saves timezone-free 9am-3pm input as Perth time`, async () => {
+    let saved;
+    const write = async ({ data }) => { saved = data; return { id: 'shift' }; };
+    const api = route('shifts', {
+      user: { findUnique: async () => ({ role: 'STAFF' }) },
+      timesheet: { findUnique: async () => null },
+      shift: { create: write, update: write },
+    });
+    for (const [startTime, endTime] of [
+      ['2026-10-22T09:00', '2026-10-22T15:00'],
+      ['2026-10-22T01:00:00Z', '2026-10-22T07:00:00Z'],
+    ]) {
+      const response = await api[method](request(method, { ...shiftBody, startTime, endTime }));
+      assert.equal(response.status, method === 'POST' ? 201 : 200);
+      assert.equal(saved.startTime.toISOString(), '2026-10-22T01:00:00.000Z');
+      assert.equal(saved.endTime.toISOString(), '2026-10-22T07:00:00.000Z');
+    }
+    assert.equal((await api[method](request(method, {
+      ...shiftBody, startTime: 'bad time',
+    }))).status, 400);
+  });
+}
+
 test('staff list reads current roles and excludes Admin accounts after promotion', async () => {
   const person = { id: 'person', role: 'STAFF' };
   const api = route('users', { user: { findMany: async ({ where }) => {

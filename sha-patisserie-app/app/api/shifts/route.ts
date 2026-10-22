@@ -5,6 +5,7 @@ import { getSession, isPrivilegedRole } from '@/lib/session';
 import { findOverlappingShift, findShiftOnSameDay, overlapMessage, sameDayMessage } from '@/lib/shiftConflicts';
 import { perthDate } from '@/lib/timesheets';
 import { shiftUserSelect } from '@/lib/user-select';
+import { parseRosterTime } from '@/lib/roster-time';
 
 export async function GET() {
   const session = await getSession();
@@ -50,8 +51,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const start = new Date(startTime);
-    const end = new Date(endTime);
+    const start = parseRosterTime(startTime);
+    const end = parseRosterTime(endTime);
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
       return NextResponse.json({ error: 'End time must be after start time' }, { status: 400 });
     }
@@ -114,8 +115,8 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Shift, user, start time, and end time are required' }, { status: 400 });
     }
 
-    const start = new Date(startTime);
-    const end = new Date(endTime);
+    const start = parseRosterTime(startTime);
+    const end = parseRosterTime(endTime);
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
       return NextResponse.json({ error: 'End time must be after start time' }, { status: 400 });
     }

@@ -88,6 +88,13 @@ Run `node --test tests/account-management.test.cjs tests/auth-security.test.cjs`
 
 ### Admin weekly roster
 
+Shift entry, editing, day grouping and weekly repeats use Perth time (UTC+08),
+independent of the browser/server timezone. Timezone-free shift API inputs are
+interpreted as Perth time; timestamps with an explicit offset retain their instant.
+Existing incorrectly saved shifts are not automatically moved: edit their start/end
+to the intended Perth times, save, and republish. Regular-hours changes do not
+overwrite existing saved shifts.
+
 Staff Profiles and shift rosters include Staff and Manager accounts, not Admin
 accounts, using each user's current role. Promoting a user to Admin removes them
 from these lists on refresh and prevents assigning, auto-filling, duplicating or

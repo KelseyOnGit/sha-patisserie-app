@@ -132,7 +132,7 @@ function findElement(node, predicate) {
   return null;
 }
 
-async function mountRoster(t, file, { shifts = [], failedLeave = false } = {}) {
+async function mountRoster(t, file, { shifts = [], failedLeave = false, rosterStaff = staff } = {}) {
   const states = [];
   const effects = [];
   const listeners = new Map();
@@ -150,7 +150,7 @@ async function mountRoster(t, file, { shifts = [], failedLeave = false } = {}) {
     else globalThis.window = previousWindow;
   });
   t.mock.method(globalThis, 'fetch', async (url) => {
-    if (url === '/api/users') return Response.json(staff);
+    if (url === '/api/users') return Response.json(rosterStaff);
     if (url === '/api/shifts') return Response.json(shifts);
     if (url === '/api/leave?view=review') {
       return failedLeave
@@ -201,6 +201,66 @@ async function mountRoster(t, file, { shifts = [], failedLeave = false } = {}) {
 }
 
 for (const file of ['page.tsx', 'rosterview.tsx']) {
+  test(`${file}: manual creation and weekly repeats save explicit Perth instants`, async (t) => {
+    const roster = await mountRoster(t, file, {
+      rosterStaff: staff.map((user) => ({ ...user, regularWorkingHours: {} })),
+    });
+    let { tree } = roster.render();
+    findElement(tree, (node) => node.props['aria-label'] === 'Add Sam shift on Monday').props.onClick();
+    const changeTime = (index, value) => {
+      ({ tree } = roster.render());
+      let count = 0;
+      findElement(tree, (node) => node.type === 'input' && node.props.type === 'datetime-local' && count++ === index)
+        .props.onChange({ target: { value } });
+    };
+    changeTime(0, '2026-12-21T09:00');
+    changeTime(1, '2026-12-21T15:00');
+    ({ tree } = roster.render());
+    findElement(tree, (node) => node.type === 'select' && React.Children.toArray(node.props.children)
+      .some((child) => child.props?.value === '2')).props.onChange({ target: { value: '2' } });
+    ({ tree } = roster.render());
+    const originalFetch = globalThis.fetch;
+    const writes = [];
+    t.mock.method(globalThis, 'fetch', async (url, options) => {
+      if (options?.method === 'POST') {
+        writes.push(JSON.parse(options.body));
+        return Response.json({ id: 'shift' });
+      }
+      return originalFetch(url, options);
+    });
+    await findElement(tree, (node) => node.type === 'form').props.onSubmit({ preventDefault() {} });
+    assert.deepEqual(writes.map(({ startTime, endTime }) => [startTime, endTime]), [
+      ['2026-12-21T01:00:00.000Z', '2026-12-21T07:00:00.000Z'],
+      ['2026-12-28T01:00:00.000Z', '2026-12-28T07:00:00.000Z'],
+    ]);
+  });
+
+  test(`${file}: editing a saved shift displays and saves Perth 9am-3pm`, async (t) => {
+    const roster = await mountRoster(t, file, { shifts: [{
+      id: 'shift', userId: 'sam', startTime: '2026-12-21T01:00:00Z',
+      endTime: '2026-12-21T07:00:00Z', breakMinutes: 30,
+      roleTag: 'Barista', notes: null, user: staff[0], location: staff[0].location, publishedAt: null,
+    }] });
+    let { tree, html } = roster.render();
+    assert.match(html, /9:00 am - 3:00 pm/);
+    findElement(tree, (node) => node.type === 'button' && renderToStaticMarkup(node).includes('Barista')).props.onClick();
+    ({ tree } = roster.render());
+    assert.ok(findElement(tree, (node) => node.type === 'input' && node.props.value === '2026-12-21T09:00'));
+    assert.ok(findElement(tree, (node) => node.type === 'input' && node.props.value === '2026-12-21T15:00'));
+    const originalFetch = globalThis.fetch;
+    let saved;
+    t.mock.method(globalThis, 'fetch', async (url, options) => {
+      if (options?.method === 'PUT') {
+        saved = JSON.parse(options.body);
+        return Response.json({ id: 'shift' });
+      }
+      return originalFetch(url, options);
+    });
+    await findElement(tree, (node) => node.type === 'form').props.onSubmit({ preventDefault() {} });
+    assert.equal(saved.startTime, '2026-12-21T01:00:00.000Z');
+    assert.equal(saved.endTime, '2026-12-21T07:00:00.000Z');
+  });
+
   test(`${file}: holidays and green leave render for the selected staff, week and venue`, async (t) => {
     const roster = await mountRoster(t, file);
     let { tree, html } = roster.render();
