@@ -2429,6 +2429,8 @@ function StaffProfileForm({ id }) {
     const [savedFormData, setSavedFormData] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
     const [message, setMessage] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])('');
     const [canManageEmployment, setCanManageEmployment] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(false);
+    const [newPin, setNewPin] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])('');
+    const [resettingPin, setResettingPin] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(false);
     // --- Regular Working Hours State ---
     const [workingHoursPolicy, setWorkingHoursPolicy] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])('custom');
     const [workingHours, setWorkingHours] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(__TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$workingHours$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["DEFAULT_WORKING_HOURS"]);
@@ -2574,6 +2576,38 @@ function StaffProfileForm({ id }) {
             setMessage('Profile marked as Inactive. Don\'t forget to save changes.');
         }
     };
+    //--- Reset PIN Handler ---
+    const handleResetPin = async ()=>{
+        if (!id) return;
+        if (!/^\d{4}$/.test(newPin)) {
+            setMessage('PIN must be 4 digits.');
+            return;
+        }
+        const confirmReset = window.confirm(`Reset the PIN for ${formData.fullName || 'this staff member'}? Their old PIN will stop working.`);
+        if (!confirmReset) return;
+        setResettingPin(true);
+        setMessage('');
+        try {
+            const res = await fetch('/api/admin/users/reset-pin', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    userId: id,
+                    newPin
+                })
+            });
+            const data = await readApiResponse(res);
+            if (!res.ok) throw new Error(data.error || 'Failed to reset PIN');
+            setNewPin('');
+            setMessage('PIN reset successfully.');
+        } catch (err) {
+            setMessage(err instanceof Error ? err.message : 'Failed to reset PIN.');
+        } finally{
+            setResettingPin(false);
+        }
+    };
     // --- Working Hours Handlers ---
     const handleDayToggle = (day)=>{
         setWorkingHours((prev)=>({
@@ -2680,7 +2714,7 @@ function StaffProfileForm({ id }) {
                                         children: "Admin Panel"
                                     }, void 0, false, {
                                         fileName: "[project]/components/StaffProfile.tsx",
-                                        lineNumber: 346,
+                                        lineNumber: 380,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h1", {
@@ -2688,13 +2722,13 @@ function StaffProfileForm({ id }) {
                                         children: formData.fullName ? `${formData.fullName}'s Profile` : 'Staff Profile'
                                     }, void 0, false, {
                                         fileName: "[project]/components/StaffProfile.tsx",
-                                        lineNumber: 349,
+                                        lineNumber: 383,
                                         columnNumber: 13
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/StaffProfile.tsx",
-                                lineNumber: 345,
+                                lineNumber: 379,
                                 columnNumber: 11
                             }, this),
                             activeTab === 'profile' && !isEditing && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -2705,13 +2739,13 @@ function StaffProfileForm({ id }) {
                                 children: "Edit Profile"
                             }, void 0, false, {
                                 fileName: "[project]/components/StaffProfile.tsx",
-                                lineNumber: 354,
+                                lineNumber: 388,
                                 columnNumber: 13
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/StaffProfile.tsx",
-                        lineNumber: 344,
+                        lineNumber: 378,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -2727,7 +2761,7 @@ function StaffProfileForm({ id }) {
                                 children: "Profile Details"
                             }, void 0, false, {
                                 fileName: "[project]/components/StaffProfile.tsx",
-                                lineNumber: 367,
+                                lineNumber: 401,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -2740,19 +2774,19 @@ function StaffProfileForm({ id }) {
                                 children: "Regular Working Hours"
                             }, void 0, false, {
                                 fileName: "[project]/components/StaffProfile.tsx",
-                                lineNumber: 381,
+                                lineNumber: 415,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/StaffProfile.tsx",
-                        lineNumber: 366,
+                        lineNumber: 400,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/StaffProfile.tsx",
-                lineNumber: 343,
+                lineNumber: 377,
                 columnNumber: 7
             }, this),
             message && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -2760,7 +2794,7 @@ function StaffProfileForm({ id }) {
                 children: message
             }, void 0, false, {
                 fileName: "[project]/components/StaffProfile.tsx",
-                lineNumber: 399,
+                lineNumber: 433,
                 columnNumber: 9
             }, this),
             activeTab === 'profile' && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("form", {
@@ -2779,7 +2813,7 @@ function StaffProfileForm({ id }) {
                                         children: "1. Personal & Account Details"
                                     }, void 0, false, {
                                         fileName: "[project]/components/StaffProfile.tsx",
-                                        lineNumber: 416,
+                                        lineNumber: 450,
                                         columnNumber: 15
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -2792,7 +2826,7 @@ function StaffProfileForm({ id }) {
                                                         children: "Full Name"
                                                     }, void 0, false, {
                                                         fileName: "[project]/components/StaffProfile.tsx",
-                                                        lineNumber: 422,
+                                                        lineNumber: 456,
                                                         columnNumber: 19
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("input", {
@@ -2805,13 +2839,13 @@ function StaffProfileForm({ id }) {
                                                         className: "w-full rounded-lg border border-stone-300 p-2.5 text-sm focus:border-stone-800 focus:outline-none"
                                                     }, void 0, false, {
                                                         fileName: "[project]/components/StaffProfile.tsx",
-                                                        lineNumber: 425,
+                                                        lineNumber: 459,
                                                         columnNumber: 19
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                lineNumber: 421,
+                                                lineNumber: 455,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -2821,7 +2855,7 @@ function StaffProfileForm({ id }) {
                                                         children: "Email Address"
                                                     }, void 0, false, {
                                                         fileName: "[project]/components/StaffProfile.tsx",
-                                                        lineNumber: 437,
+                                                        lineNumber: 471,
                                                         columnNumber: 19
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("input", {
@@ -2834,13 +2868,13 @@ function StaffProfileForm({ id }) {
                                                         className: "w-full rounded-lg border border-stone-300 p-2.5 text-sm focus:border-stone-800 focus:outline-none"
                                                     }, void 0, false, {
                                                         fileName: "[project]/components/StaffProfile.tsx",
-                                                        lineNumber: 440,
+                                                        lineNumber: 474,
                                                         columnNumber: 19
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                lineNumber: 436,
+                                                lineNumber: 470,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -2850,7 +2884,7 @@ function StaffProfileForm({ id }) {
                                                         children: "Contact Number"
                                                     }, void 0, false, {
                                                         fileName: "[project]/components/StaffProfile.tsx",
-                                                        lineNumber: 452,
+                                                        lineNumber: 486,
                                                         columnNumber: 19
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("input", {
@@ -2862,13 +2896,13 @@ function StaffProfileForm({ id }) {
                                                         className: "w-full rounded-lg border border-stone-300 p-2.5 text-sm focus:border-stone-800 focus:outline-none"
                                                     }, void 0, false, {
                                                         fileName: "[project]/components/StaffProfile.tsx",
-                                                        lineNumber: 455,
+                                                        lineNumber: 489,
                                                         columnNumber: 19
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                lineNumber: 451,
+                                                lineNumber: 485,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -2878,7 +2912,7 @@ function StaffProfileForm({ id }) {
                                                         children: "Account Status"
                                                     }, void 0, false, {
                                                         fileName: "[project]/components/StaffProfile.tsx",
-                                                        lineNumber: 466,
+                                                        lineNumber: 500,
                                                         columnNumber: 19
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("select", {
@@ -2892,7 +2926,7 @@ function StaffProfileForm({ id }) {
                                                                 children: "Active"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                                lineNumber: 475,
+                                                                lineNumber: 509,
                                                                 columnNumber: 21
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
@@ -2900,7 +2934,7 @@ function StaffProfileForm({ id }) {
                                                                 children: "Pending"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                                lineNumber: 476,
+                                                                lineNumber: 510,
                                                                 columnNumber: 21
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
@@ -2908,31 +2942,31 @@ function StaffProfileForm({ id }) {
                                                                 children: "Inactive (Left Company)"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                                lineNumber: 477,
+                                                                lineNumber: 511,
                                                                 columnNumber: 21
                                                             }, this)
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/components/StaffProfile.tsx",
-                                                        lineNumber: 469,
+                                                        lineNumber: 503,
                                                         columnNumber: 19
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                lineNumber: 465,
+                                                lineNumber: 499,
                                                 columnNumber: 17
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/components/StaffProfile.tsx",
-                                        lineNumber: 420,
+                                        lineNumber: 454,
                                         columnNumber: 15
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/StaffProfile.tsx",
-                                lineNumber: 415,
+                                lineNumber: 449,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("section", {
@@ -2943,7 +2977,7 @@ function StaffProfileForm({ id }) {
                                         children: "2. Venue & Work Settings"
                                     }, void 0, false, {
                                         fileName: "[project]/components/StaffProfile.tsx",
-                                        lineNumber: 487,
+                                        lineNumber: 521,
                                         columnNumber: 15
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -2955,7 +2989,7 @@ function StaffProfileForm({ id }) {
                                                     children: "Location"
                                                 }, void 0, false, {
                                                     fileName: "[project]/components/StaffProfile.tsx",
-                                                    lineNumber: 493,
+                                                    lineNumber: 527,
                                                     columnNumber: 19
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("select", {
@@ -2969,7 +3003,7 @@ function StaffProfileForm({ id }) {
                                                             children: "Sha Patisserie"
                                                         }, void 0, false, {
                                                             fileName: "[project]/components/StaffProfile.tsx",
-                                                            lineNumber: 502,
+                                                            lineNumber: 536,
                                                             columnNumber: 21
                                                         }, this),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
@@ -2977,30 +3011,30 @@ function StaffProfileForm({ id }) {
                                                             children: "Zushi Bento"
                                                         }, void 0, false, {
                                                             fileName: "[project]/components/StaffProfile.tsx",
-                                                            lineNumber: 503,
+                                                            lineNumber: 537,
                                                             columnNumber: 21
                                                         }, this)
                                                     ]
                                                 }, void 0, true, {
                                                     fileName: "[project]/components/StaffProfile.tsx",
-                                                    lineNumber: 496,
+                                                    lineNumber: 530,
                                                     columnNumber: 19
                                                 }, this)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/components/StaffProfile.tsx",
-                                            lineNumber: 492,
+                                            lineNumber: 526,
                                             columnNumber: 17
                                         }, this)
                                     }, void 0, false, {
                                         fileName: "[project]/components/StaffProfile.tsx",
-                                        lineNumber: 491,
+                                        lineNumber: 525,
                                         columnNumber: 15
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/StaffProfile.tsx",
-                                lineNumber: 486,
+                                lineNumber: 520,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("section", {
@@ -3011,7 +3045,7 @@ function StaffProfileForm({ id }) {
                                         children: "Employment & Leave Entitlement"
                                     }, void 0, false, {
                                         fileName: "[project]/components/StaffProfile.tsx",
-                                        lineNumber: 511,
+                                        lineNumber: 545,
                                         columnNumber: 15
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
@@ -3030,7 +3064,7 @@ function StaffProfileForm({ id }) {
                                                         children: "Not set"
                                                     }, void 0, false, {
                                                         fileName: "[project]/components/StaffProfile.tsx",
-                                                        lineNumber: 515,
+                                                        lineNumber: 549,
                                                         columnNumber: 19
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
@@ -3038,7 +3072,7 @@ function StaffProfileForm({ id }) {
                                                         children: "Part Time"
                                                     }, void 0, false, {
                                                         fileName: "[project]/components/StaffProfile.tsx",
-                                                        lineNumber: 516,
+                                                        lineNumber: 550,
                                                         columnNumber: 19
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
@@ -3046,7 +3080,7 @@ function StaffProfileForm({ id }) {
                                                         children: "Full Time"
                                                     }, void 0, false, {
                                                         fileName: "[project]/components/StaffProfile.tsx",
-                                                        lineNumber: 517,
+                                                        lineNumber: 551,
                                                         columnNumber: 19
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
@@ -3054,19 +3088,19 @@ function StaffProfileForm({ id }) {
                                                         children: "Casual"
                                                     }, void 0, false, {
                                                         fileName: "[project]/components/StaffProfile.tsx",
-                                                        lineNumber: 518,
+                                                        lineNumber: 552,
                                                         columnNumber: 19
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                lineNumber: 514,
+                                                lineNumber: 548,
                                                 columnNumber: 17
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/components/StaffProfile.tsx",
-                                        lineNumber: 512,
+                                        lineNumber: 546,
                                         columnNumber: 15
                                     }, this),
                                     formData.employmentType === 'PART_TIME' || formData.employmentType === 'FULL_TIME' ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3088,13 +3122,13 @@ function StaffProfileForm({ id }) {
                                                         className: "mt-1 block w-full rounded-lg border border-stone-300 p-2.5 text-sm"
                                                     }, void 0, false, {
                                                         fileName: "[project]/components/StaffProfile.tsx",
-                                                        lineNumber: 524,
+                                                        lineNumber: 558,
                                                         columnNumber: 21
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                lineNumber: 523,
+                                                lineNumber: 557,
                                                 columnNumber: 19
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
@@ -3113,19 +3147,19 @@ function StaffProfileForm({ id }) {
                                                         className: "mt-1 block w-full rounded-lg border border-stone-300 p-2.5 text-sm"
                                                     }, void 0, false, {
                                                         fileName: "[project]/components/StaffProfile.tsx",
-                                                        lineNumber: 527,
+                                                        lineNumber: 561,
                                                         columnNumber: 21
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                lineNumber: 526,
+                                                lineNumber: 560,
                                                 columnNumber: 19
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/components/StaffProfile.tsx",
-                                        lineNumber: 522,
+                                        lineNumber: 556,
                                         columnNumber: 17
                                     }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                                         className: "text-sm text-stone-500",
@@ -3135,13 +3169,13 @@ function StaffProfileForm({ id }) {
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/components/StaffProfile.tsx",
-                                        lineNumber: 530,
+                                        lineNumber: 564,
                                         columnNumber: 19
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/StaffProfile.tsx",
-                                lineNumber: 510,
+                                lineNumber: 544,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("section", {
@@ -3152,7 +3186,7 @@ function StaffProfileForm({ id }) {
                                         children: "3. Pay Rates & Tax Setup"
                                     }, void 0, false, {
                                         fileName: "[project]/components/StaffProfile.tsx",
-                                        lineNumber: 533,
+                                        lineNumber: 567,
                                         columnNumber: 15
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3165,7 +3199,7 @@ function StaffProfileForm({ id }) {
                                                         children: "Hourly Pay Rate ($/hr)"
                                                     }, void 0, false, {
                                                         fileName: "[project]/components/StaffProfile.tsx",
-                                                        lineNumber: 539,
+                                                        lineNumber: 573,
                                                         columnNumber: 19
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3176,7 +3210,7 @@ function StaffProfileForm({ id }) {
                                                                 children: "$"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                                lineNumber: 543,
+                                                                lineNumber: 577,
                                                                 columnNumber: 21
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("input", {
@@ -3188,19 +3222,19 @@ function StaffProfileForm({ id }) {
                                                                 className: "w-full rounded-lg border border-stone-300 py-2.5 pl-7 pr-3 text-sm focus:border-stone-800 focus:outline-none"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                                lineNumber: 544,
+                                                                lineNumber: 578,
                                                                 columnNumber: 21
                                                             }, this)
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/components/StaffProfile.tsx",
-                                                        lineNumber: 542,
+                                                        lineNumber: 576,
                                                         columnNumber: 19
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                lineNumber: 538,
+                                                lineNumber: 572,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3210,7 +3244,7 @@ function StaffProfileForm({ id }) {
                                                         children: "Rate Last Updated"
                                                     }, void 0, false, {
                                                         fileName: "[project]/components/StaffProfile.tsx",
-                                                        lineNumber: 556,
+                                                        lineNumber: 590,
                                                         columnNumber: 19
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("input", {
@@ -3221,19 +3255,19 @@ function StaffProfileForm({ id }) {
                                                         className: "w-full rounded-lg border border-stone-300 p-2.5 text-sm focus:border-stone-800 focus:outline-none"
                                                     }, void 0, false, {
                                                         fileName: "[project]/components/StaffProfile.tsx",
-                                                        lineNumber: 559,
+                                                        lineNumber: 593,
                                                         columnNumber: 19
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                lineNumber: 555,
+                                                lineNumber: 589,
                                                 columnNumber: 17
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/components/StaffProfile.tsx",
-                                        lineNumber: 537,
+                                        lineNumber: 571,
                                         columnNumber: 15
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3243,7 +3277,7 @@ function StaffProfileForm({ id }) {
                                                 children: "Working Right Status"
                                             }, void 0, false, {
                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                lineNumber: 570,
+                                                lineNumber: 604,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3276,7 +3310,7 @@ function StaffProfileForm({ id }) {
                                                                 className: "mt-0.5 text-stone-900 focus:ring-stone-800"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                                lineNumber: 594,
+                                                                lineNumber: 628,
                                                                 columnNumber: 23
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -3284,24 +3318,24 @@ function StaffProfileForm({ id }) {
                                                                 children: status.label
                                                             }, void 0, false, {
                                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                                lineNumber: 605,
+                                                                lineNumber: 639,
                                                                 columnNumber: 23
                                                             }, this)
                                                         ]
                                                     }, status.id, true, {
                                                         fileName: "[project]/components/StaffProfile.tsx",
-                                                        lineNumber: 590,
+                                                        lineNumber: 624,
                                                         columnNumber: 21
                                                     }, this))
                                             }, void 0, false, {
                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                lineNumber: 573,
+                                                lineNumber: 607,
                                                 columnNumber: 17
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/components/StaffProfile.tsx",
-                                        lineNumber: 569,
+                                        lineNumber: 603,
                                         columnNumber: 15
                                     }, this),
                                     isTaxFreeEligible && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3312,7 +3346,7 @@ function StaffProfileForm({ id }) {
                                                 children: "Tax-Free Threshold (Citizen / PR / Student only)"
                                             }, void 0, false, {
                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                lineNumber: 616,
+                                                lineNumber: 650,
                                                 columnNumber: 19
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3332,14 +3366,14 @@ function StaffProfileForm({ id }) {
                                                                 className: "text-stone-900 focus:ring-stone-800"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                                lineNumber: 621,
+                                                                lineNumber: 655,
                                                                 columnNumber: 23
                                                             }, this),
                                                             "Claiming Tax-Free Threshold"
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/components/StaffProfile.tsx",
-                                                        lineNumber: 620,
+                                                        lineNumber: 654,
                                                         columnNumber: 21
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
@@ -3356,14 +3390,14 @@ function StaffProfileForm({ id }) {
                                                                 className: "text-stone-900 focus:ring-stone-800"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                                lineNumber: 637,
+                                                                lineNumber: 671,
                                                                 columnNumber: 23
                                                             }, this),
                                                             "Not set"
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/components/StaffProfile.tsx",
-                                                        lineNumber: 636,
+                                                        lineNumber: 670,
                                                         columnNumber: 21
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
@@ -3380,32 +3414,32 @@ function StaffProfileForm({ id }) {
                                                                 className: "text-stone-900 focus:ring-stone-800"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                                lineNumber: 649,
+                                                                lineNumber: 683,
                                                                 columnNumber: 23
                                                             }, this),
                                                             "No Tax-Free Threshold"
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/components/StaffProfile.tsx",
-                                                        lineNumber: 648,
+                                                        lineNumber: 682,
                                                         columnNumber: 21
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                lineNumber: 619,
+                                                lineNumber: 653,
                                                 columnNumber: 19
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/components/StaffProfile.tsx",
-                                        lineNumber: 615,
+                                        lineNumber: 649,
                                         columnNumber: 17
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/StaffProfile.tsx",
-                                lineNumber: 532,
+                                lineNumber: 566,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("section", {
@@ -3418,7 +3452,7 @@ function StaffProfileForm({ id }) {
                                                 children: "4. Offboarding"
                                             }, void 0, false, {
                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                lineNumber: 671,
+                                                lineNumber: 705,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -3426,13 +3460,13 @@ function StaffProfileForm({ id }) {
                                                 children: "Deactivate staff access and mark account status as Inactive."
                                             }, void 0, false, {
                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                lineNumber: 672,
+                                                lineNumber: 706,
                                                 columnNumber: 17
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/components/StaffProfile.tsx",
-                                        lineNumber: 670,
+                                        lineNumber: 704,
                                         columnNumber: 15
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -3442,19 +3476,19 @@ function StaffProfileForm({ id }) {
                                         children: "End Profile"
                                     }, void 0, false, {
                                         fileName: "[project]/components/StaffProfile.tsx",
-                                        lineNumber: 676,
+                                        lineNumber: 710,
                                         columnNumber: 15
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/StaffProfile.tsx",
-                                lineNumber: 669,
+                                lineNumber: 703,
                                 columnNumber: 13
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/StaffProfile.tsx",
-                        lineNumber: 413,
+                        lineNumber: 447,
                         columnNumber: 11
                     }, this),
                     isEditing && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3468,7 +3502,7 @@ function StaffProfileForm({ id }) {
                                 children: "Cancel"
                             }, void 0, false, {
                                 fileName: "[project]/components/StaffProfile.tsx",
-                                lineNumber: 689,
+                                lineNumber: 723,
                                 columnNumber: 15
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -3478,20 +3512,121 @@ function StaffProfileForm({ id }) {
                                 children: saving ? 'Saving...' : 'Save Profile'
                             }, void 0, false, {
                                 fileName: "[project]/components/StaffProfile.tsx",
-                                lineNumber: 697,
+                                lineNumber: 731,
                                 columnNumber: 15
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/StaffProfile.tsx",
-                        lineNumber: 688,
+                        lineNumber: 722,
                         columnNumber: 13
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/StaffProfile.tsx",
-                lineNumber: 412,
+                lineNumber: 446,
                 columnNumber: 9
+            }, this),
+            activeTab === 'profile' && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Fragment"], {
+                children: [
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("form", {
+                        onSubmit: handleSubmit,
+                        className: "space-y-8"
+                    }, void 0, false, {
+                        fileName: "[project]/components/StaffProfile.tsx",
+                        lineNumber: 746,
+                        columnNumber: 5
+                    }, this),
+                    canManageEmployment && id && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("section", {
+                        className: "rounded-2xl border border-stone-200 bg-white p-6 shadow-xs space-y-4",
+                        children: [
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                children: [
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h2", {
+                                        className: "text-lg font-semibold text-stone-900",
+                                        children: "Reset PIN"
+                                    }, void 0, false, {
+                                        fileName: "[project]/components/StaffProfile.tsx",
+                                        lineNumber: 753,
+                                        columnNumber: 11
+                                    }, this),
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                        className: "text-xs text-stone-500 mt-0.5",
+                                        children: "Set a new login PIN for this staff member. Their current PIN will stop working immediately."
+                                    }, void 0, false, {
+                                        fileName: "[project]/components/StaffProfile.tsx",
+                                        lineNumber: 754,
+                                        columnNumber: 11
+                                    }, this)
+                                ]
+                            }, void 0, true, {
+                                fileName: "[project]/components/StaffProfile.tsx",
+                                lineNumber: 752,
+                                columnNumber: 9
+                            }, this),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                className: "flex flex-wrap items-end gap-3",
+                                children: [
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                        children: [
+                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
+                                                htmlFor: "newPin",
+                                                className: "block text-xs font-bold uppercase text-stone-600 mb-1",
+                                                children: "New PIN"
+                                            }, void 0, false, {
+                                                fileName: "[project]/components/StaffProfile.tsx",
+                                                lineNumber: 760,
+                                                columnNumber: 13
+                                            }, this),
+                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("input", {
+                                                id: "newPin",
+                                                type: "password",
+                                                inputMode: "numeric",
+                                                autoComplete: "new-password",
+                                                maxLength: 8,
+                                                value: newPin,
+                                                onChange: (e)=>setNewPin(e.target.value.replace(/\D/g, '')),
+                                                placeholder: "4 digits",
+                                                className: "w-40 rounded-lg border border-stone-300 p-2.5 text-sm focus:border-stone-800 focus:outline-none"
+                                            }, void 0, false, {
+                                                fileName: "[project]/components/StaffProfile.tsx",
+                                                lineNumber: 763,
+                                                columnNumber: 13
+                                            }, this)
+                                        ]
+                                    }, void 0, true, {
+                                        fileName: "[project]/components/StaffProfile.tsx",
+                                        lineNumber: 759,
+                                        columnNumber: 11
+                                    }, this),
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                                        type: "button",
+                                        onClick: handleResetPin,
+                                        disabled: resettingPin || newPin.length !== 4,
+                                        className: "rounded-lg bg-stone-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-stone-800 transition disabled:opacity-50",
+                                        children: resettingPin ? 'Resetting...' : 'Reset PIN'
+                                    }, void 0, false, {
+                                        fileName: "[project]/components/StaffProfile.tsx",
+                                        lineNumber: 775,
+                                        columnNumber: 11
+                                    }, this)
+                                ]
+                            }, void 0, true, {
+                                fileName: "[project]/components/StaffProfile.tsx",
+                                lineNumber: 758,
+                                columnNumber: 9
+                            }, this)
+                        ]
+                    }, void 0, true, {
+                        fileName: "[project]/components/StaffProfile.tsx",
+                        lineNumber: 751,
+                        columnNumber: 7
+                    }, this)
+                ]
+            }, void 0, true, {
+                fileName: "[project]/components/StaffProfile.tsx",
+                lineNumber: 745,
+                columnNumber: 3
             }, this),
             activeTab === 'working-hours' && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                 className: "space-y-6 bg-white p-6 rounded-2xl border border-stone-200 shadow-xs",
@@ -3507,7 +3642,7 @@ function StaffProfileForm({ id }) {
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/StaffProfile.tsx",
-                                lineNumber: 713,
+                                lineNumber: 793,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -3515,13 +3650,13 @@ function StaffProfileForm({ id }) {
                                 children: "Regular working hours define when users are expected to work."
                             }, void 0, false, {
                                 fileName: "[project]/components/StaffProfile.tsx",
-                                lineNumber: 716,
+                                lineNumber: 796,
                                 columnNumber: 13
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/StaffProfile.tsx",
-                        lineNumber: 712,
+                        lineNumber: 792,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3538,7 +3673,7 @@ function StaffProfileForm({ id }) {
                                                 children: "Working day"
                                             }, void 0, false, {
                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                lineNumber: 728,
+                                                lineNumber: 808,
                                                 columnNumber: 19
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("th", {
@@ -3546,7 +3681,7 @@ function StaffProfileForm({ id }) {
                                                 children: "Working hours (Optional)"
                                             }, void 0, false, {
                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                lineNumber: 729,
+                                                lineNumber: 809,
                                                 columnNumber: 19
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("th", {
@@ -3554,7 +3689,7 @@ function StaffProfileForm({ id }) {
                                                 children: "Break (min)"
                                             }, void 0, false, {
                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                lineNumber: 730,
+                                                lineNumber: 810,
                                                 columnNumber: 19
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("th", {
@@ -3562,18 +3697,18 @@ function StaffProfileForm({ id }) {
                                                 children: "Standard total hours (Optional)"
                                             }, void 0, false, {
                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                lineNumber: 731,
+                                                lineNumber: 811,
                                                 columnNumber: 19
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/components/StaffProfile.tsx",
-                                        lineNumber: 727,
+                                        lineNumber: 807,
                                         columnNumber: 17
                                     }, this)
                                 }, void 0, false, {
                                     fileName: "[project]/components/StaffProfile.tsx",
-                                    lineNumber: 726,
+                                    lineNumber: 806,
                                     columnNumber: 15
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("tbody", {
@@ -3595,7 +3730,7 @@ function StaffProfileForm({ id }) {
                                                                 className: "rounded border-stone-300 text-sky-600 focus:ring-sky-500"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                                lineNumber: 744,
+                                                                lineNumber: 824,
                                                                 columnNumber: 27
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -3603,18 +3738,18 @@ function StaffProfileForm({ id }) {
                                                                 children: day
                                                             }, void 0, false, {
                                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                                lineNumber: 750,
+                                                                lineNumber: 830,
                                                                 columnNumber: 27
                                                             }, this)
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/components/StaffProfile.tsx",
-                                                        lineNumber: 743,
+                                                        lineNumber: 823,
                                                         columnNumber: 25
                                                     }, this)
                                                 }, void 0, false, {
                                                     fileName: "[project]/components/StaffProfile.tsx",
-                                                    lineNumber: 742,
+                                                    lineNumber: 822,
                                                     columnNumber: 23
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
@@ -3633,7 +3768,7 @@ function StaffProfileForm({ id }) {
                                                                         className: "w-28 rounded-md border border-stone-300 px-3 py-1.5 text-xs text-stone-800 focus:border-stone-800 focus:outline-none"
                                                                     }, void 0, false, {
                                                                         fileName: "[project]/components/StaffProfile.tsx",
-                                                                        lineNumber: 759,
+                                                                        lineNumber: 839,
                                                                         columnNumber: 31
                                                                     }, this),
                                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -3641,7 +3776,7 @@ function StaffProfileForm({ id }) {
                                                                         children: "to"
                                                                     }, void 0, false, {
                                                                         fileName: "[project]/components/StaffProfile.tsx",
-                                                                        lineNumber: 768,
+                                                                        lineNumber: 848,
                                                                         columnNumber: 31
                                                                     }, this),
                                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("input", {
@@ -3652,13 +3787,13 @@ function StaffProfileForm({ id }) {
                                                                         className: "w-28 rounded-md border border-stone-300 px-3 py-1.5 text-xs text-stone-800 focus:border-stone-800 focus:outline-none"
                                                                     }, void 0, false, {
                                                                         fileName: "[project]/components/StaffProfile.tsx",
-                                                                        lineNumber: 769,
+                                                                        lineNumber: 849,
                                                                         columnNumber: 31
                                                                     }, this)
                                                                 ]
                                                             }, void 0, true, {
                                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                                lineNumber: 758,
+                                                                lineNumber: 838,
                                                                 columnNumber: 29
                                                             }, this),
                                                             config.additionalHours.map((range, index)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3672,7 +3807,7 @@ function StaffProfileForm({ id }) {
                                                                             className: "w-28 rounded-md border border-stone-300 px-3 py-1.5 text-xs text-stone-800 focus:border-stone-800 focus:outline-none"
                                                                         }, void 0, false, {
                                                                             fileName: "[project]/components/StaffProfile.tsx",
-                                                                            lineNumber: 781,
+                                                                            lineNumber: 861,
                                                                             columnNumber: 33
                                                                         }, this),
                                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -3680,7 +3815,7 @@ function StaffProfileForm({ id }) {
                                                                             children: "to"
                                                                         }, void 0, false, {
                                                                             fileName: "[project]/components/StaffProfile.tsx",
-                                                                            lineNumber: 790,
+                                                                            lineNumber: 870,
                                                                             columnNumber: 33
                                                                         }, this),
                                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("input", {
@@ -3691,7 +3826,7 @@ function StaffProfileForm({ id }) {
                                                                             className: "w-28 rounded-md border border-stone-300 px-3 py-1.5 text-xs text-stone-800 focus:border-stone-800 focus:outline-none"
                                                                         }, void 0, false, {
                                                                             fileName: "[project]/components/StaffProfile.tsx",
-                                                                            lineNumber: 791,
+                                                                            lineNumber: 871,
                                                                             columnNumber: 33
                                                                         }, this),
                                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -3702,13 +3837,13 @@ function StaffProfileForm({ id }) {
                                                                             children: "Remove"
                                                                         }, void 0, false, {
                                                                             fileName: "[project]/components/StaffProfile.tsx",
-                                                                            lineNumber: 800,
+                                                                            lineNumber: 880,
                                                                             columnNumber: 33
                                                                         }, this)
                                                                     ]
                                                                 }, `${day}-hours-${index}`, true, {
                                                                     fileName: "[project]/components/StaffProfile.tsx",
-                                                                    lineNumber: 780,
+                                                                    lineNumber: 860,
                                                                     columnNumber: 31
                                                                 }, this)),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -3719,18 +3854,18 @@ function StaffProfileForm({ id }) {
                                                                 children: "+ Add hours"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                                lineNumber: 810,
+                                                                lineNumber: 890,
                                                                 columnNumber: 29
                                                             }, this)
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/components/StaffProfile.tsx",
-                                                        lineNumber: 757,
+                                                        lineNumber: 837,
                                                         columnNumber: 27
                                                     }, this) : null
                                                 }, void 0, false, {
                                                     fileName: "[project]/components/StaffProfile.tsx",
-                                                    lineNumber: 755,
+                                                    lineNumber: 835,
                                                     columnNumber: 23
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
@@ -3749,7 +3884,7 @@ function StaffProfileForm({ id }) {
                                                                 className: "w-20 rounded-md border border-stone-300 px-3 py-1.5 text-xs text-stone-800 focus:border-stone-800 focus:outline-none"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                                lineNumber: 824,
+                                                                lineNumber: 904,
                                                                 columnNumber: 29
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -3757,18 +3892,18 @@ function StaffProfileForm({ id }) {
                                                                 children: "min"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/components/StaffProfile.tsx",
-                                                                lineNumber: 834,
+                                                                lineNumber: 914,
                                                                 columnNumber: 29
                                                             }, this)
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/components/StaffProfile.tsx",
-                                                        lineNumber: 823,
+                                                        lineNumber: 903,
                                                         columnNumber: 27
                                                     }, this)
                                                 }, void 0, false, {
                                                     fileName: "[project]/components/StaffProfile.tsx",
-                                                    lineNumber: 821,
+                                                    lineNumber: 901,
                                                     columnNumber: 23
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
@@ -3781,35 +3916,35 @@ function StaffProfileForm({ id }) {
                                                         className: "w-36 rounded-md border border-stone-300 px-3 py-1.5 text-xs text-stone-800 focus:border-stone-800 focus:outline-none"
                                                     }, void 0, false, {
                                                         fileName: "[project]/components/StaffProfile.tsx",
-                                                        lineNumber: 840,
+                                                        lineNumber: 920,
                                                         columnNumber: 27
                                                     }, this)
                                                 }, void 0, false, {
                                                     fileName: "[project]/components/StaffProfile.tsx",
-                                                    lineNumber: 838,
+                                                    lineNumber: 918,
                                                     columnNumber: 23
                                                 }, this)
                                             ]
                                         }, day, true, {
                                             fileName: "[project]/components/StaffProfile.tsx",
-                                            lineNumber: 738,
+                                            lineNumber: 818,
                                             columnNumber: 21
                                         }, this);
                                     })
                                 }, void 0, false, {
                                     fileName: "[project]/components/StaffProfile.tsx",
-                                    lineNumber: 734,
+                                    lineNumber: 814,
                                     columnNumber: 15
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/StaffProfile.tsx",
-                            lineNumber: 725,
+                            lineNumber: 805,
                             columnNumber: 13
                         }, this)
                     }, void 0, false, {
                         fileName: "[project]/components/StaffProfile.tsx",
-                        lineNumber: 724,
+                        lineNumber: 804,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3822,7 +3957,7 @@ function StaffProfileForm({ id }) {
                                 children: "Cancel"
                             }, void 0, false, {
                                 fileName: "[project]/components/StaffProfile.tsx",
-                                lineNumber: 859,
+                                lineNumber: 939,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -3833,29 +3968,29 @@ function StaffProfileForm({ id }) {
                                 children: loadingHours ? 'Loading...' : savingHours ? 'Saving...' : 'Save'
                             }, void 0, false, {
                                 fileName: "[project]/components/StaffProfile.tsx",
-                                lineNumber: 866,
+                                lineNumber: 946,
                                 columnNumber: 13
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/StaffProfile.tsx",
-                        lineNumber: 858,
+                        lineNumber: 938,
                         columnNumber: 11
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/StaffProfile.tsx",
-                lineNumber: 711,
+                lineNumber: 791,
                 columnNumber: 9
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/components/StaffProfile.tsx",
-        lineNumber: 341,
+        lineNumber: 375,
         columnNumber: 5
     }, this);
 }
-_s(StaffProfileForm, "hpUfDXGeW43GiS9Wnfk1B+U2G2A=");
+_s(StaffProfileForm, "cORaIInHigI4zxcj+9VB/AU2+Ck=");
 _c = StaffProfileForm;
 var _c;
 __turbopack_context__.k.register(_c, "StaffProfileForm");

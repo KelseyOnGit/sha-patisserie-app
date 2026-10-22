@@ -83,6 +83,8 @@ export default function StaffProfileForm({ id }: StaffProfileFormProps) {
   const [savedFormData, setSavedFormData] = useState<StaffProfileData | null>(null);
   const [message, setMessage] = useState('');
   const [canManageEmployment, setCanManageEmployment] = useState(false);
+  const [newPin, setNewPin] = useState('');
+  const [resettingPin, setResettingPin] = useState(false);
 
   // --- Regular Working Hours State ---
   const [workingHoursPolicy, setWorkingHoursPolicy] = useState<'policy' | 'custom'>('custom');
@@ -242,6 +244,38 @@ export default function StaffProfileForm({ id }: StaffProfileFormProps) {
       setMessage('Profile marked as Inactive. Don\'t forget to save changes.');
     }
   };
+
+  //--- Reset PIN Handler ---
+  const handleResetPin = async () => {
+  if (!id) return;
+  if (!/^\d{4}$/.test(newPin)) {
+    setMessage('PIN must be 4 digits.');
+    return;
+  }
+  const confirmReset = window.confirm(
+    `Reset the PIN for ${formData.fullName || 'this staff member'}? Their old PIN will stop working.`
+  );
+  if (!confirmReset) return;
+
+  setResettingPin(true);
+  setMessage('');
+  try {
+    const res = await fetch('/api/admin/users/reset-pin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: id, newPin }),
+    });
+    const data = await readApiResponse<{ error?: string; message?: string }>(res);
+    if (!res.ok) throw new Error(data.error || 'Failed to reset PIN');
+    setNewPin('');
+    setMessage('PIN reset successfully.');
+  } catch (err) {
+    setMessage(err instanceof Error ? err.message : 'Failed to reset PIN.');
+  } finally {
+    setResettingPin(false);
+  }
+};
+
 
   // --- Working Hours Handlers ---
   const handleDayToggle = (day: DayOfWeek) => {
@@ -705,6 +739,52 @@ export default function StaffProfileForm({ id }: StaffProfileFormProps) {
           )}
         </form>
       )}
+
+      {/* Reset PIN Section */}
+      {activeTab === 'profile' && (
+  <>
+    <form onSubmit={handleSubmit} className="space-y-8">
+      {/* ...existing form content unchanged... */}
+    </form>
+
+    {canManageEmployment && id && (
+      <section className="rounded-2xl border border-stone-200 bg-white p-6 shadow-xs space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold text-stone-900">Reset PIN</h2>
+          <p className="text-xs text-stone-500 mt-0.5">
+            Set a new login PIN for this staff member. Their current PIN will stop working immediately.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label htmlFor="newPin" className="block text-xs font-bold uppercase text-stone-600 mb-1">
+              New PIN
+            </label>
+            <input
+              id="newPin"
+              type="password"
+              inputMode="numeric"
+              autoComplete="new-password"
+              maxLength={8}
+              value={newPin}
+              onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
+              placeholder="4 digits"
+              className="w-40 rounded-lg border border-stone-300 p-2.5 text-sm focus:border-stone-800 focus:outline-none"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={handleResetPin}
+            disabled={resettingPin || newPin.length !== 4}
+            className="rounded-lg bg-stone-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-stone-800 transition disabled:opacity-50"
+          >
+            {resettingPin ? 'Resetting...' : 'Reset PIN'}
+          </button>
+        </div>
+      </section>
+    )}
+  </>
+)}
 
       {/* TAB 2: REGULAR WORKING HOURS (Matching Photo 1) */}
       {activeTab === 'working-hours' && (
