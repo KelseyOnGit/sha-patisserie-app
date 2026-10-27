@@ -132,6 +132,78 @@ function findElement(node, predicate) {
   return null;
 }
 
+test('overlap review exposes additional same-day entries and requires a manager reason', async (t) => {
+  const row = {
+    sourceKey: 'log:attendance', userId: 'sam', staffName: 'Sam', workDate: '2020-10-05',
+    site: 'Sha Patisserie', employmentType: 'PART_TIME', rate: 30,
+    periods: [{ start: '2020-10-05T01:00:00Z', end: '2020-10-05T05:00:00Z' }],
+    actual: [{ id: 'attendance', clockIn: '2020-10-05T01:00:00Z', clockOut: '2020-10-05T05:00:00Z' }],
+    scheduledStart: null, scheduledEnd: null, actualBreakMinutes: 0, scheduledBreakMinutes: 0,
+    breakMinutes: 0, reason: '', history: [], status: 'PENDING', version: 0, snapshot: 'snapshot',
+    ambiguous: true, inProgress: false, sourceChanged: false, exceptions: ['Overlapping roster attendance'],
+  };
+  const other = { ...row, sourceKey: 'shift:other', periods: [], actual: [] };
+  const report = { shifts: [other, row], rows: [], venues: ['Sha Patisserie'], approvedCount: 0, excludedCount: 2 };
+  const states = ['confirm', '2020-10-05', report, false, '', '', 0, '', '', '', row, {}, false];
+  let cursor = 0;
+  const hookReact = {
+    ...React,
+    useState(initial) {
+      const index = cursor++;
+      if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial;
+      return [states[index], (value) => { states[index] = typeof value === 'function' ? value(states[index]) : value; }];
+    },
+    useEffect: () => {},
+    useRef: () => ({ current: null }),
+  };
+  const filename = path.join(root, 'components/TimesheetReview.tsx');
+  const load = Module._load;
+  delete require.cache[filename];
+  let Review;
+  Module._load = function (request, ...args) {
+    return request === 'react' ? hookReact : load.call(this, request, ...args);
+  };
+  try { Review = require(filename).default; }
+  finally { Module._load = load; delete require.cache[filename]; }
+  t.mock.method(console, 'error', () => {});
+  let writes = 0;
+  t.mock.method(globalThis, 'fetch', async () => { writes++; return Response.json({ message: 'Approved' }); });
+  const tree = Review();
+  const additional = findElement(tree, (node) => node.type === 'button' &&
+    renderToStaticMarkup(node).includes('Additional entry:'));
+  assert.ok(additional);
+  additional.props.onClick();
+  assert.equal(states[10].sourceKey, 'shift:other');
+
+  const editor = findElement(tree, (node) => typeof node.type === 'function' && node.props.row === row);
+  assert.ok(editor);
+  const editorOffset = cursor;
+  const renderEditor = () => { cursor = editorOffset; return editor.type(editor.props); };
+  let dialog = renderEditor();
+  assert.match(renderToStaticMarkup(dialog), /Review reason \(required\)/);
+  const approve = () => findElement(dialog, (node) => node.type === 'button' &&
+    renderToStaticMarkup(node).includes('Save &amp; approve'));
+  await approve().props.onClick();
+  assert.equal(writes, 0);
+  dialog = renderEditor();
+  assert.match(renderToStaticMarkup(dialog), /Explain adjusted times/);
+  findElement(dialog, (node) => node.type === 'textarea').props.onChange({
+    target: { value: 'Verified duplicate roster; allocate attendance once.' },
+  });
+  dialog = renderEditor();
+  await approve().props.onClick();
+  assert.equal(writes, 1);
+
+  cursor = 0;
+  const batchTree = Review();
+  const bulk = findElement(batchTree, (node) => node.type === 'button' &&
+    renderToStaticMarkup(node).includes('Save and Approved All'));
+  assert.ok(bulk);
+  await bulk.props.onClick();
+  assert.match(states[4], /individual review/);
+  assert.equal(writes, 1);
+});
+
 async function mountRoster(t, file, { shifts = [], failedLeave = false, rosterStaff = staff } = {}) {
   const states = [];
   const effects = [];

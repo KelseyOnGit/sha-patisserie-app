@@ -226,6 +226,10 @@ export default function TimesheetReview() {
         throw new Error('No completed timesheets to approve.');
       }
 
+      if (targetRows.some((row) => row.status !== 'APPROVED' && row.ambiguous)) {
+        throw new Error('Overlapping roster attendance needs individual review. Open Details, verify the payable periods and enter an allocation reason before approving.');
+      }
+
       const batchItems = targetRows.map((row) => {
         const adjustedVal = adjustments[row.sourceKey] !== undefined
           ? adjustments[row.sourceKey]
@@ -498,16 +502,17 @@ export default function TimesheetReview() {
                   consolidatedStaffList.map((staffItem) => {
                     // Compute final total of adjusted hours for this staff member
                     const finalStaffTotal = weekDays.reduce((acc, d) => {
-                      const row = staffItem.shiftMap.get(d.dateStr);
-                      if (!row) return acc;
-                      const val = adjustments[row.sourceKey] !== undefined
-                        ? adjustments[row.sourceKey]
-                        : paidHours(row.periods, row.breakMinutes);
-                      return acc + (Number.isFinite(val) ? val : 0);
+                      return acc + filtered.filter((row) => row.userId === staffItem.userId && row.workDate === d.dateStr)
+                        .reduce((total, row) => {
+                          const val = adjustments[row.sourceKey] !== undefined
+                            ? adjustments[row.sourceKey]
+                            : paidHours(row.periods, row.breakMinutes);
+                          return total + (Number.isFinite(val) ? val : 0);
+                        }, 0);
                     }, 0);
 
                     // Check if all shifts are approved
-                    const staffShifts = Array.from(staffItem.shiftMap.values());
+                    const staffShifts = filtered.filter((row) => row.userId === staffItem.userId);
                     const isAllApproved = staffShifts.length > 0 && staffShifts.every((s) => s.status === 'APPROVED');
                     const hasInProgress = staffShifts.some((s) => s.inProgress);
 
@@ -614,6 +619,13 @@ export default function TimesheetReview() {
                                     Details
                                   </button>
                                 </div>
+                                {filtered.filter((entry) => entry.userId === row.userId &&
+                                  entry.workDate === row.workDate && entry.sourceKey !== row.sourceKey)
+                                  .map((entry) => <button key={entry.sourceKey}
+                                    onClick={() => setSelected(entry)}
+                                    className="block text-left text-[10px] text-amber-800 underline">
+                                    Additional entry: {entry.site} · {paidHours(entry.periods, entry.breakMinutes).toFixed(2)}h · {status(entry)} · Details
+                                  </button>)}
                               </div>
                             </td>
                           );
@@ -663,10 +675,7 @@ export default function TimesheetReview() {
         </div>
       ) : report && (
         <div className="space-y-3">
-          <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900 border border-amber-200">
-            {report.excludedCount} timesheet(s) are unapproved or no longer valid and excluded from this week&apos;s payroll.
-            Rates are captured at approval. This is gross pay only, not an award/overtime calculation.
-          </p>
+
           <div className="overflow-x-auto rounded-xl border border-stone-200 bg-white shadow-sm">
             <table className="w-full text-left text-sm">
               <thead className="bg-stone-50 text-xs font-bold uppercase text-stone-500">
@@ -769,7 +778,8 @@ function ReviewEditor({ row, weekStart, onClose, onSaved }: {
   const submit = async (action: 'SAVE' | 'APPROVE' | 'REOPEN') => {
     setError('');
     try {
-      const isOnlyBreakChange = samePeriods(periods, actualPeriods(row.actual));
+      const isOnlyBreakChange = samePeriods(periods, actualPeriods(row.actual)) &&
+        row.actual.length > 0 && !row.ambiguous && !row.inProgress;
       if (action !== 'REOPEN') {
         validatePayable(periods, breakMinutes, row.workDate);
         if (!isOnlyBreakChange && requiresReason(row, periods, breakMinutes) && !reason.trim()) {
@@ -871,7 +881,19 @@ function ReviewEditor({ row, weekStart, onClose, onSaved }: {
               onChange={(e) => setBreakMinutes(Number(e.target.value))} className={inputClass} />
           </label>
         </div>
+        {(row.ambiguous || row.inProgress) && <label className="grid gap-1 text-sm">
+          Review reason (required)
+          <textarea value={reason} maxLength={2000}
+            onChange={(event) => setReason(event.target.value)}
+            placeholder="Explain the verified hours and how attendance is allocated without duplicate payment."
+            className={inputClass} />
+        </label>}
       </fieldset>
+      {locked && <label className="mt-4 grid gap-1 text-sm">
+        Reason for reopening (optional)
+        <input value={reopenReason} maxLength={2000} disabled={busy}
+          onChange={(event) => setReopenReason(event.target.value)} className={inputClass} />
+      </label>}
       <p className="mt-4 font-semibold">Total: {Number.isFinite(hours) && hours >= 0 ? hours.toFixed(2) : '--'} hours</p>
       {!locked && blocked && <p className="mt-2 text-sm text-amber-800">{blocked}</p>}
       {error && <p role="alert" className="mt-3 rounded-lg bg-rose-50 p-3 text-rose-800">{error}</p>}

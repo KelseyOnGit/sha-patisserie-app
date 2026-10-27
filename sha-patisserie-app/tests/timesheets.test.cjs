@@ -219,10 +219,12 @@ test('matching requires staff, venue and overlap; ambiguous matches are not gues
   assert.equal(candidateShifts(log, [shift, { ...shift, id: 'b' }], now).length, 2);
 });
 
-test('approval blocks open attendance, overlap, future hours and missing rates', () => {
-  const row = { inProgress: false, ambiguous: false, rate: 30, scheduledEnd: null, actual: [] };
+test('approval allows explained roster overlaps but blocks current open attendance, future hours and missing rates', () => {
+  const row = { inProgress: false, ambiguous: false, rate: 30, scheduledEnd: null, actual: [], workDate: rules.perthDate(new Date()) };
   assert.equal(rules.approvalError(row, [period('09:00', '17:00')]), null);
-  for (const change of [{ inProgress: true }, { ambiguous: true }, { rate: null }, { rate: -1 }]) {
+  assert.equal(rules.approvalError({ ...row, ambiguous: true }, []), null);
+  assert.equal(rules.approvalError({ ...row, inProgress: true, workDate: '2020-01-01' }, []), null);
+  for (const change of [{ inProgress: true }, { rate: null }, { rate: -1 }]) {
     assert.ok(rules.approvalError({ ...row, ...change }, []));
   }
   assert.ok(rules.approvalError(row, [{ start: '2099-10-05T01:00:00Z', end: '2099-10-05T09:00:00Z' }]));
@@ -232,6 +234,8 @@ test('adjustments, missing attendance and unscheduled work require explanations'
   const actual = [{ id: 'a', clockIn: '2026-10-05T01:00:00Z', clockOut: '2026-10-05T09:00:00Z' }];
   const row = { scheduledStart: actual[0].clockIn, actual, actualBreakMinutes: 30, sourceChanged: false };
   assert.equal(rules.requiresReason(row, rules.actualPeriods(actual), 30), false);
+  assert.equal(rules.requiresReason({ ...row, ambiguous: true }, rules.actualPeriods(actual), 30), true);
+  assert.equal(rules.requiresReason({ ...row, inProgress: true }, rules.actualPeriods(actual), 30), true);
   assert.equal(rules.requiresReason(row, [period('09:00', '16:00')], 30), true);
   assert.equal(rules.requiresReason({ ...row, actual: [] }, [], 0), true);
   assert.equal(rules.requiresReason({ ...row, scheduledStart: null }, rules.actualPeriods(actual), 30), true);

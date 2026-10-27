@@ -97,7 +97,8 @@ export async function POST(req: Request) {
           }
           try {
             validatePayable(periods, breakMinutes, row.workDate);
-            const isOnlyBreakChange = samePeriods(periods, actualPeriods(row.actual)) && row.actual.length > 0;
+            const isOnlyBreakChange = samePeriods(periods, actualPeriods(row.actual)) &&
+              row.actual.length > 0 && !row.ambiguous && !row.inProgress;
             if (!finalReason && isOnlyBreakChange) {
               finalReason = 'Break adjusted';
             }
@@ -207,5 +208,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unable to save timesheet. No changes were committed.' }, { status: 500 });
   }
 }
-
 

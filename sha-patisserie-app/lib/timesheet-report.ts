@@ -100,6 +100,8 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
     // of an actual break. Derive recorded duration from the raw break timestamps.
     const actualBreakMinutes = recordedBreakMinutes(shift?.startBreak ?? null, shift?.endBreak ?? null);
     const scheduledBreakMinutes = shift?.breakMinutes ?? 0;
+    const ambiguous = attendance.some((log) => ambiguousLogs.has(log.id)) ||
+      Boolean(shift && ambiguousShifts.has(shift.id));
     // Canonical source values capture changes relevant to pay, not unrelated GPS
     // metadata. Historical approved values remain in the append-only audit log.
     const snapshot = JSON.stringify({
@@ -110,11 +112,10 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
       actual, breakMinutes: actualBreakMinutes, scheduledBreakMinutes,
       startBreak: shift?.startBreak?.toISOString() ?? null,
       endBreak: shift?.endBreak?.toISOString() ?? null,
+      ...(ambiguous ? { rosterOverlap: true } : {}),
     });
     const sourceChanged = Boolean(sheet && sheet.sourceSnapshot !== snapshot);
     const inProgress = actual.some((log) => !log.clockOut) || Boolean(shift?.startBreak && !shift.endBreak);
-    const ambiguous = attendance.some((log) => ambiguousLogs.has(log.id)) ||
-      Boolean(shift && ambiguousShifts.has(shift.id));
     const exceptions: string[] = [];
     const rosterIdentityChanged = Boolean(sheet && shift && (
       shift.userId !== sheet.userId || perthDate(shift.startTime) !== workDate || sourceSite !== sheet.site
@@ -123,6 +124,7 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
       'Reviewed roster staff, venue or date changed. Restore the original roster identity before approving.' :
       shift && !shift.publishedAt ? 'Publish the roster shift before approving its hours.' : null;
     if (!shift) exceptions.push('Unscheduled attendance');
+    if (ambiguous) exceptions.push('Attendance overlaps roster shifts: review payable periods and explain the allocation');
     if (shift && !shift.publishedAt) exceptions.push('Roster shift unpublished');
     if (actual.length === 0) exceptions.push('No attendance recorded');
     if (inProgress) exceptions.push('Clock-out or break unfinished');
@@ -170,11 +172,10 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
   let excludedCount = 0;
   for (const row of rows) {
     const sheet = savedByKey.get(row.sourceKey);
-    // No roster-duration fallback. Approval must still match current source
-    // records and must not have newly ambiguous or unfinished attendance.
-    if (!sheet || sheet.status !== 'APPROVED' || row.sourceChanged || row.ambiguous ||
-        row.inProgress || sheet.rateAtApproval === null ||
-        row.approvalBlockedReason) {
+    // Use the same eligibility rules as approval, retaining the approved rate.
+    if (!sheet || sheet.status !== 'APPROVED' || row.sourceChanged ||
+        sheet.rateAtApproval === null ||
+        approvalError({ ...row, rate: sheet.rateAtApproval.toNumber() }, row.periods)) {
       excludedCount++;
       continue;
     }

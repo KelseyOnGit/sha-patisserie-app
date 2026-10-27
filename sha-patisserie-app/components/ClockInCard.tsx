@@ -165,7 +165,7 @@ export default function ClockInCard({ userName = 'Team Member' }: ClockInCardPro
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             action: action === 'in' ? 'clock-in' : 'clock-out',
-            location: venue === 'Zushi Bento' ? 'ZB' : 'Sha',
+            location: venue === 'Zushi Bento' ? 'ZB' : venue === 'Test' ? 'Test' : 'Sha',
             userLat,
             userLng,
           }),
@@ -243,6 +243,9 @@ export default function ClockInCard({ userName = 'Team Member' }: ClockInCardPro
           >
             <option value="Sha">📍 Sha Patisserie</option>
             <option value="Zushi Bento">📍 Zushi Bento</option>
+            {process.env.NEXT_PUBLIC_GPS_TEST_MODE === 'true' && (
+  <option value="Test">🧪 Office (Test)</option>
+)}
           </select>
           <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-stone-700">
             <svg className="w-4 h-4 fill-current" viewBox="0 0 20 20">

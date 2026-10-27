@@ -1,10 +1,17 @@
-// Store GPS coordinates
-export const STORE_LOCATIONS = {
-  Sha: { lat: -31.954819, lng: 115.854858, radiusMeters: 200 },
-  ZB: { lat: -31.9520, lng: 115.8580, radiusMeters: 200 },
-};
+type VenueName = 'Sha' | 'ZB';
 
-const TEST_LOCATION = { lat: -31.9056, lng: 115.9392, radiusMeters: 200 };
+type Site = { lat: number; lng: number; radiusMeters: number };
+
+// Each venue can have more than one accepted site.
+export const VENUE_SITES: Record<VenueName, Site[]> = {
+  Sha: [
+    { lat: -31.954819, lng: 115.854858, radiusMeters: 200 }, // Sha shop
+    { lat: -31.9056, lng: 115.9392, radiusMeters: 200 },     
+  ],
+  ZB: [
+    { lat: -31.9520, lng: 115.8580, radiusMeters: 200 },
+  ],
+};
 
 // Haversine formula to calculate distance in meters
 export function getDistanceInMeters(
@@ -30,17 +37,31 @@ export function getDistanceInMeters(
 export function isWithinOnsiteRange(
   userLat: number,
   userLng: number,
-  location: 'Sha' | 'ZB' | 'Test' = 'Sha'
+  location: VenueName = 'Sha'
 ) {
-  if (location === 'Test') {
-    return { allowed: TEST_LOCATION, distanceMeters: getDistanceInMeters(userLat, userLng, TEST_LOCATION.lat, TEST_LOCATION.lng), radiusMeters: TEST_LOCATION.radiusMeters };
+  const sites = VENUE_SITES[location] ?? VENUE_SITES.Sha;
+
+  // Check every site for this venue and keep the closest one
+  let closest = {
+    distanceMeters: Infinity,
+    radiusMeters: sites[0].radiusMeters,
+  };
+
+  for (const site of sites) {
+    const distance = getDistanceInMeters(userLat, userLng, site.lat, site.lng);
+
+    if (distance <= site.radiusMeters) {
+      return { allowed: true, distanceMeters: distance, radiusMeters: site.radiusMeters };
+    }
+
+    if (distance < closest.distanceMeters) {
+      closest = { distanceMeters: distance, radiusMeters: site.radiusMeters };
+    }
   }
-  const store = STORE_LOCATIONS[location] ?? STORE_LOCATIONS.Sha;
-  const distance = getDistanceInMeters(userLat, userLng, store.lat, store.lng);
 
   return {
-    allowed: distance <= store.radiusMeters,
-    distanceMeters: distance,
-    radiusMeters: store.radiusMeters,
+    allowed: false,
+    distanceMeters: closest.distanceMeters,
+    radiusMeters: closest.radiusMeters,
   };
 }

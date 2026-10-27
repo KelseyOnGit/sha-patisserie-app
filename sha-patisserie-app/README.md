@@ -146,12 +146,17 @@ Monday, then filter by venue, staff or review status. All dates/times use Perth
   the hours from payroll, and retains the previous approval in history.
 - No attendance is not evidence of a no-show. Review it manually; zero periods
   with a zero break deduction can explicitly approve zero payable hours.
-- Missing clock-outs, unfinished breaks, overlapping roster matches, future
-  payable hours and missing staff rates block approval. Correct source attendance
-  through the staff clock/break workflow; managers do not overwrite raw timestamps.
+- Current/future unfinished attendance or breaks, future payable hours and missing
+  staff rates block approval. Past unfinished attendance can be reviewed with
+  explicit payable periods and a reason; raw timestamps are never overwritten.
 - Attendance is matched only when the staff member and venue agree and the log
-  overlaps one published roster shift. Ambiguous logs stay visible and cannot be
-  approved until the roster overlap is resolved. Unscheduled attendance remains visible.
+  overlaps one published roster shift. Attendance overlapping several shifts stays
+  in a separate row unless already allocated to a saved review. Open **Details**,
+  verify the payable periods and enter a reason explaining the allocation; bulk
+  approval will not automatically approve these rows. Approved overrides appear
+  in payroll and CSV using the saved rate. Attendance is allocated to only one
+  timesheet, and overlapping payable periods for the same staff member are rejected,
+  including across venues and within a batch. Unscheduled attendance remains visible.
 - Changed attendance, break records or roster details invalidate an existing
   approval for payroll until it is reopened and reviewed again.
 - Reviewed roster shifts cannot be deleted or reassigned to another staff

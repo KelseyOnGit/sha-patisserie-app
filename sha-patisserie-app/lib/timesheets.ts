@@ -211,14 +211,24 @@ export function samePeriods(a: PayablePeriod[], b: PayablePeriod[]): boolean {
 
 export function requiresReason(row: ReviewRow, periods: PayablePeriod[], breakMinutes: number): boolean {
   return !row.scheduledStart || row.actual.length === 0 || row.sourceChanged ||
+    row.ambiguous || row.inProgress ||
     !samePeriods(periods, actualPeriods(row.actual)) ||
     (row.actualBreakMinutes === null ? breakMinutes > 0 : breakMinutes !== row.actualBreakMinutes);
 }
 
 export function approvalError(row: ReviewRow, periods: PayablePeriod[]): string | null {
   if (row.approvalBlockedReason) return row.approvalBlockedReason;
-  if (row.inProgress) return 'Attendance or a break is still in progress. Finish it before approval.';
-  if (row.ambiguous) return 'Attendance overlaps multiple roster shifts. Resolve the roster overlap before approval.';
+
+  // Only block "in progress" for today or future rows. For past days (e.g. a
+  // forgotten clock-out), the manager can override by entering the payable
+  // times or adjustment hours, with a reason.
+  if (row.inProgress && row.workDate >= perthDate(new Date())) {
+    return 'Attendance or a break is still in progress. Finish it before approval.';
+  }
+
+  // Roster overlap no longer blocks approval. requiresReason() now asks for a
+  // note instead, so the override is recorded.
+
   if (row.scheduledEnd && new Date(row.scheduledEnd).getTime() > Date.now() && row.actual.length === 0) {
     return 'An unworked future shift cannot be approved.';
   }
