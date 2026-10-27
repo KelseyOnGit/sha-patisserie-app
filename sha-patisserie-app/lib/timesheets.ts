@@ -216,13 +216,20 @@ export function requiresReason(row: ReviewRow, periods: PayablePeriod[], breakMi
     (row.actualBreakMinutes === null ? breakMinutes > 0 : breakMinutes !== row.actualBreakMinutes);
 }
 
+export function isLiveAttendance(
+  row: Pick<ReviewRow, 'inProgress' | 'workDate'>,
+  today = perthDate(new Date()),
+): boolean {
+  return row.inProgress && row.workDate >= today;
+}
+
 export function approvalError(row: ReviewRow, periods: PayablePeriod[]): string | null {
   if (row.approvalBlockedReason) return row.approvalBlockedReason;
 
   // Only block "in progress" for today or future rows. For past days (e.g. a
   // forgotten clock-out), the manager can override by entering the payable
   // times or adjustment hours, with a reason.
-  if (row.inProgress && row.workDate >= perthDate(new Date())) {
+  if (isLiveAttendance(row)) {
     return 'Attendance or a break is still in progress. Finish it before approval.';
   }
 

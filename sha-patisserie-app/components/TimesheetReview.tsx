@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   actualPeriods, approvalError, csvCell, currentWeek, editPeriodTime, perthDate, timeInput,
-  paidHours, requiresReason, samePeriods, validatePayable,
+  isLiveAttendance, paidHours, requiresReason, samePeriods, validatePayable,
   type PayablePeriod, type PayrollRow, type ReviewRow,
   ATTENDANCE_OPTIONS, employmentLabel,
 } from '@/lib/timesheets';
@@ -91,6 +91,7 @@ export default function TimesheetReview() {
   const [selected, setSelected] = useState<ReviewRow | null>(null);
   const [adjustments, setAdjustments] = useState<Record<string, number>>({});
   const [savingBatch, setSavingBatch] = useState(false);
+  const [reviewReasons, setReviewReasons] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const controller = new AbortController();
@@ -217,8 +218,7 @@ export default function TimesheetReview() {
     try {
       const targetRows = filtered.filter((row) => {
         if (targetUserId && row.userId !== targetUserId) return false;
-        // Skip in-progress shifts
-        if (row.inProgress) return false;
+        if (isLiveAttendance(row)) return false;
         return true;
       });
 
@@ -231,6 +231,10 @@ export default function TimesheetReview() {
       }
 
       const batchItems = targetRows.map((row) => {
+        const reviewReason = (reviewReasons[row.sourceKey] ?? row.reason).trim();
+        if (row.status !== 'APPROVED' && row.inProgress && !reviewReason) {
+          throw new Error(`Enter a review reason for ${row.staffName} (${row.workDate}) to explain the missing clock-out or unfinished break before approving.`);
+        }
         const adjustedVal = adjustments[row.sourceKey] !== undefined
           ? adjustments[row.sourceKey]
           : paidHours(row.periods, row.breakMinutes);
@@ -245,9 +249,9 @@ export default function TimesheetReview() {
         }
 
         const isAdjusted = adjustedVal !== paidHours(row.periods, row.breakMinutes);
-        const reason = isAdjusted
+        const reason = reviewReason || (isAdjusted
           ? `Adjusted to ${adjustedVal.toFixed(2)}h in weekly consolidation`
-          : row.reason || 'Weekly timesheet approved';
+          : 'Weekly timesheet approved');
 
         return {
           sourceKey: row.sourceKey,
@@ -255,7 +259,7 @@ export default function TimesheetReview() {
           version: row.version,
           snapshot: row.snapshot,
           action: 'APPROVE' as const,
-          breakMinutes: row.breakMinutes,
+          breakMinutes: periods.length ? row.breakMinutes : 0,
           periods,
           reason,
         };
@@ -514,7 +518,7 @@ export default function TimesheetReview() {
                     // Check if all shifts are approved
                     const staffShifts = filtered.filter((row) => row.userId === staffItem.userId);
                     const isAllApproved = staffShifts.length > 0 && staffShifts.every((s) => s.status === 'APPROVED');
-                    const hasInProgress = staffShifts.some((s) => s.inProgress);
+                    const hasInProgress = staffShifts.some((row) => isLiveAttendance(row));
 
                     return (
                       <tr key={staffItem.userId} className="border-b border-stone-200 hover:bg-stone-50/50">
@@ -544,6 +548,8 @@ export default function TimesheetReview() {
                           }
 
                           const firstLog = row.actual[0];
+                          const liveAttendance = isLiveAttendance(row);
+                          const pastUnfinished = row.inProgress && !liveAttendance;
                           const clockInTime = firstLog ? timeShort(firstLog.clockIn) : '—';
                           const clockOutTime = firstLog?.clockOut ? timeShort(firstLog.clockOut) : null;
                           const breakMin = row.actualBreakMinutes ?? row.breakMinutes ?? 0;
@@ -563,7 +569,7 @@ export default function TimesheetReview() {
                                 <select
                                   aria-label={`Attendance for ${row.staffName} on ${row.workDate}`}
                                   value={row.attendanceStatus || 'UNCLASSIFIED'}
-                                  disabled={row.status === 'APPROVED' || savingBatch || row.inProgress}
+                                  disabled={row.status === 'APPROVED' || savingBatch || liveAttendance}
                                   onChange={(event) => void saveAttendance(row, event.target.value)}
                                   className="mb-1 w-full rounded border border-stone-300 bg-white p-1 text-[10px] disabled:bg-stone-100"
                                 >
@@ -579,7 +585,7 @@ export default function TimesheetReview() {
                                     <span className="font-mono text-stone-800">{clockOutTime}</span>
                                   ) : (
                                     <span className="inline-block px-1 rounded bg-amber-100 text-amber-900 text-[10px] font-bold">
-                                      {row.actual.length ? 'In progress' : 'No clock record'}
+                                      {row.actual.length ? liveAttendance ? 'In progress' : 'Missing clock-out' : 'No clock record'}
                                     </span>
                                   )}
                                 </div>
@@ -590,7 +596,7 @@ export default function TimesheetReview() {
                                 <div className="flex justify-between">
                                   <span className="font-semibold text-stone-500">Total:</span>
                                   <span className="font-semibold text-stone-900">
-                                    {row.inProgress ? 'In prog.' : `${rawComputedHours.toFixed(2)}h`}
+                                    {liveAttendance ? 'In prog.' : `${rawComputedHours.toFixed(2)}h`}
                                   </span>
                                 </div>
 
@@ -602,7 +608,8 @@ export default function TimesheetReview() {
                                     step="0.1"
                                     min="0"
                                     max="24"
-                                    disabled={row.inProgress || savingBatch}
+                                    aria-label={`Adjusted hours for ${row.staffName} on ${row.workDate}`}
+                                    disabled={row.status === 'APPROVED' || liveAttendance || savingBatch}
                                     value={Number.isFinite(adjVal) ? adjVal : ''}
                                     onChange={(e) =>
                                       handleAdjustmentChange(row.sourceKey, parseFloat(e.target.value) || 0)
@@ -610,6 +617,16 @@ export default function TimesheetReview() {
                                     className="w-16 rounded border border-amber-400 bg-[#fef08a] px-1.5 py-0.5 text-center font-bold text-stone-900 text-xs shadow-xs focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:opacity-50"
                                   />
                                 </div>
+                                {pastUnfinished && row.status !== 'APPROVED' && <label className="grid gap-1 pt-1">
+                                  Review reason (required)
+                                  <textarea maxLength={2000} disabled={savingBatch}
+                                    value={reviewReasons[row.sourceKey] ?? row.reason}
+                                    onChange={(event) => setReviewReasons((current) => ({
+                                      ...current, [row.sourceKey]: event.target.value,
+                                    }))}
+                                    placeholder="Explain verified hours and the missing clock-out or unfinished break."
+                                    className="w-full rounded border border-stone-300 bg-white p-1 text-[10px]" />
+                                </label>}
 
                                 <div className="text-right pt-0.5">
                                   <button

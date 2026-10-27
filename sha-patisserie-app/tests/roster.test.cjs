@@ -204,6 +204,96 @@ test('overlap review exposes additional same-day entries and requires a manager 
   assert.equal(writes, 1);
 });
 
+test('past unfinished attendance is editable with a reason; live and approved hours remain locked', async (t) => {
+  const { perthDate, currentWeek } = require('../lib/timesheets.ts');
+  const today = perthDate(new Date());
+  const yesterday = new Date(`${today}T00:00:00Z`);
+  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+  const pastDate = yesterday.toISOString().slice(0, 10);
+  const week = currentWeek();
+  const monday = new Date(`${week}T00:00:00Z`);
+  // Use a past week to keep the missing-clock-out case stable on Mondays.
+  monday.setUTCDate(monday.getUTCDate() - 7);
+  const workDate = monday.toISOString().slice(0, 10);
+  const row = {
+    sourceKey: 'log:past', userId: 'sam', staffName: 'Sam', workDate,
+    site: 'Sha Patisserie', employmentType: 'PART_TIME', rate: 30,
+    periods: [], actual: [{ id: 'past', clockIn: `${workDate}T09:00:00+08:00`, clockOut: null }],
+    scheduledStart: null, scheduledEnd: null, actualBreakMinutes: null, scheduledBreakMinutes: 0,
+    breakMinutes: 0, reason: '', history: [], status: 'PENDING', version: 0, snapshot: 'snapshot',
+    ambiguous: false, inProgress: true, sourceChanged: false, exceptions: ['Clock-out or break unfinished'],
+  };
+  assert.ok(workDate <= pastDate);
+  const report = { shifts: [row], rows: [], venues: [], approvedCount: 0, excludedCount: 1 };
+  const states = ['confirm', workDate, report, false, '', '', 0, '', '', '', null, {}, false, {}];
+  let cursor = 0;
+  const hookReact = {
+    ...React,
+    useState(initial) {
+      const index = cursor++;
+      if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial;
+      return [states[index], (value) => { states[index] = typeof value === 'function' ? value(states[index]) : value; }];
+    },
+    useEffect: () => {},
+  };
+  const filename = path.join(root, 'components/TimesheetReview.tsx');
+  const load = Module._load;
+  delete require.cache[filename];
+  let Review;
+  Module._load = function (request, ...args) {
+    return request === 'react' ? hookReact : load.call(this, request, ...args);
+  };
+  try { Review = require(filename).default; }
+  finally { Module._load = load; delete require.cache[filename]; }
+  const render = () => { cursor = 0; return Review(); };
+  const adjusted = (tree) => findElement(tree, (node) => node.props['aria-label']?.startsWith('Adjusted hours'));
+  const classification = (tree) => findElement(tree, (node) => node.props['aria-label']?.startsWith('Attendance for'));
+  const approve = (tree) => findElement(tree, (node) => node.type === 'button' &&
+    renderToStaticMarkup(node).includes('Save and Approved All'));
+  let writes = [];
+  t.mock.method(console, 'error', () => {});
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    writes.push(JSON.parse(options.body));
+    return Response.json({ message: 'Approved' });
+  });
+  let tree = render();
+  assert.match(renderToStaticMarkup(tree), /Missing clock-out/);
+  assert.doesNotMatch(renderToStaticMarkup(tree), /In prog\./);
+  assert.equal(adjusted(tree).props.disabled, false);
+  assert.equal(classification(tree).props.disabled, false);
+  adjusted(tree).props.onChange({ target: { value: '3.5' } });
+  await approve(render()).props.onClick();
+  assert.equal(writes.length, 0);
+  assert.match(states[4], /Enter a review reason/);
+  tree = render();
+  findElement(tree, (node) => node.type === 'textarea').props.onChange({
+    target: { value: 'Verified 3.5 hours after forgotten clock-out.' },
+  });
+  await approve(render()).props.onClick();
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].batch[0].periods[0].start, row.actual[0].clockIn);
+  assert.equal(writes[0].batch[0].periods[0].end, new Date(`${workDate}T12:30:00+08:00`).toISOString());
+  assert.match(writes[0].batch[0].reason, /Verified 3.5/);
+  assert.equal(row.actual[0].clockOut, null);
+
+  states[1] = week;
+  row.workDate = today;
+  row.actual[0].clockIn = `${today}T09:00:00+08:00`;
+  tree = render();
+  assert.equal(adjusted(tree).props.disabled, true);
+  assert.equal(classification(tree).props.disabled, true);
+  assert.match(renderToStaticMarkup(tree), /In progress/);
+  await approve(tree).props.onClick();
+  assert.equal(writes.length, 1);
+
+  row.workDate = workDate;
+  row.status = 'APPROVED';
+  states[1] = workDate;
+  tree = render();
+  assert.equal(adjusted(tree).props.disabled, true);
+  assert.equal(classification(tree).props.disabled, true);
+});
+
 async function mountRoster(t, file, { shifts = [], failedLeave = false, rosterStaff = staff } = {}) {
   const states = [];
   const effects = [];

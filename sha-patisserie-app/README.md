@@ -149,6 +149,10 @@ Monday, then filter by venue, staff or review status. All dates/times use Perth
 - Current/future unfinished attendance or breaks, future payable hours and missing
   staff rates block approval. Past unfinished attendance can be reviewed with
   explicit payable periods and a reason; raw timestamps are never overwritten.
+  The weekly table unlocks past-day adjustment and classification controls,
+  labels an absent clock-out as **Missing clock-out**, and requires a review
+  reason before approving those hours. Today/future unfinished attendance stays
+  locked. Approved entries must be reopened before editing.
 - Attendance is matched only when the staff member and venue agree and the log
   overlaps one published roster shift. Attendance overlapping several shifts stays
   in a separate row unless already allocated to a saved review. Open **Details**,

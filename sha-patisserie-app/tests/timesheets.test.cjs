@@ -219,6 +219,14 @@ test('matching requires staff, venue and overlap; ambiguous matches are not gues
   assert.equal(candidateShifts(log, [shift, { ...shift, id: 'b' }], now).length, 2);
 });
 
+test('live attendance uses the Perth work date, not just a missing clock-out', () => {
+  const today = '2026-10-27';
+  assert.equal(rules.isLiveAttendance({ inProgress: true, workDate: '2026-10-26' }, today), false);
+  assert.equal(rules.isLiveAttendance({ inProgress: true, workDate: today }, today), true);
+  assert.equal(rules.isLiveAttendance({ inProgress: true, workDate: '2026-10-28' }, today), true);
+  assert.equal(rules.isLiveAttendance({ inProgress: false, workDate: today }, today), false);
+});
+
 test('approval allows explained roster overlaps but blocks current open attendance, future hours and missing rates', () => {
   const row = { inProgress: false, ambiguous: false, rate: 30, scheduledEnd: null, actual: [], workDate: rules.perthDate(new Date()) };
   assert.equal(rules.approvalError(row, [period('09:00', '17:00')]), null);
