@@ -98,6 +98,12 @@ list. Pending accounts must go through approval first. Role changes retain venue
 profile, shifts, leave, attendance and payroll records; returning to Staff makes
 the account schedulable at its saved venue again.
 
+Use **Remove** beside Approve to permanently delete an unwanted pending sign-up
+after confirmation. Admins and Managers can remove unapproved PENDING accounts;
+only Admins can remove pending Admin accounts. Approved accounts, your own account,
+and accounts with any roster, attendance, leave or payroll history cannot be
+removed here. Use End Profile for existing staff to preserve their records.
+
 You cannot change your own role, and the last active approved Admin cannot be
 demoted. Role changes use a serializable transaction. Sessions read the current
 role and active/approved state from the database on each request, so an old cookie
@@ -151,6 +157,13 @@ adjustments on other rows are retained; changing weeks clears local drafts.
 Approvals/exports are disabled while refreshing or after a refresh error.
 Logout clears the client query cache. Server-side version/snapshot validation
 still checks every save; cached figures never bypass approval validation.
+
+Report loading starts independent leave, review, attendance and venue reads
+together and selects only the user/shift/log fields the report needs. Matching
+indexes published shifts by employee instead of scanning everyone's roster for
+each clock-in. The weekly table indexes rows by employee/day and reuses Perth
+date/time formatters. These optimizations do not cache server approval decisions
+or truncate overnight attendance, audit history or payroll records.
 
 Admins and managers can use **Payroll Reports > Confirm Worked Hours**. Choose a
 Monday, then filter by venue, staff or review status. All dates/times use Perth

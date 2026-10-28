@@ -15,11 +15,13 @@ export default function PendingUsersList({ initialUsers, canAssignAdmin = false 
   // Store the list of pending users in state
   const [users, setUsers] = useState<User[]>(initialUsers);
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [loadingAction, setLoadingAction] = useState<'approve' | 'remove' | null>(null);
   const [roles, setRoles] = useState<Record<string, 'STAFF' | 'ADMIN'>>({});
   const [error, setError] = useState('');
 
   async function handleApprove(userId: string) {
     setLoadingId(userId);
+    setLoadingAction('approve');
     setError('');
 
     try {
@@ -39,6 +41,35 @@ export default function PendingUsersList({ initialUsers, canAssignAdmin = false 
       setError(error instanceof Error ? error.message : 'Failed to approve user.');
     } finally {
       setLoadingId(null);
+      setLoadingAction(null);
+    }
+  }
+
+  async function handleRemove(user: User) {
+    const label = user.name || user.email;
+    if (!window.confirm(`Remove ${label}? This deletes their sign-up request and cannot be undone.`)) return;
+
+    setLoadingId(user.id);
+    setLoadingAction('remove');
+    setError('');
+
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to remove user.');
+      setUsers((current) => current.filter((item) => item.id !== user.id));
+      router.refresh();
+    } catch (error) {
+      console.error('Failed to remove user:', error);
+      setError(error instanceof Error ? error.message : 'Failed to remove user.');
+    } finally {
+      setLoadingId(null);
+      setLoadingAction(null);
     }
   }
 
@@ -57,33 +88,42 @@ export default function PendingUsersList({ initialUsers, canAssignAdmin = false 
       {users.map((user) => (
         <div
           key={user.id}
-          className="flex items-center justify-between p-4 bg-white border border-stone-200/80 rounded-2xl shadow-sm"
+          className="flex flex-col gap-3 p-4 bg-white border border-stone-200/80 rounded-2xl shadow-sm sm:flex-row sm:items-center sm:justify-between"
         >
-          <div>
+          <div className="min-w-0">
             <p className="text-sm font-medium text-stone-800">{user.name || 'Unnamed user'}</p>
-            <p className="text-xs text-stone-500">{user.email}</p>
+            <p className="break-all text-xs text-stone-500">{user.email}</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-          <label className="text-xs font-semibold text-stone-600">
-            Approve as
-            <select
-              aria-label={`Role for ${user.name || user.email}`}
-              value={roles[user.id] ?? 'STAFF'}
+            <label className="text-xs font-semibold text-stone-600">
+              Approve as
+              <select
+                aria-label={`Role for ${user.name || user.email}`}
+                value={roles[user.id] ?? 'STAFF'}
+                disabled={loadingId !== null}
+                onChange={(event) => setRoles((current) => ({ ...current, [user.id]: event.target.value === 'ADMIN' ? 'ADMIN' : 'STAFF' }))}
+                className="ml-2 rounded-md border border-stone-300 bg-white px-2 py-1.5 text-sm"
+              >
+                <option value="STAFF">Staff</option>
+                {canAssignAdmin && <option value="ADMIN">Admin</option>}
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={() => handleRemove(user)}
               disabled={loadingId !== null}
-              onChange={(event) => setRoles((current) => ({ ...current, [user.id]: event.target.value === 'ADMIN' ? 'ADMIN' : 'STAFF' }))}
-              className="ml-2 rounded-md border border-stone-300 bg-white px-2 py-1.5 text-sm"
+              className="px-4 py-2 text-xs font-medium text-rose-700 bg-white border border-rose-300 hover:bg-rose-50 rounded-xl transition-all disabled:opacity-50"
             >
-              <option value="STAFF">Staff</option>
-              {canAssignAdmin && <option value="ADMIN">Admin</option>}
-            </select>
-          </label>
-          <button
-            onClick={() => handleApprove(user.id)}
-            disabled={loadingId !== null}
-            className="px-4 py-2 text-xs font-medium text-stone-50 bg-stone-900 hover:bg-stone-800 rounded-xl transition-all disabled:opacity-50"
-          >
-            {loadingId === user.id ? 'Approving...' : `Approve ${roles[user.id] === 'ADMIN' ? 'Admin' : 'Staff'}`}
-          </button>
+              {loadingId === user.id && loadingAction === 'remove' ? 'Removing...' : 'Remove'}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleApprove(user.id)}
+              disabled={loadingId !== null}
+              className="px-4 py-2 text-xs font-medium text-stone-50 bg-stone-900 hover:bg-stone-800 rounded-xl transition-all disabled:opacity-50"
+            >
+              {loadingId === user.id && loadingAction === 'approve' ? 'Approving...' : `Approve ${roles[user.id] === 'ADMIN' ? 'Admin' : 'Staff'}`}
+            </button>
           </div>
         </div>
       ))}

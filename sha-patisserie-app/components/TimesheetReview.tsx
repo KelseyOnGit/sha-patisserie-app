@@ -26,18 +26,20 @@ interface WeekDay {
   displayDate: string;
 }
 
-const time = (value: string) => new Intl.DateTimeFormat('en-AU', {
+const timeFormatter = new Intl.DateTimeFormat('en-AU', {
   timeZone: 'Australia/Perth', hour: '2-digit', minute: '2-digit',
-}).format(new Date(value));
+});
+const shortTimeFormatter = new Intl.DateTimeFormat('en-AU', {
+  timeZone: 'Australia/Perth', hour: '2-digit', minute: '2-digit', hour12: false,
+});
+const dayFormatter = new Intl.DateTimeFormat('en-AU', {
+  timeZone: 'Australia/Perth', month: 'short', day: 'numeric',
+});
+const time = (value: string) => timeFormatter.format(new Date(value));
 
 const timeShort = (value: string) => {
   const d = new Date(value);
-  const parts = new Intl.DateTimeFormat('en-AU', {
-    timeZone: 'Australia/Perth',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(d).split(':');
+  const parts = shortTimeFormatter.format(d).split(':');
   return `${parts[0]}.${parts[1]}`;
 };
 
@@ -57,11 +59,7 @@ function getWeekDays(weekStartStr: string): WeekDay[] {
     for (let i = 0; i < 7; i++) {
       const cur = new Date(mondayDate.getTime() + i * 86400000);
       const dateStr = cur.toISOString().slice(0, 10);
-      const displayDate = new Intl.DateTimeFormat('en-AU', {
-        timeZone: 'Australia/Perth',
-        month: 'short',
-        day: 'numeric',
-      }).format(new Date(`${dateStr}T12:00:00+08:00`));
+      const displayDate = dayFormatter.format(new Date(`${dateStr}T12:00:00+08:00`));
 
       days.push({
         dateStr,
@@ -133,6 +131,18 @@ export default function TimesheetReview({ userId }: { userId: string }) {
 
   const filtered = shifts.filter((row) => (!venue || row.site === venue) &&
     (!staff || row.userId === staff) && (!statusFilter || status(row) === statusFilter));
+  const rowsByUser = new Map<string, ReviewRow[]>();
+  const rowsByUserDay = new Map<string, Map<string, ReviewRow[]>>();
+  for (const row of filtered) {
+    const userRows = rowsByUser.get(row.userId) ?? [];
+    userRows.push(row);
+    rowsByUser.set(row.userId, userRows);
+    const days = rowsByUserDay.get(row.userId) ?? new Map<string, ReviewRow[]>();
+    const dayRows = days.get(row.workDate) ?? [];
+    dayRows.push(row);
+    days.set(row.workDate, dayRows);
+    rowsByUserDay.set(row.userId, days);
+  }
   const payroll = (report?.rows ?? []).filter((row) =>
     (!venue || row.site === venue) && (!staff || row.userId === staff));
   const sites = Array.from(new Set([
@@ -511,7 +521,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
                   consolidatedStaffList.map((staffItem) => {
                     // Compute final total of adjusted hours for this staff member
                     const finalStaffTotal = weekDays.reduce((acc, d) => {
-                      return acc + filtered.filter((row) => row.userId === staffItem.userId && row.workDate === d.dateStr)
+                      return acc + (rowsByUserDay.get(staffItem.userId)?.get(d.dateStr) ?? [])
                         .reduce((total, row) => {
                           const val = adjustments[row.sourceKey] !== undefined
                             ? adjustments[row.sourceKey]
@@ -521,7 +531,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
                     }, 0);
 
                     // Check if all shifts are approved
-                    const staffShifts = filtered.filter((row) => row.userId === staffItem.userId);
+                    const staffShifts = rowsByUser.get(staffItem.userId) ?? [];
                     const isAllApproved = staffShifts.length > 0 && staffShifts.every((s) => s.status === 'APPROVED');
                     const hasInProgress = staffShifts.some((row) => isLiveAttendance(row));
 
@@ -642,8 +652,8 @@ export default function TimesheetReview({ userId }: { userId: string }) {
                                     Details
                                   </button>
                                 </div>
-                                {filtered.filter((entry) => entry.userId === row.userId &&
-                                  entry.workDate === row.workDate && entry.sourceKey !== row.sourceKey)
+                                {(rowsByUserDay.get(row.userId)?.get(row.workDate) ?? [])
+                                  .filter((entry) => entry.sourceKey !== row.sourceKey)
                                   .map((entry) => <button key={entry.sourceKey}
                                     onClick={() => setSelected(entry)}
                                     disabled={writesBlocked}

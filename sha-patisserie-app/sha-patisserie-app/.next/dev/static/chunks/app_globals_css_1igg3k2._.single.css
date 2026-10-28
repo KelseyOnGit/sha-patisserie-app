@@ -1188,6 +1188,12 @@
     align-self: flex-start;
   }
 
+  .truncate {
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
   .overflow-auto {
     overflow: auto;
   }
@@ -2260,6 +2266,10 @@
 
   .break-words {
     overflow-wrap: break-word;
+  }
+
+  .break-all {
+    word-break: break-all;
   }
 
   .whitespace-pre-wrap {

@@ -395,11 +395,134 @@ test('pending approval sends the chosen Admin role and displays API failures', a
   const render = () => { hooks.reset(); return component(props); };
   findElement(render(), (node) => node.type === 'select').props.onChange({ target: { value: 'ADMIN' } });
   t.mock.method(console, 'error', () => {});
-  await findElement(render(), (node) => node.type === 'button').props.onClick();
+  await findElement(render(), (node) => node.type === 'button' && node.props.children === 'Approve Admin').props.onClick();
   assert.match(renderToStaticMarkup(render()), /Account changed. Refresh./);
   assert.equal(refreshes, 0);
   failure = false;
-  await findElement(render(), (node) => node.type === 'button').props.onClick();
+  await findElement(render(), (node) => node.type === 'button' && node.props.children === 'Approve Admin').props.onClick();
+  assert.match(renderToStaticMarkup(render()), /No users are currently awaiting approval/);
+  assert.equal(refreshes, 1);
+});
+
+test('pending removal enforces permissions, pending status and history protection transactionally', async () => {
+  const relations = ['shifts', 'timeLogs', 'rosterShifts', 'timeEntries', 'leaveRequests', 'leaveReviews', 'timesheets', 'timesheetActions'];
+  let session = { userId: 'actor', role: 'ADMIN' };
+  let actor = { role: 'ADMIN', status: 'ACTIVE', isApproved: true };
+  let target;
+  let writes = 0;
+  let changed = false;
+  const reset = () => {
+    target = { role: 'STAFF', status: 'PENDING', isApproved: false,
+      _count: Object.fromEntries(relations.map((key) => [key, 0])) };
+  };
+  reset();
+  const api = loadFile('app/api/admin/users/route.ts', {
+    '@/lib/session': {
+      getSession: async () => session,
+      isPrivilegedRole: (role) => ['ADMIN', 'MANAGER'].includes(role),
+    },
+    '@/lib/prisma': { prisma: { $transaction: async (work, options) => {
+      assert.equal(options.isolationLevel, 'Serializable');
+      return work({ user: {
+        findUnique: async ({ where, select }) => {
+          if (where.id === 'actor') return actor;
+          assert.deepEqual(Object.keys(select._count.select).sort(), [...relations].sort());
+          return target;
+        },
+        deleteMany: async ({ where }) => {
+          assert.deepEqual(where, { id: 'target', isApproved: false, status: 'PENDING' });
+          if (changed) return { count: 0 };
+          writes++;
+          return { count: 1 };
+        },
+      } });
+    } } },
+  });
+  const remove = (data = { userId: 'target' }) => api.DELETE(body(data));
+  assert.equal((await remove()).status, 200);
+  actor.role = 'MANAGER';
+  session.role = 'MANAGER';
+  assert.equal((await remove()).status, 200);
+  target.role = 'ADMIN';
+  assert.equal((await remove()).status, 403);
+  reset();
+  actor.status = 'INACTIVE';
+  assert.equal((await remove()).status, 403);
+  actor.status = 'ACTIVE';
+  actor.role = 'ADMIN';
+  session.role = 'ADMIN';
+  target.isApproved = true;
+  assert.equal((await remove()).status, 409);
+  reset();
+  target.status = 'INACTIVE';
+  assert.equal((await remove()).status, 409);
+  for (const relation of relations) {
+    reset();
+    target._count[relation] = 1;
+    const response = await remove();
+    assert.equal(response.status, 409);
+    assert.match((await response.json()).error, /staff history/);
+  }
+  reset();
+  assert.equal((await remove({ userId: 'actor' })).status, 409);
+  for (const data of [null, {}, { userId: '' }, { userId: 123 }]) {
+    assert.equal((await remove(data)).status, 400);
+  }
+  target = null;
+  assert.equal((await remove()).status, 404);
+  reset();
+  changed = true;
+  assert.equal((await remove()).status, 409);
+  session.role = 'STAFF';
+  assert.equal((await remove()).status, 403);
+  session = null;
+  assert.equal((await remove()).status, 401);
+  assert.equal(writes, 2);
+});
+
+test('Remove confirms sign-up deletion, keeps user on failure and removes locally only on success', async (t) => {
+  const hooks = hookState();
+  let confirmed = false;
+  let failure = true;
+  let calls = 0;
+  let refreshes = 0;
+  const previousWindow = globalThis.window;
+  globalThis.window = { confirm: (message) => {
+    assert.match(message, /Remove Test.*cannot be undone/);
+    return confirmed;
+  } };
+  t.after(() => {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  });
+  t.mock.method(console, 'error', () => {});
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    calls++;
+    assert.equal(url, '/api/admin/users');
+    assert.equal(options.method, 'DELETE');
+    assert.deepEqual(JSON.parse(options.body), { userId: 'target' });
+    return failure ? Response.json({ error: 'Account has history.' }, { status: 409 }) :
+      Response.json({ message: 'Removed' });
+  });
+  const component = loadFile('components/PendingUsersList.tsx', {
+    react: hooks.react,
+    'next/navigation': { useRouter: () => ({ refresh() { refreshes++; } }) },
+  }).default;
+  const render = () => {
+    hooks.reset();
+    return component({ initialUsers: [{ id: 'target', name: 'Test', email: 'test@example.invalid', createdAt: '' }] });
+  };
+  const click = () => findElement(render(), (node) => node.type === 'button' && node.props.children === 'Remove').props.onClick();
+  await click();
+  assert.equal(calls, 0);
+  confirmed = true;
+  await click();
+  assert.match(renderToStaticMarkup(render()), /Account has history/);
+  assert.match(renderToStaticMarkup(render()), /Approve Staff/);
+  assert.equal(refreshes, 0);
+  failure = false;
+  await click();
+  assert.equal(calls, 2);
   assert.match(renderToStaticMarkup(render()), /No users are currently awaiting approval/);
   assert.equal(refreshes, 1);
 });

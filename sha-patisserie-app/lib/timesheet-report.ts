@@ -6,6 +6,20 @@ import {
   type PayrollRow, type ReviewRow,
 } from '@/lib/timesheets';
 
+const reportUserSelect = {
+  id: true, name: true, email: true, status: true, employmentType: true, hourlyPayRate: true,
+} satisfies Prisma.UserSelect;
+const reportLocationSelect = { name: true } satisfies Prisma.LocationSelect;
+const reportShiftSelect = {
+  id: true, userId: true, locationId: true, startTime: true, endTime: true,
+  startBreak: true, endBreak: true, breakMinutes: true, publishedAt: true,
+  user: { select: reportUserSelect }, location: { select: reportLocationSelect },
+} satisfies Prisma.ShiftSelect;
+const reportLogSelect = {
+  id: true, userId: true, locationId: true, clockIn: true, clockOut: true, timesheetId: true,
+  user: { select: reportUserSelect }, location: { select: reportLocationSelect },
+} satisfies Prisma.TimeLogSelect;
+
 // The same read model drives GET, transactional saves and payroll. Re-reading it
 // inside the save transaction prevents approving stale browser attendance.
 export async function loadTimesheetReport(weekStart: string, db: Prisma.TransactionClient = prisma) {
@@ -13,30 +27,33 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
   const dateStart = new Date(`${weekStart}T00:00:00Z`);
   const dateEnd = new Date(dateStart.getTime() + 7 * 86400000);
   const now = new Date();
-  const approvedLeave = await db.leaveRequest.findMany({
-    where: { status: 'APPROVED', workDate: { gte: dateStart, lt: dateEnd } },
-    include: { user: { select: { name: true, employmentType: true, location: { select: { name: true } } } } },
-    orderBy: { workDate: 'asc' },
-  });
-  const saved = await db.timesheet.findMany({
-    where: { workDate: { gte: dateStart, lt: dateEnd } },
-    include: {
-      user: true,
-      shift: { include: { user: true, location: true } },
-      logs: { include: { user: true, location: true }, orderBy: { clockIn: 'asc' } },
-      history: { include: { actor: { select: { name: true, email: true } } }, orderBy: { createdAt: 'desc' } },
-    },
-  });
-  const logs = await db.timeLog.findMany({
-    where: {
-      // Include overnight logs crossing the week boundary; the row still belongs
-      // to the Perth date its shift (or unscheduled attendance) started.
-      clockIn: { lt: end },
-      OR: [{ clockOut: { gt: start } }, { clockOut: null }, { clockIn: { gte: start } }],
-    },
-    include: { user: true, location: true },
-    orderBy: { clockIn: 'asc' },
-  });
+  const [approvedLeave, saved, logs, allLocations] = await Promise.all([
+    db.leaveRequest.findMany({
+      where: { status: 'APPROVED', workDate: { gte: dateStart, lt: dateEnd } },
+      include: { user: { select: { name: true, employmentType: true, location: { select: { name: true } } } } },
+      orderBy: { workDate: 'asc' },
+    }),
+    db.timesheet.findMany({
+      where: { workDate: { gte: dateStart, lt: dateEnd } },
+      include: {
+        user: { select: reportUserSelect },
+        shift: { select: reportShiftSelect },
+        logs: { select: reportLogSelect, orderBy: { clockIn: 'asc' } },
+        history: { include: { actor: { select: { name: true, email: true } } }, orderBy: { createdAt: 'desc' } },
+      },
+    }),
+    db.timeLog.findMany({
+      where: {
+        // Include overnight logs crossing the week boundary; the row still belongs
+        // to the Perth date its shift (or unscheduled attendance) started.
+        clockIn: { lt: end },
+        OR: [{ clockOut: { gt: start } }, { clockOut: null }, { clockIn: { gte: start } }],
+      },
+      select: reportLogSelect,
+      orderBy: { clockIn: 'asc' },
+    }),
+    db.location.findMany({ select: { name: true }, orderBy: { name: 'asc' } }),
+  ]);
   const earliest = logs.reduce((date, log) => log.clockIn < date ? log.clockIn : date, start);
   const latest = logs.reduce((date, log) => (log.clockOut ?? now) > date ? (log.clockOut ?? now) : date, end);
   const fetchedShifts = await db.shift.findMany({
@@ -45,7 +62,7 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
       startTime: { lt: latest },
       endTime: { gt: earliest },
     },
-    include: { user: true, location: true },
+    select: reportShiftSelect,
     orderBy: { startTime: 'asc' },
   });
   // Saved reviews remain visible even if their roster shift was unpublished.
@@ -54,6 +71,7 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
     ...saved.flatMap((sheet) => sheet.shift ? [[sheet.shift.id, sheet.shift] as const] : []),
   ]).values());
   const savedByKey = new Map(saved.map((sheet) => [sheet.sourceKey, sheet]));
+  const savedById = new Map(saved.map((sheet) => [sheet.id, sheet]));
   const allLogs = Array.from(new Map([
     ...logs.map((log) => [log.id, log] as const),
     ...saved.flatMap((sheet) => sheet.logs.map((log) => [log.id, log] as const)),
@@ -61,12 +79,19 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
   const grouped = new Map<string, typeof allLogs>();
   const ambiguousLogs = new Set<string>();
   const ambiguousShifts = new Set<string>();
+  const shiftsByUser = new Map<string, typeof shifts>();
+  for (const shift of shifts) {
+    if (!shift.publishedAt) continue;
+    const userShifts = shiftsByUser.get(shift.userId) ?? [];
+    userShifts.push(shift);
+    shiftsByUser.set(shift.userId, userShifts);
+  }
 
   for (const log of allLogs) {
-    const existing = log.timesheetId ? saved.find((sheet) => sheet.id === log.timesheetId) : undefined;
+    const existing = log.timesheetId ? savedById.get(log.timesheetId) : undefined;
     // A record already allocated to another week's timesheet cannot be paid twice.
     if (log.timesheetId && !existing) continue;
-    const matches = candidateShifts(log, shifts.filter((shift) => shift.publishedAt), now);
+    const matches = candidateShifts(log, shiftsByUser.get(log.userId) ?? [], now);
     let key: string;
     if (existing) {
       key = existing.sourceKey;
@@ -196,10 +221,6 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
     summary.set(key, payroll);
   }
 
-  const allLocations = await db.location.findMany({
-    select: { name: true },
-    orderBy: { name: 'asc' },
-  });
   const venues = Array.from(new Set([
     ...allLocations.map((loc) => loc.name),
     ...shifts.map((s) => s.location?.name).filter(Boolean) as string[],

@@ -20,10 +20,12 @@ function PendingUsersList({ initialUsers, canAssignAdmin = false }) {
     // Store the list of pending users in state
     const [users, setUsers] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(initialUsers);
     const [loadingId, setLoadingId] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
+    const [loadingAction, setLoadingAction] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
     const [roles, setRoles] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])({});
     const [error, setError] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])('');
     async function handleApprove(userId) {
         setLoadingId(userId);
+        setLoadingAction('approve');
         setError('');
         try {
             // Call the API endpoint created in Part 1
@@ -46,6 +48,35 @@ function PendingUsersList({ initialUsers, canAssignAdmin = false }) {
             setError(error instanceof Error ? error.message : 'Failed to approve user.');
         } finally{
             setLoadingId(null);
+            setLoadingAction(null);
+        }
+    }
+    async function handleRemove(user) {
+        const label = user.name || user.email;
+        if (!window.confirm(`Remove ${label}? This deletes their sign-up request and cannot be undone.`)) return;
+        setLoadingId(user.id);
+        setLoadingAction('remove');
+        setError('');
+        try {
+            const res = await fetch('/api/admin/users', {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    userId: user.id
+                })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to remove user.');
+            setUsers((current)=>current.filter((item)=>item.id !== user.id));
+            router.refresh();
+        } catch (error) {
+            console.error('Failed to remove user:', error);
+            setError(error instanceof Error ? error.message : 'Failed to remove user.');
+        } finally{
+            setLoadingId(null);
+            setLoadingAction(null);
         }
     }
     // Display empty state if no pending users exist
@@ -57,12 +88,12 @@ function PendingUsersList({ initialUsers, canAssignAdmin = false }) {
                 children: "No users are currently awaiting approval."
             }, void 0, false, {
                 fileName: "[project]/components/PendingUsersList.tsx",
-                lineNumber: 49,
+                lineNumber: 80,
                 columnNumber: 9
             }, this)
         }, void 0, false, {
             fileName: "[project]/components/PendingUsersList.tsx",
-            lineNumber: 48,
+            lineNumber: 79,
             columnNumber: 7
         }, this);
     }
@@ -75,34 +106,35 @@ function PendingUsersList({ initialUsers, canAssignAdmin = false }) {
                 children: error
             }, void 0, false, {
                 fileName: "[project]/components/PendingUsersList.tsx",
-                lineNumber: 56,
+                lineNumber: 87,
                 columnNumber: 17
             }, this),
             users.map((user)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                    className: "flex items-center justify-between p-4 bg-white border border-stone-200/80 rounded-2xl shadow-sm",
+                    className: "flex flex-col gap-3 p-4 bg-white border border-stone-200/80 rounded-2xl shadow-sm sm:flex-row sm:items-center sm:justify-between",
                     children: [
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                            className: "min-w-0",
                             children: [
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                                     className: "text-sm font-medium text-stone-800",
                                     children: user.name || 'Unnamed user'
                                 }, void 0, false, {
                                     fileName: "[project]/components/PendingUsersList.tsx",
-                                    lineNumber: 63,
+                                    lineNumber: 94,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                                    className: "text-xs text-stone-500",
+                                    className: "break-all text-xs text-stone-500",
                                     children: user.email
                                 }, void 0, false, {
                                     fileName: "[project]/components/PendingUsersList.tsx",
-                                    lineNumber: 64,
+                                    lineNumber: 95,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/PendingUsersList.tsx",
-                            lineNumber: 62,
+                            lineNumber: 93,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -127,59 +159,71 @@ function PendingUsersList({ initialUsers, canAssignAdmin = false }) {
                                                     children: "Staff"
                                                 }, void 0, false, {
                                                     fileName: "[project]/components/PendingUsersList.tsx",
-                                                    lineNumber: 76,
-                                                    columnNumber: 15
+                                                    lineNumber: 107,
+                                                    columnNumber: 17
                                                 }, this),
                                                 canAssignAdmin && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
                                                     value: "ADMIN",
                                                     children: "Admin"
                                                 }, void 0, false, {
                                                     fileName: "[project]/components/PendingUsersList.tsx",
-                                                    lineNumber: 77,
-                                                    columnNumber: 34
+                                                    lineNumber: 108,
+                                                    columnNumber: 36
                                                 }, this)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/components/PendingUsersList.tsx",
-                                            lineNumber: 69,
-                                            columnNumber: 13
+                                            lineNumber: 100,
+                                            columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/components/PendingUsersList.tsx",
-                                    lineNumber: 67,
-                                    columnNumber: 11
+                                    lineNumber: 98,
+                                    columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                                    type: "button",
+                                    onClick: ()=>handleRemove(user),
+                                    disabled: loadingId !== null,
+                                    className: "px-4 py-2 text-xs font-medium text-rose-700 bg-white border border-rose-300 hover:bg-rose-50 rounded-xl transition-all disabled:opacity-50",
+                                    children: loadingId === user.id && loadingAction === 'remove' ? 'Removing...' : 'Remove'
+                                }, void 0, false, {
+                                    fileName: "[project]/components/PendingUsersList.tsx",
+                                    lineNumber: 111,
+                                    columnNumber: 13
+                                }, this),
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                                    type: "button",
                                     onClick: ()=>handleApprove(user.id),
                                     disabled: loadingId !== null,
                                     className: "px-4 py-2 text-xs font-medium text-stone-50 bg-stone-900 hover:bg-stone-800 rounded-xl transition-all disabled:opacity-50",
-                                    children: loadingId === user.id ? 'Approving...' : `Approve ${roles[user.id] === 'ADMIN' ? 'Admin' : 'Staff'}`
+                                    children: loadingId === user.id && loadingAction === 'approve' ? 'Approving...' : `Approve ${roles[user.id] === 'ADMIN' ? 'Admin' : 'Staff'}`
                                 }, void 0, false, {
                                     fileName: "[project]/components/PendingUsersList.tsx",
-                                    lineNumber: 80,
-                                    columnNumber: 11
+                                    lineNumber: 119,
+                                    columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/PendingUsersList.tsx",
-                            lineNumber: 66,
+                            lineNumber: 97,
                             columnNumber: 11
                         }, this)
                     ]
                 }, user.id, true, {
                     fileName: "[project]/components/PendingUsersList.tsx",
-                    lineNumber: 58,
+                    lineNumber: 89,
                     columnNumber: 9
                 }, this))
         ]
     }, void 0, true, {
         fileName: "[project]/components/PendingUsersList.tsx",
-        lineNumber: 55,
+        lineNumber: 86,
         columnNumber: 5
     }, this);
 }
-_s(PendingUsersList, "k1nYn/riAlMduKk/0DK+AsATxSk=", false, function() {
+_s(PendingUsersList, "RjZjpcqsdL8Xgl0e2ocdWW3+sCs=", false, function() {
     return [
         __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$navigation$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRouter"]
     ];
