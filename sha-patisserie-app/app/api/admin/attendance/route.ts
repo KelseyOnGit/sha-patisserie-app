@@ -52,6 +52,7 @@ export async function GET(req: NextRequest) {
         startTime: { gte: startUtc, lte: endUtc },
         user: {
           role: { in: ['STAFF', 'MANAGER'] },
+          status: { not: 'INACTIVE' },
         },
       },
       include: {
@@ -68,6 +69,7 @@ export async function GET(req: NextRequest) {
       where: {
         user: {
           role: { in: ['STAFF', 'MANAGER'] },
+          status: { not: 'INACTIVE' },
         },
         OR: [
           { clockIn: { gte: startUtc, lte: endUtc } },

@@ -1,13 +1,13 @@
 'use client';
-import { rosterStaff, assignableStaff } from '@/lib/roster-staff';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DEFAULT_WORKING_HOURS, WORKING_DAYS, regularHoursFor, type WorkingHoursMap } from '@/lib/workingHours';
 import { WA_PUBLIC_HOLIDAYS } from '@/lib/holidays';
 import { fetchRosterLeave, type RosterLeave } from '@/lib/roster-leave';
 import RosterLeaveCard from '@/components/RosterLeaveCard';
 import { parseRosterTime, perthDateTime } from '@/lib/roster-time';
 import { currentWeek, perthDate } from '@/lib/timesheets';
+import { rosterStaff, assignableStaff } from '@/lib/roster-staff';
 
 interface User {
   id: string;
@@ -40,29 +40,6 @@ const LOCATIONS = [
 
 const ROLE_OPTIONS = ['Barista', 'Chef', 'All-rounder'];
 const BREAK_OPTIONS = [0, 30];
-
-const USER_COLOR_PALETTE = [
-  { bg: 'bg-amber-100', border: 'border-amber-300', text: 'text-amber-900' },
-  { bg: 'bg-sky-100', border: 'border-sky-300', text: 'text-sky-900' },
-  { bg: 'bg-rose-100', border: 'border-rose-300', text: 'text-rose-900' },
-  { bg: 'bg-emerald-100', border: 'border-emerald-300', text: 'text-emerald-900' },
-  { bg: 'bg-violet-100', border: 'border-violet-300', text: 'text-violet-900' },
-  { bg: 'bg-orange-100', border: 'border-orange-300', text: 'text-orange-900' },
-  { bg: 'bg-teal-100', border: 'border-teal-300', text: 'text-teal-900' },
-  { bg: 'bg-fuchsia-100', border: 'border-fuchsia-300', text: 'text-fuchsia-900' },
-];
-
-function hashString(value: string) {
-  let hash = 0;
-  for (let i = 0; i < value.length; i += 1) {
-    hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
-  }
-  return hash;
-}
-
-function getUserColor(userId: string) {
-  return USER_COLOR_PALETTE[hashString(userId) % USER_COLOR_PALETTE.length];
-}
 
 function dateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -114,12 +91,19 @@ export default function ShiftRoster() {
   const [publishing, setPublishing] = useState(false);
   const [filling, setFilling] = useState(false);
   const [formError, setFormError] = useState('');
+  const lastLoad = useRef(0);
   const [isError, setIsError] = useState(false);
   const [formData, setFormData] = useState({ userId: '', startTime: '', endTime: '', breakMinutes: 30, location: 'SHA', roleTag: ROLE_OPTIONS[0], notes: '' });
   const locationUsers = useMemo(
     () => users.filter((user) => user.location?.code === locationFilter),
     [users, locationFilter]
   );
+  const inactiveIds = useMemo(
+    () => new Set(users.filter((user) => user.status === 'INACTIVE').map((user) => user.id)),
+    [users]
+  );
+  // Inactive staff can't be given new shifts. The one exception is correcting an
+  // existing shift of theirs, so that person stays selectable while editing it.
   const editingUserId = editingId ? shifts.find((shift) => shift.id === editingId)?.userId : undefined;
   const assignableUsers = useMemo(
     () => assignableStaff(users, locationFilter, editingUserId),
@@ -145,8 +129,11 @@ export default function ShiftRoster() {
   };
 
   const loadData = useCallback(() => {
+    // Only fetch the week on screen (plus a day either side for overnight shifts).
+    const monday = new Date(`${localDate(mondayOf(weekStart))}T00:00:00+08:00`).getTime();
+    const range = `from=${new Date(monday - 86400000).toISOString()}&to=${new Date(monday + 8 * 86400000).toISOString()}`;
     return Promise.all([
-      fetch('/api/users'), fetch('/api/shifts'), fetchRosterLeave(),
+      fetch('/api/users'), fetch(`/api/shifts?${range}`), fetchRosterLeave(),
     ]).then(async ([usersResponse, shiftsResponse, leaveData]) => {
       const usersData = await usersResponse.json();
       const shiftsData = await shiftsResponse.json();
@@ -163,11 +150,17 @@ export default function ShiftRoster() {
     }).finally(() => {
       setLoading(false);
     });
-  }, []);
+  }, [weekStart]);
 
   useEffect(() => {
     loadData();
-    const refresh = () => { void loadData(); };
+    lastLoad.current = Date.now();
+    // Refresh when returning to the tab, but not within a minute of the last load.
+    const refresh = () => {
+      if (Date.now() - lastLoad.current < 60_000) return;
+      lastLoad.current = Date.now();
+      void loadData();
+    };
     window.addEventListener('focus', refresh);
     return () => window.removeEventListener('focus', refresh);
   }, [loadData]);
@@ -181,6 +174,13 @@ export default function ShiftRoster() {
     });
   }, [weekStart]);
 
+  // Active staff always get a row. Inactive staff only appear in weeks where they
+  // actually have shifts, so past rosters stay accurate and future weeks stay clean.
+  const rosterUsers = useMemo(
+    () => rosterStaff(users, shifts, weekStart, locationFilter),
+    [users, locationFilter, shifts, weekStart]
+  );
+
   const shiftsByDay = useMemo(() => weekDays.map((day) => ({
     ...day,
     shifts: shifts.filter((shift) =>
@@ -188,15 +188,14 @@ export default function ShiftRoster() {
       shift.location?.code === locationFilter
     ),
   })), [shifts, weekDays, locationFilter]);
-  const rosterUsers = useMemo(
-    () => rosterStaff(users, shifts, weekStart, locationFilter),
-    [users, locationFilter, shifts, weekStart]
-  );
 
   const draftCount = useMemo(
-    () => shiftsByDay.reduce((total, day) => total + day.shifts.filter((shift) => !shift.publishedAt &&
-      (weekStart < currentWeek() || !users.some((user) => user.id === shift.userId && user.status === 'INACTIVE'))).length, 0),
-    [shiftsByDay, users, weekStart]
+    () => shiftsByDay.reduce(
+      (total, day) => total + day.shifts.filter((shift) => !shift.publishedAt &&
+        (weekStart < currentWeek() || !inactiveIds.has(shift.userId))).length,
+      0
+    ),
+    [shiftsByDay, inactiveIds, weekStart]
   );
 
   const goToWeek = (offsetWeeks: number) => {
@@ -246,8 +245,10 @@ export default function ShiftRoster() {
   };
 
   const duplicateWeek = async () => {
-    const shiftCount = shiftsByDay.reduce((total, day) => total + day.shifts.filter((shift) =>
-      !users.some((user) => user.id === shift.userId && user.status === 'INACTIVE')).length, 0);
+    const shiftCount = shiftsByDay.reduce(
+      (total, day) => total + day.shifts.filter((shift) => !inactiveIds.has(shift.userId)).length,
+      0
+    );
     if (shiftCount === 0) {
       report('No shifts found for the selected week and venue.');
       return;
@@ -270,7 +271,51 @@ export default function ShiftRoster() {
     }
   };
 
- 
+  const addSingleRegularShift = async (userId: string, date: Date) => {
+    const weekday = WORKING_DAYS[(date.getDay() + 6) % 7];
+    const user = users.find((u) => u.id === userId);
+    const regular = regularHoursFor(user?.regularWorkingHours, weekday);
+
+    if (!regular) return;
+
+    const dayDateStr = dateKey(date);
+    const startTime = `${dayDateStr}T${regular.startTime}`;
+    const endTime = `${dayDateStr}T${regular.endTime}`;
+    const savedBreak = regular.breakMinutes;
+    const breakMinutes = BREAK_OPTIONS.includes(savedBreak ?? -1) ? savedBreak! : DEFAULT_WORKING_HOURS.Monday.breakMinutes;
+
+    setMessage('');
+    try {
+      const response = await fetch('/api/shifts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          startTime,
+          endTime,
+          breakMinutes,
+          location: locationFilter,
+          roleTag: ROLE_OPTIONS[0],
+          notes: '',
+        }),
+      });
+
+      if (!response.ok) {
+        if (response.status === 409) {
+          await loadData();
+          return;
+        }
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to add shift');
+      }
+
+      report(`Added regular shift for ${user?.name || 'staff member'}.`);
+      await loadData();
+    } catch (error) {
+      report(error instanceof Error ? error.message : 'Failed to add shift.', true);
+    }
+  };
+
   const handlePublish = async () => {
     const weekLabel = `${formatDMY(weekDays[0].date)} - ${formatDMY(weekDays[6].date)}`;
     if (!window.confirm(`Publish ${draftCount} draft shift(s) for ${weekLabel}? Each affected staff member will be emailed their weekly roster.`)) return;
@@ -425,7 +470,7 @@ export default function ShiftRoster() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-xs font-bold uppercase tracking-widest text-stone-500">Admin scheduling</p>
-          <h1 className="mt-1 text-3xl font-serif text-stone-900">Weekly roster</h1>
+          <h1 className="mt-1 text-3xl font-serif text-stone-900">Upcoming roster</h1>
         </div>
         <div className="flex flex-wrap items-end gap-3">
           <label className="text-sm font-semibold text-stone-700">
@@ -439,8 +484,22 @@ export default function ShiftRoster() {
           </label>
           <button
             type="button"
-            onClick={() => openShiftForm('', weekDays[0].date)}
-            disabled={!locationUsers.some((user) => user.status !== 'INACTIVE')}
+            onClick={() => {
+              const date = weekDays[0].date;
+              const dayKey = dateKey(date);
+              const staff = locationUsers.find((user) =>
+                user.status !== 'INACTIVE' &&
+                !shifts.some((shift) =>
+                  shift.userId === user.id && perthDate(shift.startTime) === dayKey
+                )
+              );
+              if (!staff) {
+                report('No staff are available for Monday at this venue.', true);
+                return;
+              }
+              openShiftForm(staff.id, date);
+            }}
+            disabled={assignableUsers.length === 0}
             className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-semibold text-white hover:bg-stone-700 disabled:opacity-50"
           >
             Add shift
@@ -494,13 +553,13 @@ export default function ShiftRoster() {
         </div>
       </div>
 
-      <section className="overflow-x-auto rounded-xl border border-stone-200 bg-white">
+      <section className="overflow-x-auto rounded-xl border border-stone-300 bg-white">
         <table className="w-full min-w-[1100px] table-fixed border-collapse text-left">
           <thead className="bg-stone-50">
             <tr>
-              <th className="sticky left-0 z-20 w-48 border-b border-r border-stone-200 bg-stone-50 px-4 py-3 text-xs font-bold uppercase text-stone-500">Staff</th>
+              <th className="sticky left-0 z-20 w-48 border-b border-r border-stone-300 bg-stone-50 px-4 py-3 text-xs font-bold uppercase text-stone-500">Staff</th>
               {weekDays.map((day) => (
-                <th key={day.key} className="border-b border-r border-stone-200 px-3 py-3 text-center last:border-r-0">
+                <th key={day.key} className="border-b border-r border-stone-300 px-3 py-3 text-center last:border-r-0">
                   <span className="block text-sm font-bold text-stone-800">{day.name.slice(0, 3)}</span>
                   <span className="mt-1 block text-xs font-normal text-stone-500">{formatDMY(day.date)}</span>
                   {WA_PUBLIC_HOLIDAYS[day.key] && (
@@ -521,13 +580,17 @@ export default function ShiftRoster() {
               <tr key={user.id}>
                 <th scope="row" className="sticky left-0 z-10 w-48 border-r border-stone-200 bg-white px-4 py-3 align-top">
                   <span className="block text-sm font-semibold text-stone-900">{user.name || 'Unnamed staff'}</span>
-                  {user.status === 'INACTIVE' && <span className="mt-1 inline-block rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-600">Inactive</span>}
                   <span className="mt-1 block text-xs font-normal text-stone-500">{user.employmentType?.replaceAll('_', ' ') || 'Staff'}</span>
+                  {user.status === 'INACTIVE' && (
+                    <span className="mt-1 inline-block rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-600">Inactive</span>
+                  )}
                 </th>
                 {shiftsByDay.map((day) => {
                   const userLeave = leave.filter((entry) => entry.userId === user.id && entry.workDate.slice(0, 10) === day.key);
                   const showShifts = !WA_PUBLIC_HOLIDAYS[day.key] && userLeave.length === 0;
-                  const userShifts = day.shifts.filter((shift) => shift.userId === user.id);
+                  const userShifts = shifts.filter((shift) =>
+                    shift.userId === user.id && perthDate(shift.startTime) === day.key
+                  );
                   const regular = user.status === 'INACTIVE'
                     ? null
                     : regularHoursFor(user.regularWorkingHours, WORKING_DAYS[(day.date.getDay() + 6) % 7]);
@@ -536,33 +599,54 @@ export default function ShiftRoster() {
                       <div className="flex min-h-24 flex-col gap-2">
                         {userLeave.map((entry) => <RosterLeaveCard key={entry.id} leave={entry} />)}
                         {showShifts && userShifts.map((shift) => {
-                          const color = getUserColor(shift.userId);
                           return (
                             <button
                               key={shift.id}
                               type="button"
                               onClick={() => editShift(shift)}
-                              className={`w-full rounded-md border p-2 text-left transition hover:shadow-sm ${shift.publishedAt ? '' : 'border-dashed'} ${color.border} ${color.bg}`}
+                              className={`w-full rounded-md border p-2 text-left transition hover:shadow-sm ${shift.publishedAt ? 'border-green-300 bg-green-100 text-green-950 hover:bg-green-200' : 'border-amber-300 border-dashed bg-amber-100 text-amber-950 hover:bg-amber-200'}`}
                             >
-                              <span className={`block text-xs font-bold ${color.text}`}>
+                              <span className="block text-xs font-bold">
                                 {formatShiftTime(shift.startTime)} - {formatShiftTime(shift.endTime)}
                               </span>
                               {shift.roleTag && <span className="mt-1 block text-xs text-stone-700">{shift.roleTag}</span>}
                               {shift.breakMinutes > 0 && <span className="mt-1 block text-[11px] text-stone-600">{shift.breakMinutes} min break</span>}
+                              {shift.location?.code !== locationFilter && shift.location?.name && (
+                                <span className="mt-1 block text-[11px] text-stone-600">{shift.location.name}</span>
+                              )}
                             </button>
                           );
                         })}
-                        {showShifts && user.status !== 'INACTIVE' && userShifts.length === 0 && (regular ? (
-                          <button
-                            type="button"
-                            onClick={() => openShiftForm(user.id, day.date)}
-                            aria-label={`Add ${user.name || 'staff'} regular shift on ${day.name}`}
-                            className="w-full rounded-md border border-dashed border-stone-300 bg-stone-50 p-2 text-left text-stone-500 transition hover:border-sky-500 hover:bg-sky-50 hover:text-sky-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
-                          >
-                            <span className="block text-xs font-semibold">{formatClock(regular.startTime)} - {formatClock(regular.endTime)}</span>
-                            <span className="mt-1 block text-[11px]">Regular hours</span>
-                          </button>
-                        ) : (
+                        {showShifts && userShifts.length === 0 && regular ? (
+                          <div className="group relative w-full rounded-md border border-dashed border-stone-300 bg-stone-50 p-2 text-left text-stone-500 transition hover:border-sky-500 hover:bg-sky-50">
+                            <span className="block text-xs font-semibold text-stone-700 group-hover:text-sky-900">
+                              {formatClock(regular.startTime)} - {formatClock(regular.endTime)}
+                            </span>
+                            <span className="mt-1 block text-[11px] text-stone-500 group-hover:text-sky-700">
+                              Regular hours
+                            </span>
+
+                            {/* Hover Overlay with Action Button */}
+                            <div className="absolute inset-0 flex items-center justify-center gap-1 rounded-md bg-stone-900/80 p-1 opacity-0 transition-opacity group-hover:opacity-100">
+                              <button
+                                type="button"
+                                onClick={() => addSingleRegularShift(user.id, day.date)}
+                                title="Add this regular shift instantly"
+                                className="rounded-md bg-sky-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                              >
+                                + Add
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openShiftForm(user.id, day.date)}
+                                title="Edit details before saving"
+                                className="rounded bg-stone-900 px-2 py-1 text-xs font-semibold text-stone-200 hover:bg-stone-600 hover:text-white"
+                              >
+                                + Edit
+                              </button>
+                            </div>
+                          </div>
+                        ) : showShifts && userShifts.length === 0 && user.status !== 'INACTIVE' ? (
                           <button
                             type="button"
                             onClick={() => openShiftForm(user.id, day.date)}
@@ -571,7 +655,7 @@ export default function ShiftRoster() {
                           >
                             +
                           </button>
-                        ))}
+                        ) : null}
                       </div>
                     </td>
                   );

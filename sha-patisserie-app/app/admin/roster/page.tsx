@@ -1,13 +1,13 @@
 'use client';
-import { rosterStaff, assignableStaff } from '@/lib/roster-staff';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DEFAULT_WORKING_HOURS, WORKING_DAYS, regularHoursFor, type WorkingHoursMap } from '@/lib/workingHours';
 import { WA_PUBLIC_HOLIDAYS } from '@/lib/holidays';
 import { fetchRosterLeave, type RosterLeave } from '@/lib/roster-leave';
 import RosterLeaveCard from '@/components/RosterLeaveCard';
 import { parseRosterTime, perthDateTime } from '@/lib/roster-time';
 import { currentWeek, perthDate } from '@/lib/timesheets';
+import { rosterStaff, assignableStaff } from '@/lib/roster-staff';
 
 interface User {
   id: string;
@@ -91,6 +91,7 @@ export default function ShiftRoster() {
   const [publishing, setPublishing] = useState(false);
   const [filling, setFilling] = useState(false);
   const [formError, setFormError] = useState('');
+  const lastLoad = useRef(0);
   const [isError, setIsError] = useState(false);
   const [formData, setFormData] = useState({ userId: '', startTime: '', endTime: '', breakMinutes: 30, location: 'SHA', roleTag: ROLE_OPTIONS[0], notes: '' });
   const locationUsers = useMemo(
@@ -128,8 +129,11 @@ export default function ShiftRoster() {
   };
 
   const loadData = useCallback(() => {
+    // Only fetch the week on screen (plus a day either side for overnight shifts).
+    const monday = new Date(`${localDate(mondayOf(weekStart))}T00:00:00+08:00`).getTime();
+    const range = `from=${new Date(monday - 86400000).toISOString()}&to=${new Date(monday + 8 * 86400000).toISOString()}`;
     return Promise.all([
-      fetch('/api/users'), fetch('/api/shifts'), fetchRosterLeave(),
+      fetch('/api/users'), fetch(`/api/shifts?${range}`), fetchRosterLeave(),
     ]).then(async ([usersResponse, shiftsResponse, leaveData]) => {
       const usersData = await usersResponse.json();
       const shiftsData = await shiftsResponse.json();
@@ -146,11 +150,17 @@ export default function ShiftRoster() {
     }).finally(() => {
       setLoading(false);
     });
-  }, []);
+  }, [weekStart]);
 
   useEffect(() => {
     loadData();
-    const refresh = () => { void loadData(); };
+    lastLoad.current = Date.now();
+    // Refresh when returning to the tab, but not within a minute of the last load.
+    const refresh = () => {
+      if (Date.now() - lastLoad.current < 60_000) return;
+      lastLoad.current = Date.now();
+      void loadData();
+    };
     window.addEventListener('focus', refresh);
     return () => window.removeEventListener('focus', refresh);
   }, [loadData]);

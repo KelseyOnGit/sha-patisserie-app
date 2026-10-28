@@ -15,7 +15,7 @@ export async function GET() {
     const [totalStaff, pendingUsers, upcomingShifts] = await Promise.all([
       prisma.user.count({ where: { status: 'ACTIVE', role: { in: ['STAFF', 'MANAGER'] } } }),
       prisma.user.count({ where: { isApproved: false } }),
-      prisma.shift.count({ where: { user: { role: { in: ['STAFF', 'MANAGER'] } }, startTime: { gte: now, lt: weekFromNow } } }),
+      prisma.shift.count({ where: { user: { role: { in: ['STAFF', 'MANAGER'] }, status: { not: 'INACTIVE' } }, startTime: { gte: now, lt: weekFromNow } } }),
     ]);
 
     return NextResponse.json({

@@ -80,7 +80,10 @@ To end employment, open the individual profile, choose **Edit Profile**, select
 does not change status; confirming stages the change until it is saved.
 Inactive staff appear last under **Inactive staff** in Show All, with light-red rows.
 They are hidden from the current and future weekly rosters, and cannot receive new
-shifts (including regular-hours fill and duplication). In past weeks they remain
+shifts (including regular-hours fill and duplication). Dashboard attendance rows,
+alerts, attendance totals and upcoming-shift counts exclude currently inactive
+staff, even when saved shifts or clock-ins exist for them. This also applies when
+requesting a past date through the dashboard attendance API. In past roster weeks they remain
 visible with an Inactive badge at venues where they have saved shifts, even if
 their profile's venue changed. Their existing historical shifts remain editable,
 but their name is not offered for new shifts. Historical corrections must be

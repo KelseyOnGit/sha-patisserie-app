@@ -3,19 +3,29 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { getSession, isPrivilegedRole } from '@/lib/session';
 import { findOverlappingShift, findShiftOnSameDay, overlapMessage, sameDayMessage } from '@/lib/shiftConflicts';
-import { currentWeek, perthDate } from '@/lib/timesheets';
+import { perthDate } from '@/lib/timesheets';
 import { shiftUserSelect } from '@/lib/user-select';
 import { parseRosterTime } from '@/lib/roster-time';
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
+    // Optional ?from=&to= (ISO dates) limits the response to one window of shifts.
+    // Callers that send no dates still get every shift, as before.
+    const params = new URL(request.url).searchParams;
+    const from = params.get('from');
+    const to = params.get('to');
+    const range = from && to && !Number.isNaN(Date.parse(from)) && !Number.isNaN(Date.parse(to))
+      ? { startTime: { gte: new Date(from), lt: new Date(to) } }
+      : {};
+
     const shifts = await prisma.shift.findMany({
       where: {
+        ...range,
         user: { role: { in: ['STAFF', 'MANAGER'] } },
         ...(isPrivilegedRole(session.role) ? {} : { publishedAt: { not: null } }),
       },
@@ -57,14 +67,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'End time must be after start time' }, { status: 400 });
     }
 
-    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true, status: true} });
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true, status: true } });
     if (!user) return NextResponse.json({ error: 'Staff member not found' }, { status: 404 });
     if (user.role === 'ADMIN') {
       return NextResponse.json({ error: 'Admin accounts cannot be assigned roster shifts' }, { status: 400 });
     }
+    // New shifts can't be created for staff who have left. (PUT below stays open so
+    // an old shift of theirs can still be corrected.)
     if (user.status === 'INACTIVE') {
-     return NextResponse.json({ error: 'Inactive staff cannot be assigned roster shifts' }, { status: 400 });
-   }
+      return NextResponse.json({ error: 'Inactive staff cannot be assigned roster shifts' }, { status: 400 });
+    }
 
     const sameDay = await findShiftOnSameDay(userId, start);
     if (sameDay) {
@@ -124,18 +136,10 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'End time must be after start time' }, { status: 400 });
     }
 
-    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true, status: true } });
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
     if (!user) return NextResponse.json({ error: 'Staff member not found' }, { status: 404 });
     if (user.role === 'ADMIN') {
       return NextResponse.json({ error: 'Admin accounts cannot be assigned roster shifts' }, { status: 400 });
-    }
-
-    if (user.status === 'INACTIVE') {
-      const original = await prisma.shift.findUnique({ where: { id }, select: { userId: true, startTime: true } });
-      if (!original || original.userId !== userId ||
-          perthDate(original.startTime) >= currentWeek() || perthDate(start) >= currentWeek()) {
-        return NextResponse.json({ error: 'Inactive staff can only remain assigned when correcting their historical shifts.' }, { status: 400 });
-      }
     }
 
     // A saved review owns its original staff/date/venue identity. Allow ordinary

@@ -49,6 +49,64 @@ const shiftBody = {
 };
 const weekBody = { weekStart: '2026-10-26', location: 'SHA' };
 
+test('dashboard attendance excludes inactive scheduled and unscheduled staff and their summary counts', async () => {
+  const users = [
+    { id: 'active', name: 'Active scheduled', role: 'STAFF', status: 'ACTIVE' },
+    { id: 'manager', name: 'Active unscheduled', role: 'MANAGER', status: 'ACTIVE' },
+    { id: 'inactive', name: 'Inactive scheduled', role: 'STAFF', status: 'INACTIVE' },
+    { id: 'inactive-log', name: 'Inactive unscheduled', role: 'MANAGER', status: 'INACTIVE' },
+  ];
+  const shifts = [users[0], users[2]].map((user) => ({
+    id: user.id, userId: user.id, user, location: { name: 'Sha Patisserie' },
+    startTime: new Date('2020-10-05T01:00:00Z'), endTime: new Date('2020-10-05T07:00:00Z'),
+  }));
+  const logs = users.map((user) => ({
+    id: user.id, userId: user.id, user, location: { name: 'Sha Patisserie' },
+    clockIn: new Date('2020-10-05T01:00:00Z'), clockOut: null,
+  }));
+  const read = (records) => async ({ where }) => {
+    assert.deepEqual(where.user.role, roles);
+    assert.deepEqual(where.user.status, { not: 'INACTIVE' });
+    return records.filter(({ user }) =>
+      where.user.role.in.includes(user.role) && user.status !== where.user.status.not);
+  };
+  const api = route('admin/attendance', {
+    shift: { findMany: read(shifts) }, timeLog: { findMany: read(logs) },
+  });
+  const response = await api.GET(new Request('http://localhost/api/admin/attendance?date=2020-10-05'));
+  assert.equal(response.status, 200);
+  const data = await response.json();
+  assert.deepEqual(data.rows.map((row) => row.staffName), ['Active scheduled', 'Active unscheduled']);
+  assert.equal(data.rows[0].id, 'shift-active');
+  assert.equal(data.rows[1].scheduled, 'Unscheduled');
+  assert.deepEqual(data.summary, { clockedIn: 2, onBreak: 0, late: 0, possibleAbsence: 0, scheduled: 0, completed: 0 });
+  assert.equal(shifts.length, 2);
+  assert.equal(logs.length, 4);
+});
+
+test('dashboard upcoming shifts exclude inactive staff while retaining active Staff/Managers', async () => {
+  const api = route('admin/stats', {
+    user: { count: async ({ where }) => {
+      if (where.status) {
+        assert.deepEqual(where, { status: 'ACTIVE', role: roles });
+        return 2;
+      }
+      assert.deepEqual(where, { isApproved: false });
+      return 1;
+    } },
+    shift: { count: async ({ where }) => {
+      assert.deepEqual(where.user, { role: roles, status: { not: 'INACTIVE' } });
+      const users = [
+        { role: 'STAFF', status: 'ACTIVE' }, { role: 'MANAGER', status: 'ACTIVE' },
+        { role: 'STAFF', status: 'INACTIVE' }, { role: 'ADMIN', status: 'ACTIVE' },
+      ];
+      return users.filter((user) => where.user.role.in.includes(user.role) &&
+        user.status !== where.user.status.not).length;
+    } },
+  });
+  assert.deepEqual(await (await api.GET()).json(), { totalStaff: 2, pendingUsers: 1, upcomingShifts: 2 });
+});
+
 test('roster time conversion is independent of server/browser timezone', () => {
   const { parseRosterTime, perthDateTime } = require('../lib/roster-time.ts');
   const previous = process.env.TZ;
