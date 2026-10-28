@@ -19,7 +19,7 @@ Module._resolveFilename = function (request, ...args) {
 };
 
 function fixture() {
-  const user = { id: 'julia', name: 'Julia', email: 'test@example.invalid', hourlyPayRate: new Prisma.Decimal(30) };
+  const user = { id: 'julia', name: 'Julia', email: 'test@example.invalid', status: 'ACTIVE', hourlyPayRate: new Prisma.Decimal(30) };
   const location = { id: 'sha', name: 'Sha Patisserie' };
   let shifts = ['a', 'b'].map((id) => ({
     id, userId: user.id, user, locationId: location.id, location,
@@ -122,8 +122,27 @@ function fixture() {
     addOverlap() { shifts.push({ ...shifts[0], id: 'c' }); },
     finishLog(value) { logs = logs.map((log) => ({ ...log, clockOut: value })); },
     changeRate() { user.hourlyPayRate = null; },
+    endEmployment() { user.status = 'INACTIVE'; },
   };
 }
+
+test('ending employment retains approved historical hours, rate, source and payroll total', async () => {
+  const f = fixture();
+  f.removeOverlap();
+  const before = await f.load();
+  const row = before.shifts.find((entry) => entry.sourceKey === 'shift:a');
+  assert.equal((await f.send(f.payload(row))).status, 200);
+  const approved = await f.load();
+  assert.equal(approved.rows[0].totalHours, 4);
+  assert.equal(approved.rows[0].gross, 120);
+  f.endEmployment();
+  const inactive = await f.load();
+  assert.deepEqual(inactive.rows, approved.rows);
+  assert.equal(inactive.approvedCount, approved.approvedCount);
+  assert.equal(inactive.shifts.find((entry) => entry.sourceKey === row.sourceKey).sourceChanged, false);
+  assert.equal(f.logs.length, 1);
+  assert.equal(f.audits.length, 1);
+});
 
 test('explained overlap approval reaches payroll once, retains rate and audit, and can be reopened', async () => {
   const f = fixture();

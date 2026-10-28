@@ -71,6 +71,23 @@ and exports, leave requests, and roster leave cards remain available.
 
 ### Account approval and role management
 
+Staff Profiles defaults to **Show Active**. Use the status filter on the right
+to **Show Inactive** or **Show All**, and the name search on the left to narrow
+the selected list (case-insensitive). These filters do not change account status.
+
+To end employment, open the individual profile, choose **Edit Profile**, select
+**End Profile**, confirm the popup, then **Save Profile**. Cancelling the popup
+does not change status; confirming stages the change until it is saved.
+Inactive staff appear last under **Inactive staff** in Show All, with light-red rows.
+They are hidden from the current and future weekly rosters, and cannot receive new
+shifts (including regular-hours fill and duplication). In past weeks they remain
+visible with an Inactive badge at venues where they have saved shifts, even if
+their profile's venue changed. Their existing historical shifts remain editable,
+but their name is not offered for new shifts. Historical corrections must be
+republished and any affected payroll approvals reviewed again.
+Ending employment does not delete shifts, attendance, approvals or payroll history;
+previously approved hours remain payable unless their underlying source is changed.
+
 In Pending Users, select Staff or Admin before approval. Only Admins can approve
 Admin accounts; Managers can approve registrations as Staff only. Admins can use
 Move to Admin in Staff Profiles and Move to Staff in the separate Admin Users
@@ -123,6 +140,14 @@ If the staff roster returns HTTP 500 with `invalid input value for enum
 databases unchanged. Do not edit an already-applied migration or reset the database.
 
 ### Worked-hours review
+
+Reports use an in-memory cache keyed by signed-in account and week. Revisiting
+a report within one minute reuses its data; older data refreshes in the background.
+Saves and manual Refresh update the report without blanking the table. Unsaved
+adjustments on other rows are retained; changing weeks clears local drafts.
+Approvals/exports are disabled while refreshing or after a refresh error.
+Logout clears the client query cache. Server-side version/snapshot validation
+still checks every save; cached figures never bypass approval validation.
 
 Admins and managers can use **Payroll Reports > Confirm Worked Hours**. Choose a
 Monday, then filter by venue, staff or review status. All dates/times use Perth

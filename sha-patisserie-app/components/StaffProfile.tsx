@@ -236,7 +236,7 @@ export default function StaffProfileForm({ id }: StaffProfileFormProps) {
 
   const handleOffboard = async () => {
     const confirmEnd = window.confirm(
-      `Are you sure you want to end the profile for ${formData.fullName || 'this staff member'}? This will set their account status to Inactive.`
+      `End the profile for ${formData.fullName || 'this staff member'}? Save changes to deactivate access and remove them from current/future rosters. Past shifts and payroll history will be retained.`
     );
 
     if (confirmEnd) {

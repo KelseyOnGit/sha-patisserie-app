@@ -2374,6 +2374,10 @@
     color: var(--color-rose-500);
   }
 
+  .text-rose-600 {
+    color: var(--color-rose-600);
+  }
+
   .text-rose-700 {
     color: var(--color-rose-700);
   }
@@ -2909,6 +2913,10 @@
   }
 
   @media (min-width: 40rem) {
+    .sm\:w-80 {
+      width: calc(var(--spacing) * 80);
+    }
+
     .sm\:grid-cols-2 {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -2931,6 +2939,10 @@
 
     .sm\:items-center {
       align-items: center;
+    }
+
+    .sm\:items-end {
+      align-items: flex-end;
     }
 
     .sm\:items-start {

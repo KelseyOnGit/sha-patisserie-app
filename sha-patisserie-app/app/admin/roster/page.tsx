@@ -1,4 +1,5 @@
 'use client';
+import { rosterStaff, assignableStaff } from '@/lib/roster-staff';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DEFAULT_WORKING_HOURS, WORKING_DAYS, regularHoursFor, type WorkingHoursMap } from '@/lib/workingHours';
@@ -96,19 +97,30 @@ export default function ShiftRoster() {
     () => users.filter((user) => user.location?.code === locationFilter),
     [users, locationFilter]
   );
+  const inactiveIds = useMemo(
+    () => new Set(users.filter((user) => user.status === 'INACTIVE').map((user) => user.id)),
+    [users]
+  );
+  // Inactive staff can't be given new shifts. The one exception is correcting an
+  // existing shift of theirs, so that person stays selectable while editing it.
+  const editingUserId = editingId ? shifts.find((shift) => shift.id === editingId)?.userId : undefined;
+  const assignableUsers = useMemo(
+    () => assignableStaff(users, locationFilter, editingUserId),
+    [users, locationFilter, editingUserId]
+  );
   const availableUsers = useMemo(() => {
     const start = parseRosterTime(formData.startTime).getTime();
     const end = parseRosterTime(formData.endTime).getTime();
-    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return locationUsers;
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return assignableUsers;
 
     const startDay = perthDate(new Date(start));
 
-    return locationUsers.filter((user) => !shifts.some((shift) => {
+    return assignableUsers.filter((user) => !shifts.some((shift) => {
       if (shift.userId !== user.id || shift.id === editingId) return false;
       const overlaps = new Date(shift.startTime).getTime() < end && new Date(shift.endTime).getTime() > start;
       return overlaps || perthDate(shift.startTime) === startDay;
     }));
-  }, [locationUsers, shifts, formData.startTime, formData.endTime, editingId]);
+  }, [assignableUsers, shifts, formData.startTime, formData.endTime, editingId]);
 
   const report = (text: string, error = false) => {
     setMessage(text);
@@ -152,6 +164,13 @@ export default function ShiftRoster() {
     });
   }, [weekStart]);
 
+  // Active staff always get a row. Inactive staff only appear in weeks where they
+  // actually have shifts, so past rosters stay accurate and future weeks stay clean.
+  const rosterUsers = useMemo(
+    () => rosterStaff(users, shifts, weekStart, locationFilter),
+    [users, locationFilter, shifts, weekStart]
+  );
+
   const shiftsByDay = useMemo(() => weekDays.map((day) => ({
     ...day,
     shifts: shifts.filter((shift) =>
@@ -161,8 +180,12 @@ export default function ShiftRoster() {
   })), [shifts, weekDays, locationFilter]);
 
   const draftCount = useMemo(
-    () => shiftsByDay.reduce((total, day) => total + day.shifts.filter((shift) => !shift.publishedAt).length, 0),
-    [shiftsByDay]
+    () => shiftsByDay.reduce(
+      (total, day) => total + day.shifts.filter((shift) => !shift.publishedAt &&
+        (weekStart < currentWeek() || !inactiveIds.has(shift.userId))).length,
+      0
+    ),
+    [shiftsByDay, inactiveIds, weekStart]
   );
 
   const goToWeek = (offsetWeeks: number) => {
@@ -212,7 +235,10 @@ export default function ShiftRoster() {
   };
 
   const duplicateWeek = async () => {
-    const shiftCount = shiftsByDay.reduce((total, day) => total + day.shifts.length, 0);
+    const shiftCount = shiftsByDay.reduce(
+      (total, day) => total + day.shifts.filter((shift) => !inactiveIds.has(shift.userId)).length,
+      0
+    );
     if (shiftCount === 0) {
       report('No shifts found for the selected week and venue.');
       return;
@@ -235,50 +261,51 @@ export default function ShiftRoster() {
     }
   };
 
-const addSingleRegularShift = async (userId: string, date: Date) => {
-  const weekday = WORKING_DAYS[(date.getDay() + 6) % 7];
-  const user = users.find((u) => u.id === userId);
-  const regular = regularHoursFor(user?.regularWorkingHours, weekday);
+  const addSingleRegularShift = async (userId: string, date: Date) => {
+    const weekday = WORKING_DAYS[(date.getDay() + 6) % 7];
+    const user = users.find((u) => u.id === userId);
+    const regular = regularHoursFor(user?.regularWorkingHours, weekday);
 
-  if (!regular) return;
+    if (!regular) return;
 
-  const dayDateStr = dateKey(date);
-  const startTime = `${dayDateStr}T${regular.startTime}`;
-  const endTime = `${dayDateStr}T${regular.endTime}`;
-  const savedBreak = regular.breakMinutes;
-  const breakMinutes = BREAK_OPTIONS.includes(savedBreak ?? -1) ? savedBreak! : DEFAULT_WORKING_HOURS.Monday.breakMinutes;
+    const dayDateStr = dateKey(date);
+    const startTime = `${dayDateStr}T${regular.startTime}`;
+    const endTime = `${dayDateStr}T${regular.endTime}`;
+    const savedBreak = regular.breakMinutes;
+    const breakMinutes = BREAK_OPTIONS.includes(savedBreak ?? -1) ? savedBreak! : DEFAULT_WORKING_HOURS.Monday.breakMinutes;
 
-  setMessage('');
-  try {
-    const response = await fetch('/api/shifts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId,
-        startTime,
-        endTime,
-        breakMinutes,
-        location: locationFilter,
-        roleTag: ROLE_OPTIONS[0],
-        notes: '',
-      }),
-    });
+    setMessage('');
+    try {
+      const response = await fetch('/api/shifts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          startTime,
+          endTime,
+          breakMinutes,
+          location: locationFilter,
+          roleTag: ROLE_OPTIONS[0],
+          notes: '',
+        }),
+      });
 
-    if (!response.ok) {
-      if (response.status === 409) {
-        await loadData();
-        return;
+      if (!response.ok) {
+        if (response.status === 409) {
+          await loadData();
+          return;
+        }
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to add shift');
       }
-      const data = await response.json();
-      throw new Error(data.error || 'Failed to add shift');
-    }
 
-    report(`Added regular shift for ${user?.name || 'staff member'}.`);
-    await loadData();
-  } catch (error) {
-    report(error instanceof Error ? error.message : 'Failed to add shift.', true);
-  }
-};
+      report(`Added regular shift for ${user?.name || 'staff member'}.`);
+      await loadData();
+    } catch (error) {
+      report(error instanceof Error ? error.message : 'Failed to add shift.', true);
+    }
+  };
+
   const handlePublish = async () => {
     const weekLabel = `${formatDMY(weekDays[0].date)} - ${formatDMY(weekDays[6].date)}`;
     if (!window.confirm(`Publish ${draftCount} draft shift(s) for ${weekLabel}? Each affected staff member will be emailed their weekly roster.`)) return;
@@ -462,7 +489,7 @@ const addSingleRegularShift = async (userId: string, date: Date) => {
               }
               openShiftForm(staff.id, date);
             }}
-            disabled={locationUsers.length === 0}
+            disabled={assignableUsers.length === 0}
             className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-semibold text-white hover:bg-stone-700 disabled:opacity-50"
           >
             Add shift
@@ -537,13 +564,16 @@ const addSingleRegularShift = async (userId: string, date: Date) => {
           <tbody className="divide-y divide-stone-200">
             {loading ? (
               <tr><td colSpan={8} className="p-8 text-center text-sm text-stone-500">Loading roster...</td></tr>
-            ) : locationUsers.length === 0 ? (
+            ) : rosterUsers.length === 0 ? (
               <tr><td colSpan={8} className="p-8 text-center text-sm text-stone-500">No staff are assigned to this venue.</td></tr>
-            ) : locationUsers.map((user) => (
+            ) : rosterUsers.map((user) => (
               <tr key={user.id}>
                 <th scope="row" className="sticky left-0 z-10 w-48 border-r border-stone-200 bg-white px-4 py-3 align-top">
                   <span className="block text-sm font-semibold text-stone-900">{user.name || 'Unnamed staff'}</span>
                   <span className="mt-1 block text-xs font-normal text-stone-500">{user.employmentType?.replaceAll('_', ' ') || 'Staff'}</span>
+                  {user.status === 'INACTIVE' && (
+                    <span className="mt-1 inline-block rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-600">Inactive</span>
+                  )}
                 </th>
                 {shiftsByDay.map((day) => {
                   const userLeave = leave.filter((entry) => entry.userId === user.id && entry.workDate.slice(0, 10) === day.key);
@@ -589,24 +619,24 @@ const addSingleRegularShift = async (userId: string, date: Date) => {
                             {/* Hover Overlay with Action Button */}
                             <div className="absolute inset-0 flex items-center justify-center gap-1 rounded-md bg-stone-900/80 p-1 opacity-0 transition-opacity group-hover:opacity-100">
                               <button
-                              type="button"
-                              onClick={() => addSingleRegularShift(user.id, day.date)}
-                              title="Add this regular shift instantly"
-                              className="rounded-md bg-sky-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
-                            >
-                              + Add
+                                type="button"
+                                onClick={() => addSingleRegularShift(user.id, day.date)}
+                                title="Add this regular shift instantly"
+                                className="rounded-md bg-sky-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                              >
+                                + Add
                               </button>
                               <button
-                              type="button"
-                              onClick={() => openShiftForm(user.id, day.date)}
-                              title="Edit details before saving"
-                              className="rounded bg-stone-900 px-2 py-1 text-xs font-semibold text-stone-200 hover:bg-stone-600 hover:text-white"
-                            >
-                              + Edit
+                                type="button"
+                                onClick={() => openShiftForm(user.id, day.date)}
+                                title="Edit details before saving"
+                                className="rounded bg-stone-900 px-2 py-1 text-xs font-semibold text-stone-200 hover:bg-stone-600 hover:text-white"
+                              >
+                                + Edit
                               </button>
+                            </div>
                           </div>
-                          </div>
-                        ) : showShifts && userShifts.length === 0 ? (
+                        ) : showShifts && userShifts.length === 0 && user.status !== 'INACTIVE' ? (
                           <button
                             type="button"
                             onClick={() => openShiftForm(user.id, day.date)}

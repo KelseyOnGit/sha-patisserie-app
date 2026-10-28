@@ -255,6 +255,128 @@ function hookState() {
   };
 }
 
+test('end profile confirms without submitting, cancel preserves status, and save persists inactivity without deleting history', async (t) => {
+  const hooks = hookState();
+  const effects = [];
+  const saved = [];
+  const apiWrites = [];
+  const api = loadFile('app/api/admin/staff/update/route.ts', {
+    '@/lib/session': {
+      getSession: async () => ({ userId: 'admin', role: 'ADMIN' }),
+      isPrivilegedRole: (role) => ['ADMIN', 'MANAGER'].includes(role),
+    },
+    '@/lib/prisma': { prisma: { user: { update: async ({ data }) => {
+      apiWrites.push(data);
+      return { id: 'person', status: data.status };
+    } } } },
+  });
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    if (options?.method === 'POST') {
+      saved.push(JSON.parse(options.body));
+      return api.POST(new Request('http://localhost/api/admin/staff/update', options));
+    }
+    if (url.startsWith('/api/admin/staff/working-hours')) {
+      return Response.json({ workingHoursPolicy: 'custom', workingHours: null });
+    }
+    assert.equal(url, '/api/admin/staff/update?userId=person');
+    return Response.json({ canManageEmployment: true, user: {
+      id: 'person', name: 'Test staff', email: 'test@example.invalid', status: 'ACTIVE',
+      employmentType: 'CASUAL', annualLeaveHours: '0', personalLeaveHours: '0',
+      hourlyPayRate: '30', rateLastUpdated: '', workingRightStatus: '', claimTaxFreeThreshold: null,
+    } });
+  });
+  const previousWindow = globalThis.window;
+  let confirmed = false;
+  const prompts = [];
+  globalThis.window = { confirm: (message) => { prompts.push(message); return confirmed; } };
+  t.after(() => {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  });
+  const Profile = loadFile('components/StaffProfile.tsx', {
+    react: { ...hooks.react, useEffect: (setup) => effects.push(setup) },
+  }).default;
+  const render = () => { hooks.reset(); return Profile({ id: 'person' }); };
+  render();
+  effects.forEach((effect) => effect());
+  await new Promise(setImmediate);
+  findElement(render(), (node) => node.type === 'button' && node.props.children === 'Edit Profile').props.onClick();
+  const end = () => findElement(render(), (node) => node.type === 'button' && node.props.children === 'End Profile');
+  assert.equal(end().props.type, 'button');
+  await end().props.onClick();
+  assert.equal(findElement(render(), (node) => node.props.name === 'accountStatus').props.value, 'Active');
+  assert.equal(saved.length, 0);
+  confirmed = true;
+  await end().props.onClick();
+  assert.match(prompts[1], /Test staff/);
+  assert.equal(saved.length, 0);
+  assert.equal(findElement(render(), (node) => node.props.name === 'accountStatus').props.value, 'Inactive (Left Company)');
+  await findElement(render(), (node) => node.type === 'form').props.onSubmit({ preventDefault() {} });
+  assert.equal(saved[0].userId, 'person');
+  assert.equal(apiWrites[0].status, 'INACTIVE');
+  assert.match(renderToStaticMarkup(render()), /Staff profile saved successfully/);
+});
+
+test('staff profiles default to active and combine name search with all status options', async (t) => {
+  const people = [
+    { id: 'active', name: 'Julia Active', email: 'active@example.invalid', status: 'ACTIVE', isApproved: true, location: null },
+    { id: 'inactive', name: 'Julia Inactive', email: 'inactive@example.invalid', status: 'INACTIVE', isApproved: true, location: null },
+    { id: 'pending', name: 'Vanessa Pending', email: 'pending@example.invalid', status: 'PENDING', isApproved: false, location: null },
+    { id: 'unnamed', name: null, email: null, status: 'ACTIVE', isApproved: true, location: null },
+  ];
+  const hooks = hookState();
+  const effects = [];
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    assert.equal(options, undefined);
+    if (url === '/api/users') return Response.json(people);
+    if (url === '/api/auth/me') return Response.json({ user: { role: 'ADMIN' } });
+    throw new Error(`Unexpected request: ${url}`);
+  });
+  const component = loadFile('app/admin/staff/page.tsx', {
+    react: { ...hooks.react, useEffect: (setup) => { effects.push(setup); } },
+    'next/link': { default: ({ children, href }) => React.createElement('a', { href }, children) },
+    '@/components/AccountRoleButton': { default: () => React.createElement('button', null, 'Move to Admin') },
+  }).default;
+  const render = () => { hooks.reset(); return component(); };
+  assert.match(renderToStaticMarkup(render()), /Loading staff members/);
+  effects[0]();
+  await new Promise(setImmediate);
+  const names = () => {
+    const body = findElement(render(), (node) => node.type === 'tbody');
+    return body ? React.Children.toArray(body.props.children).map((fragment) =>
+      findElement(fragment, (node) => node.type === 'tr' && node.props.className))
+      .filter(Boolean).map((row) => findElement(row, (node) => node.type === 'td').props.children) : [];
+  };
+  const search = (value) => findElement(render(), (node) => node.props.type === 'search')
+    .props.onChange({ target: { value } });
+  const filter = (value) => findElement(render(), (node) => node.type === 'select' &&
+    React.Children.toArray(node.props.children).some((option) => option.props.value === 'ALL'))
+    .props.onChange({ target: { value } });
+  assert.deepEqual(names(), ['Julia Active', 'Unnamed Staff']);
+  search('  JULIA  ');
+  assert.deepEqual(names(), ['Julia Active']);
+  filter('INACTIVE');
+  assert.deepEqual(names(), ['Julia Inactive']);
+  filter('ALL');
+  assert.deepEqual(names(), ['Julia Active', 'Julia Inactive']);
+  search('');
+  assert.deepEqual(names(), ['Julia Active', 'Vanessa Pending', 'Unnamed Staff', 'Julia Inactive']);
+  assert.match(renderToStaticMarkup(render()), /Inactive staff/);
+  const inactiveRow = findElement(render(), (node) => node.type === 'tr' &&
+    renderToStaticMarkup(node).includes('Julia Inactive'));
+  assert.match(inactiveRow.props.className, /bg-rose-50/);
+  search('not found');
+  assert.deepEqual(names(), []);
+  assert.match(renderToStaticMarkup(render()), /No staff members match your search and status filter/);
+  search('vanessa');
+  filter('ACTIVE');
+  assert.deepEqual(names(), []);
+  filter('ALL');
+  assert.deepEqual(names(), ['Vanessa Pending']);
+  assert.doesNotMatch(renderToStaticMarkup(render()), /Move to Admin/);
+  assert.equal(people[1].status, 'INACTIVE');
+});
+
 test('pending approval sends the chosen Admin role and displays API failures', async (t) => {
   const hooks = hookState();
   let refreshes = 0;

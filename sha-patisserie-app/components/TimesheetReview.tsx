@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   actualPeriods, approvalError, csvCell, currentWeek, editPeriodTime, perthDate, timeInput,
   isLiveAttendance, paidHours, requiresReason, samePeriods, validatePayable,
@@ -15,6 +16,7 @@ interface Report {
   excludedCount: number;
   approvedCount: number;
   venues?: string[];
+  inactiveUserIds?: string[];
 }
 
 interface WeekDay {
@@ -76,15 +78,14 @@ function getWeekDays(weekStartStr: string): WeekDay[] {
 
 const inputClass = 'rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm disabled:bg-stone-100';
 const buttonClass = 'rounded-lg border border-stone-300 px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50';
-
-export default function TimesheetReview() {
+const InactiveBadge = () => (
+    <span className="ml-2 inline-block rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-600">Inactive</span>
+  );
+export default function TimesheetReview({ userId }: { userId: string }) {
   const [tab, setTab] = useState<'confirm' | 'payroll'>('confirm');
   const [weekStart, setWeekStart] = useState(currentWeek);
-  const [report, setReport] = useState<Report | null>(null);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [refresh, setRefresh] = useState(0);
   const [venue, setVenue] = useState('');
   const [staff, setStaff] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -93,44 +94,39 @@ export default function TimesheetReview() {
   const [savingBatch, setSavingBatch] = useState(false);
   const [reviewReasons, setReviewReasons] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    const controller = new AbortController();
-    // Clear stale data before a new week loads: an old approval/export must never
-    // be presented as belonging to the newly selected payroll week.
-    async function load() {
-      setLoading(true);
-      setError('');
-      setReport(null);
-      try {
-        const res = await fetch(`/api/admin/reports?weekStart=${encodeURIComponent(weekStart)}`, {
-          signal: controller.signal, cache: 'no-store',
-        });
-        if (!res.headers.get('content-type')?.includes('application/json')) {
-          throw new Error(`Reports request failed (${res.status}). Please sign in again.`);
-        }
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Unable to load reports.');
-        if (!controller.signal.aborted) {
-          setReport(data);
-          // Initialize adjustments from loaded shifts
-          const initialAdjustments: Record<string, number> = {};
-          (data.shifts || []).forEach((row: ReviewRow) => {
-            const currentHours = paidHours(row.periods, row.breakMinutes);
-            initialAdjustments[row.sourceKey] = Number(currentHours.toFixed(2));
-          });
-          setAdjustments(initialAdjustments);
-        }
-      } catch (err) {
-        if (controller.signal.aborted) return;
-        console.error('Failed to load timesheets:', err);
-        setError(err instanceof Error ? err.message : 'Unable to load reports.');
-      } finally {
-        if (!controller.signal.aborted) setLoading(false);
+  const reportQuery = useQuery<Report>({
+    queryKey: ['timesheet-report', userId, weekStart],
+    queryFn: async ({ signal }) => {
+      const res = await fetch(`/api/admin/reports?weekStart=${encodeURIComponent(weekStart)}`, {
+        signal, cache: 'no-store',
+      });
+      if (!res.headers.get('content-type')?.includes('application/json')) {
+        throw new Error(`Reports request failed (${res.status}). Please sign in again.`);
       }
-    }
-    load();
-    return () => controller.abort();
-  }, [weekStart, refresh]);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Unable to load reports.');
+      if (!Array.isArray(data.shifts) || !Array.isArray(data.rows)) throw new Error('Invalid reports response.');
+      return data;
+    },
+    staleTime: 60_000,
+    gcTime: 10 * 60_000,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+  const report = reportQuery.data;
+  const inactiveIds = new Set(report?.inactiveUserIds ?? []);
+  const loading = reportQuery.isPending;
+  const syncing = reportQuery.isFetching;
+  const writesBlocked = savingBatch || syncing || Boolean(reportQuery.error);
+
+  const refreshReport = async () => {
+    const result = await reportQuery.refetch();
+    return !result.error;
+  };
+  const clearDrafts = (keys: string[]) => {
+    setAdjustments((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !keys.includes(key))));
+    setReviewReasons((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !keys.includes(key))));
+  };
 
   const shifts = report?.shifts ?? [];
   const weekDays = getWeekDays(weekStart);
@@ -204,7 +200,7 @@ export default function TimesheetReview() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Unable to save attendance classification.');
       setMessage('Attendance classification saved. Leave approval is managed in Leave Requests.');
-      setRefresh((value) => value + 1);
+      await refreshReport();
     } catch (error) { setError(error instanceof Error ? error.message : 'Unable to classify attendance.'); }
     finally { setSavingBatch(false); }
   };
@@ -275,7 +271,7 @@ export default function TimesheetReview() {
       if (!res.ok) throw new Error(data.error || 'Failed to approve timesheets.');
 
       setMessage(data.message || 'Timesheets successfully approved and saved!');
-      setRefresh((v) => v + 1);
+      if (await refreshReport()) clearDrafts(batchItems.map((item) => item.sourceKey));
     } catch (err) {
       console.error('Batch approval failed:', err);
       setError(err instanceof Error ? err.message : 'Error approving timesheets.');
@@ -315,7 +311,7 @@ export default function TimesheetReview() {
       if (!res.ok) throw new Error(data.error || 'Failed to reopen timesheets.');
 
       setMessage('Timesheets reopened for editing.');
-      setRefresh((v) => v + 1);
+      if (await refreshReport()) clearDrafts(batchItems.map((item) => item.sourceKey));
     } catch (err) {
       console.error('Reopen failed:', err);
       setError(err instanceof Error ? err.message : 'Error reopening timesheets.');
@@ -354,7 +350,7 @@ export default function TimesheetReview() {
         {tab === 'confirm' && consolidatedStaffList.length > 0 && (
           <button
             onClick={() => handleSaveAndApprove()}
-            disabled={savingBatch || loading}
+            disabled={writesBlocked || loading}
             className="self-start sm:self-auto rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50 transition-all flex items-center gap-2"
           >
             {savingBatch ? 'Processing...' : 'Save and Approved All'}
@@ -388,9 +384,14 @@ export default function TimesheetReview() {
           Week starting Monday
           <input
             type="date"
+            disabled={savingBatch}
             value={weekStart}
             onChange={(e) => {
               setWeekStart(e.target.value);
+              setAdjustments({});
+              setReviewReasons({});
+              setSelected(null);
+              setError('');
               setMessage('');
               setVenue('');
               setStaff('');
@@ -413,7 +414,7 @@ export default function TimesheetReview() {
             <option value="">All staff</option>
             {people.map(([id, name]) => (
               <option key={id} value={id}>
-                {name}
+               {name}{inactiveIds.has(id) && <InactiveBadge />}
               </option>
             ))}
           </select>
@@ -429,13 +430,13 @@ export default function TimesheetReview() {
             </select>
           </label>
         )}
-        <button onClick={() => setRefresh((value) => value + 1)} disabled={loading} className={buttonClass}>
-          Refresh
+        <button onClick={() => void refreshReport()} disabled={syncing || savingBatch} className={buttonClass}>
+          {syncing ? 'Refreshing...' : 'Refresh'}
         </button>
         {tab === 'payroll' && (
           <button
             onClick={download}
-            disabled={loading || (payroll.length === 0 && !(report?.leaveRows || []).some((row) => (!venue || row.site === venue) && (!staff || row.userId === staff)))}
+            disabled={writesBlocked || loading || (payroll.length === 0 && !(report?.leaveRows || []).some((row) => (!venue || row.site === venue) && (!staff || row.userId === staff)))}
             className={`${buttonClass} bg-stone-900 text-white`}
           >
             Download approved CSV
@@ -444,6 +445,10 @@ export default function TimesheetReview() {
       </div>
 
       {error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-800 border border-rose-200">{error}</p>}
+      {reportQuery.error && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+        Could not refresh reports: {reportQuery.error.message} Displayed figures may be outdated. Refresh before approving or exporting.
+      </p>}
+      {syncing && report && <p role="status" className="text-sm text-stone-500">Updating report in the background...</p>}
       {message && <p role="status" className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800 border border-emerald-200">{message}</p>}
 
       {/* Metric Cards */}
@@ -524,7 +529,7 @@ export default function TimesheetReview() {
                       <tr key={staffItem.userId} className="border-b border-stone-200 hover:bg-stone-50/50">
                         {/* Staff Name & Site */}
                         <td className="p-3.5 align-top">
-                          <p className="font-bold text-stone-900 text-sm">{staffItem.staffName}</p>
+                          <p className="font-bold text-stone-900 text-sm">{staffItem.staffName}{inactiveIds.has(staffItem.userId) && <InactiveBadge />}</p>
                           <p className="mt-0.5 text-[11px] font-semibold text-stone-600">{employmentLabel(staffItem.employmentType)}</p>
                           <p className="text-stone-500 text-[11px] mt-0.5">{staffItem.site}</p>
                           {staffItem.rate !== null && (
@@ -569,7 +574,7 @@ export default function TimesheetReview() {
                                 <select
                                   aria-label={`Attendance for ${row.staffName} on ${row.workDate}`}
                                   value={row.attendanceStatus || 'UNCLASSIFIED'}
-                                  disabled={row.status === 'APPROVED' || savingBatch || liveAttendance}
+                                  disabled={row.status === 'APPROVED' || writesBlocked || liveAttendance}
                                   onChange={(event) => void saveAttendance(row, event.target.value)}
                                   className="mb-1 w-full rounded border border-stone-300 bg-white p-1 text-[10px] disabled:bg-stone-100"
                                 >
@@ -609,7 +614,7 @@ export default function TimesheetReview() {
                                     min="0"
                                     max="24"
                                     aria-label={`Adjusted hours for ${row.staffName} on ${row.workDate}`}
-                                    disabled={row.status === 'APPROVED' || liveAttendance || savingBatch}
+                                    disabled={row.status === 'APPROVED' || liveAttendance || writesBlocked}
                                     value={Number.isFinite(adjVal) ? adjVal : ''}
                                     onChange={(e) =>
                                       handleAdjustmentChange(row.sourceKey, parseFloat(e.target.value) || 0)
@@ -619,7 +624,7 @@ export default function TimesheetReview() {
                                 </div>
                                 {pastUnfinished && row.status !== 'APPROVED' && <label className="grid gap-1 pt-1">
                                   Review reason (required)
-                                  <textarea maxLength={2000} disabled={savingBatch}
+                                  <textarea maxLength={2000} disabled={writesBlocked}
                                     value={reviewReasons[row.sourceKey] ?? row.reason}
                                     onChange={(event) => setReviewReasons((current) => ({
                                       ...current, [row.sourceKey]: event.target.value,
@@ -631,6 +636,7 @@ export default function TimesheetReview() {
                                 <div className="text-right pt-0.5">
                                   <button
                                     onClick={() => setSelected(row)}
+                                    disabled={writesBlocked}
                                     className="text-[10px] text-stone-400 hover:text-stone-700 underline"
                                   >
                                     Details
@@ -640,6 +646,7 @@ export default function TimesheetReview() {
                                   entry.workDate === row.workDate && entry.sourceKey !== row.sourceKey)
                                   .map((entry) => <button key={entry.sourceKey}
                                     onClick={() => setSelected(entry)}
+                                    disabled={writesBlocked}
                                     className="block text-left text-[10px] text-amber-800 underline">
                                     Additional entry: {entry.site} · {paidHours(entry.periods, entry.breakMinutes).toFixed(2)}h · {status(entry)} · Details
                                   </button>)}
@@ -665,7 +672,7 @@ export default function TimesheetReview() {
                               </span>
                               <button
                                 onClick={() => handleReopenStaff(staffItem.userId)}
-                                disabled={savingBatch}
+                                disabled={writesBlocked}
                                 className="w-full rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold px-2 py-1 text-xs shadow-xs transition-colors flex items-center justify-center gap-1"
                                 title="Unlock to modify hours or breaks"
                               >
@@ -675,7 +682,7 @@ export default function TimesheetReview() {
                           ) : (
                             <button
                               onClick={() => handleSaveAndApprove(staffItem.userId)}
-                              disabled={savingBatch || hasInProgress}
+                              disabled={writesBlocked || hasInProgress}
                               className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-2 text-xs shadow-sm disabled:opacity-40 transition-all"
                             >
                               Save and Approved
@@ -714,7 +721,7 @@ export default function TimesheetReview() {
                 ) : (
                   payroll.map((row) => (
                     <tr key={row.key} className="border-t border-stone-100">
-                      <td className="p-4 font-semibold">{row.staffName}<span className="block text-xs font-normal text-stone-500">{employmentLabel(row.employmentType)}</span></td>
+                      <td className="p-4 font-semibold">{row.staffName}{inactiveIds.has(row.userId) && <InactiveBadge />}<span className="block text-xs font-normal text-stone-500">{employmentLabel(row.employmentType)}</span></td>
                       <td className="p-4 text-stone-600">{row.site}</td>
                       <td className="p-4 font-mono">${row.rate.toFixed(2)}</td>
                       <td className="p-4 font-mono font-bold">{row.totalHours.toFixed(2)} h</td>
@@ -749,8 +756,9 @@ export default function TimesheetReview() {
         </div>
       )}
       {selected && <ReviewEditor key={`${selected.sourceKey}:${selected.version}`} row={selected} weekStart={weekStart}
-        onClose={() => setSelected(null)} onSaved={(text) => {
-          setMessage(text); setSelected(null); setRefresh((value) => value + 1);
+        onClose={() => setSelected(null)} onSaved={async (text) => {
+          setMessage(text); setSelected(null);
+          if (await refreshReport()) clearDrafts([selected.sourceKey]);
         }} />}
     </div>
   );

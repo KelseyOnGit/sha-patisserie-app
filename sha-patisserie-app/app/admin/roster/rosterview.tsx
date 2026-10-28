@@ -1,4 +1,5 @@
 'use client';
+import { rosterStaff, assignableStaff } from '@/lib/roster-staff';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DEFAULT_WORKING_HOURS, WORKING_DAYS, regularHoursFor, type WorkingHoursMap } from '@/lib/workingHours';
@@ -119,19 +120,24 @@ export default function ShiftRoster() {
     () => users.filter((user) => user.location?.code === locationFilter),
     [users, locationFilter]
   );
+  const editingUserId = editingId ? shifts.find((shift) => shift.id === editingId)?.userId : undefined;
+  const assignableUsers = useMemo(
+    () => assignableStaff(users, locationFilter, editingUserId),
+    [users, locationFilter, editingUserId]
+  );
   const availableUsers = useMemo(() => {
     const start = parseRosterTime(formData.startTime).getTime();
     const end = parseRosterTime(formData.endTime).getTime();
-    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return locationUsers;
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return assignableUsers;
 
     const startDay = perthDate(new Date(start));
 
-    return locationUsers.filter((user) => !shifts.some((shift) => {
+    return assignableUsers.filter((user) => !shifts.some((shift) => {
       if (shift.userId !== user.id || shift.id === editingId) return false;
       const overlaps = new Date(shift.startTime).getTime() < end && new Date(shift.endTime).getTime() > start;
       return overlaps || perthDate(shift.startTime) === startDay;
     }));
-  }, [locationUsers, shifts, formData.startTime, formData.endTime, editingId]);
+  }, [assignableUsers, shifts, formData.startTime, formData.endTime, editingId]);
 
   const report = (text: string, error = false) => {
     setMessage(text);
@@ -182,10 +188,15 @@ export default function ShiftRoster() {
       shift.location?.code === locationFilter
     ),
   })), [shifts, weekDays, locationFilter]);
+  const rosterUsers = useMemo(
+    () => rosterStaff(users, shifts, weekStart, locationFilter),
+    [users, locationFilter, shifts, weekStart]
+  );
 
   const draftCount = useMemo(
-    () => shiftsByDay.reduce((total, day) => total + day.shifts.filter((shift) => !shift.publishedAt).length, 0),
-    [shiftsByDay]
+    () => shiftsByDay.reduce((total, day) => total + day.shifts.filter((shift) => !shift.publishedAt &&
+      (weekStart < currentWeek() || !users.some((user) => user.id === shift.userId && user.status === 'INACTIVE'))).length, 0),
+    [shiftsByDay, users, weekStart]
   );
 
   const goToWeek = (offsetWeeks: number) => {
@@ -235,7 +246,8 @@ export default function ShiftRoster() {
   };
 
   const duplicateWeek = async () => {
-    const shiftCount = shiftsByDay.reduce((total, day) => total + day.shifts.length, 0);
+    const shiftCount = shiftsByDay.reduce((total, day) => total + day.shifts.filter((shift) =>
+      !users.some((user) => user.id === shift.userId && user.status === 'INACTIVE')).length, 0);
     if (shiftCount === 0) {
       report('No shifts found for the selected week and venue.');
       return;
@@ -428,7 +440,7 @@ export default function ShiftRoster() {
           <button
             type="button"
             onClick={() => openShiftForm('', weekDays[0].date)}
-            disabled={locationUsers.length === 0}
+            disabled={!locationUsers.some((user) => user.status !== 'INACTIVE')}
             className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-semibold text-white hover:bg-stone-700 disabled:opacity-50"
           >
             Add shift
@@ -503,12 +515,13 @@ export default function ShiftRoster() {
           <tbody className="divide-y divide-stone-200">
             {loading ? (
               <tr><td colSpan={8} className="p-8 text-center text-sm text-stone-500">Loading roster...</td></tr>
-            ) : locationUsers.length === 0 ? (
+            ) : rosterUsers.length === 0 ? (
               <tr><td colSpan={8} className="p-8 text-center text-sm text-stone-500">No staff are assigned to this venue.</td></tr>
-            ) : locationUsers.map((user) => (
+            ) : rosterUsers.map((user) => (
               <tr key={user.id}>
                 <th scope="row" className="sticky left-0 z-10 w-48 border-r border-stone-200 bg-white px-4 py-3 align-top">
                   <span className="block text-sm font-semibold text-stone-900">{user.name || 'Unnamed staff'}</span>
+                  {user.status === 'INACTIVE' && <span className="mt-1 inline-block rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-600">Inactive</span>}
                   <span className="mt-1 block text-xs font-normal text-stone-500">{user.employmentType?.replaceAll('_', ' ') || 'Staff'}</span>
                 </th>
                 {shiftsByDay.map((day) => {
@@ -539,7 +552,7 @@ export default function ShiftRoster() {
                             </button>
                           );
                         })}
-                        {showShifts && userShifts.length === 0 && (regular ? (
+                        {showShifts && user.status !== 'INACTIVE' && userShifts.length === 0 && (regular ? (
                           <button
                             type="button"
                             onClick={() => openShiftForm(user.id, day.date)}

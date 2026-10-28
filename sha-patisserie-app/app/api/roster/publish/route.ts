@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { getSession, isPrivilegedRole } from '@/lib/session';
 import { buildRosterMessage, sendEmail } from '@/lib/notify';
+import { currentWeek } from '@/lib/timesheets';
 
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -27,10 +29,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'weekStart must be a valid date' }, { status: 400 });
     }
     const end = new Date(start.getTime() + 7 * DAY_MS);
+    const eligibleUser: Prisma.UserWhereInput = {
+      role: { in: ['STAFF', 'MANAGER'] },
+      ...(weekStart < currentWeek() ? {} : { status: { not: 'INACTIVE' } }),
+    };
 
     const drafts = await prisma.shift.findMany({
       where: {
-        user: { role: { in: ['STAFF', 'MANAGER'] } },
+        user: eligibleUser,
         publishedAt: null,
         startTime: { gte: start, lt: end },
         location: { code: location },
@@ -43,14 +49,14 @@ export async function POST(request: Request) {
     }
 
     await prisma.shift.updateMany({
-      where: { id: { in: drafts.map((shift) => shift.id) }, user: { role: { in: ['STAFF', 'MANAGER'] } } },
+      where: { id: { in: drafts.map((shift) => shift.id) }, user: eligibleUser },
       data: { publishedAt: new Date() },
     });
 
     // Each person gets their whole published week, not only the shifts changed now.
     const userIds = [...new Set(drafts.map((shift) => shift.userId))];
     const users = await prisma.user.findMany({
-      where: { id: { in: userIds }, role: { in: ['STAFF', 'MANAGER'] } },
+      where: { id: { in: userIds }, role: { in: ['STAFF', 'MANAGER'] }, status: { not: 'INACTIVE' } },
       select: {
         id: true,
         name: true,

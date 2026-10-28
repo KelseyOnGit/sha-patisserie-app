@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import Link from 'next/link';
 import AccountRoleButton from '@/components/AccountRoleButton';
 
@@ -19,6 +19,13 @@ export default function StaffListPage() {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [canManageRoles, setCanManageRoles] = useState(false);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ACTIVE');
+  const query = search.trim().toLowerCase();
+  const filteredStaff = staffList.filter((staff) =>
+    (statusFilter === 'ALL' || staff.status === statusFilter) &&
+    (staff.name || 'Unnamed Staff').toLowerCase().includes(query)
+  ).sort((a, b) => Number(a.status === 'INACTIVE') - Number(b.status === 'INACTIVE'));
 
   useEffect(() => {
     async function fetchStaff() {
@@ -78,11 +85,32 @@ export default function StaffListPage() {
 
       {message && <p role="status" className="text-sm text-stone-600">{message}</p>}
 
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <label className="grid gap-1 text-sm font-medium text-stone-700 sm:w-80">
+          Search staff name
+          <input type="search" value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search by name..."
+            className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm" />
+        </label>
+        <label className="grid gap-1 text-sm font-medium text-stone-700">
+          Staff status
+          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}
+            className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm">
+            <option value="ACTIVE">Show Active</option>
+            <option value="INACTIVE">Show Inactive</option>
+            <option value="ALL">Show All</option>
+          </select>
+        </label>
+      </div>
+
       <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-xs">
         {loading ? (
           <p className="p-6 text-sm text-stone-500">Loading staff members...</p>
         ) : staffList.length === 0 ? (
           <p className="p-6 text-sm text-stone-500">No staff members found.</p>
+        ) : filteredStaff.length === 0 ? (
+          <p role="status" className="p-6 text-sm text-stone-500">No staff members match your search and status filter.</p>
         ) : (
           <table className="w-full text-left text-sm text-stone-700">
             <thead className="border-b border-stone-200 bg-stone-50 text-xs font-bold uppercase tracking-wide text-stone-500">
@@ -95,8 +123,13 @@ export default function StaffListPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-100">
-              {staffList.map((staff) => (
-                <tr key={staff.id} className="hover:bg-stone-50/80 transition">
+              {filteredStaff.map((staff, index) => (
+                <Fragment key={staff.id}>
+                {statusFilter === 'ALL' && staff.status === 'INACTIVE' &&
+                  (index === 0 || filteredStaff[index - 1].status !== 'INACTIVE') && (
+                  <tr><td colSpan={5} className="bg-rose-50 px-6 py-2 text-xs font-bold uppercase tracking-wide text-rose-700">Inactive staff</td></tr>
+                )}
+                <tr className={staff.status === 'INACTIVE' ? 'bg-rose-50 hover:bg-rose-100 transition' : 'hover:bg-stone-50/80 transition'}>
                   <td className="px-6 py-4 font-semibold text-stone-900">
                     {staff.name || 'Unnamed Staff'}
                   </td>
@@ -115,7 +148,7 @@ export default function StaffListPage() {
                     </select>
                   </td>
                   <td className="px-6 py-4">
-                    <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 border border-emerald-200">
+                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold border ${staff.status === 'INACTIVE' ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
                       {staff.status}
                     </span>
                   </td>
@@ -136,6 +169,7 @@ export default function StaffListPage() {
                     )}
                   </td>
                 </tr>
+                </Fragment>
               ))}
             </tbody>
           </table>

@@ -8,5 +8,5 @@ export default async function ReportsPage() {
   const session = await getSession();
   if (!session) redirect('/login');
   if (!isPrivilegedRole(session.role)) redirect('/dashboard');
-  return <TimesheetReview />;
+  return <TimesheetReview userId={session.userId} />;
 }

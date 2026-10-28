@@ -2,9 +2,11 @@
 
 import { useRouter } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 
 export default function LogoutButton({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
 
   async function handleLogout() {
@@ -14,6 +16,8 @@ export default function LogoutButton({ children }: { children: ReactNode }) {
       if (!response.ok) {
         throw new Error('Logout request failed');
       }
+      await queryClient.cancelQueries();
+      queryClient.clear();
       router.push('/login');
       router.refresh();
     } catch (error) {

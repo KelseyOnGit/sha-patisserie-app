@@ -83,6 +83,7 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
   }
 
   const rows: ReviewRow[] = [];
+  const inactiveUserIds = new Set<string>();
   const makeRow = (key: string, shift: typeof shifts[number] | null, attendance: typeof allLogs) => {
     const sheet = savedByKey.get(key);
     const user = sheet?.user ?? shift?.user ?? attendance[0]?.user;
@@ -90,6 +91,10 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
     const origin = shift?.startTime ?? attendance[0]?.clockIn;
     const workDate = sheet ? sheet.workDate.toISOString().slice(0, 10) : origin ? perthDate(origin) : '';
     if (!workDate || workDate < weekStart || workDate >= dateEnd.toISOString().slice(0, 10)) return;
+        // Staff who have left keep all recorded or approved hours, but an empty
+    // scheduled shift for them is not worth reviewing.
+    if (user.status === 'INACTIVE' && !sheet && attendance.length === 0) return;
+    if (user.status === 'INACTIVE') inactiveUserIds.add(user.id);
     const actual = attendance.map((log) => ({
       id: log.id, clockIn: log.clockIn.toISOString(), clockOut: log.clockOut?.toISOString() ?? null,
     }));
@@ -209,7 +214,7 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
       employmentType: entry.user.employmentType, site: entry.user.location?.name || 'Unassigned',
       date: entry.workDate.toISOString().slice(0, 10), type: entry.type, hours: entry.hours.toNumber(),
     })),
-    venues,
+    venues, inactiveUserIds: Array.from(inactiveUserIds),
   };
 }
 

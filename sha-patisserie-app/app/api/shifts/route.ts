@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { getSession, isPrivilegedRole } from '@/lib/session';
 import { findOverlappingShift, findShiftOnSameDay, overlapMessage, sameDayMessage } from '@/lib/shiftConflicts';
-import { perthDate } from '@/lib/timesheets';
+import { currentWeek, perthDate } from '@/lib/timesheets';
 import { shiftUserSelect } from '@/lib/user-select';
 import { parseRosterTime } from '@/lib/roster-time';
 
@@ -57,11 +57,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'End time must be after start time' }, { status: 400 });
     }
 
-    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true, status: true} });
     if (!user) return NextResponse.json({ error: 'Staff member not found' }, { status: 404 });
     if (user.role === 'ADMIN') {
       return NextResponse.json({ error: 'Admin accounts cannot be assigned roster shifts' }, { status: 400 });
     }
+    if (user.status === 'INACTIVE') {
+     return NextResponse.json({ error: 'Inactive staff cannot be assigned roster shifts' }, { status: 400 });
+   }
 
     const sameDay = await findShiftOnSameDay(userId, start);
     if (sameDay) {
@@ -121,10 +124,18 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'End time must be after start time' }, { status: 400 });
     }
 
-    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true, status: true } });
     if (!user) return NextResponse.json({ error: 'Staff member not found' }, { status: 404 });
     if (user.role === 'ADMIN') {
       return NextResponse.json({ error: 'Admin accounts cannot be assigned roster shifts' }, { status: 400 });
+    }
+
+    if (user.status === 'INACTIVE') {
+      const original = await prisma.shift.findUnique({ where: { id }, select: { userId: true, startTime: true } });
+      if (!original || original.userId !== userId ||
+          perthDate(original.startTime) >= currentWeek() || perthDate(start) >= currentWeek()) {
+        return NextResponse.json({ error: 'Inactive staff can only remain assigned when correcting their historical shifts.' }, { status: 400 });
+      }
     }
 
     // A saved review owns its original staff/date/venue identity. Allow ordinary

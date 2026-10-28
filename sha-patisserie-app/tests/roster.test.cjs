@@ -66,7 +66,7 @@ test('payroll hides leave table and leave export while preserving worked payroll
     }],
   };
   let index = 0;
-  const preset = ['payroll', '2026-12-21', report, false];
+  const preset = ['payroll', '2026-12-21'];
   const hookReact = {
     ...React,
     useState(initial) {
@@ -80,11 +80,14 @@ test('payroll hides leave table and leave export while preserving worked payroll
   delete require.cache[filename];
   let Review;
   Module._load = function (request, ...args) {
+    if (request === '@tanstack/react-query') return {
+      useQuery: () => ({ data: report, isPending: false, isFetching: false, error: null }),
+    };
     return request === 'react' ? hookReact : load.call(this, request, ...args);
   };
   try { Review = require(filename).default; }
   finally { Module._load = load; delete require.cache[filename]; }
-  const tree = Review();
+  const tree = Review({ userId: 'admin' });
   const html = renderToStaticMarkup(tree);
   assert.doesNotMatch(html, /Approved Leave|Leave hours|ANNUAL/);
   assert.match(html, /240\.00/);
@@ -132,6 +135,159 @@ function findElement(node, predicate) {
   return null;
 }
 
+test('logout clears account-specific report data before navigating away', async (t) => {
+  const { QueryClient } = require('@tanstack/react-query');
+  const client = new QueryClient();
+  t.after(() => client.clear());
+  client.setQueryData(['timesheet-report', 'admin', '2020-10-05'], { rows: [] });
+  let destination;
+  let failure = true;
+  t.mock.method(console, 'error', () => {});
+  t.mock.method(globalThis, 'fetch', async () => Response.json({}, { status: failure ? 500 : 200 }));
+  const filename = path.join(root, 'components/LogoutButton.tsx');
+  const load = Module._load;
+  delete require.cache[filename];
+  Module._load = function (request, ...args) {
+    if (request === '@tanstack/react-query') return { useQueryClient: () => client };
+    if (request === 'react') return { ...React, useState: () => [false, () => {}] };
+    if (request === 'next/navigation') return { useRouter: () => ({
+      push: (path) => {
+        assert.equal(client.getQueryCache().getAll().length, 0);
+        destination = path;
+      },
+      refresh() {},
+    }) };
+    return load.call(this, request, ...args);
+  };
+  let Logout;
+  try { Logout = require(filename).default; }
+  finally { Module._load = load; delete require.cache[filename]; }
+  await Logout({ children: 'Log out' }).props.onClick();
+  assert.equal(destination, undefined);
+  assert.equal(client.getQueryCache().getAll().length, 1);
+  failure = false;
+  await Logout({ children: 'Log out' }).props.onClick();
+  assert.equal(destination, '/login');
+});
+
+test('reports retain table/drafts while syncing and reuse account/week cache on revisit', async (t) => {
+  const { QueryClient, QueryObserver } = require('@tanstack/react-query');
+  const row = {
+    sourceKey: 'shift:a', userId: 'sam', staffName: 'Sam', workDate: '2020-10-05',
+    site: 'Sha Patisserie', employmentType: 'PART_TIME', rate: 30,
+    periods: [], actual: [], breakMinutes: 0, actualBreakMinutes: null,
+    status: 'PENDING', version: 1, snapshot: 'snapshot', reason: '', history: [],
+    ambiguous: false, inProgress: false, sourceChanged: false, exceptions: [],
+  };
+  const report = { shifts: [row], rows: [], venues: [], approvedCount: 0, excludedCount: 1 };
+  const states = ['confirm', '2020-10-05', '', '', '', '', '', null, {}, false, {}];
+  let cursor = 0;
+  let options;
+  let activeUser = 'admin';
+  let queryState = { data: report, isPending: false, isFetching: false, error: null };
+  let finishRefresh;
+  let refreshes = 0;
+  const useQuery = (config) => {
+    options = config;
+    return {
+      ...queryState,
+      refetch: async () => {
+        refreshes++;
+        queryState = { ...queryState, isFetching: true };
+        await new Promise((resolve) => { finishRefresh = resolve; });
+        queryState = { ...queryState, isFetching: false };
+        return { data: report, error: queryState.error };
+      },
+    };
+  };
+  const hookReact = {
+    ...React,
+    useState(initial) {
+      const index = cursor++;
+      if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial;
+      return [states[index], (value) => { states[index] = typeof value === 'function' ? value(states[index]) : value; }];
+    },
+    useEffect: () => {},
+  };
+  const filename = path.join(root, 'components/TimesheetReview.tsx');
+  const load = Module._load;
+  delete require.cache[filename];
+  let Review;
+  Module._load = function (request, ...args) {
+    if (request === '@tanstack/react-query') return { useQuery };
+    return request === 'react' ? hookReact : load.call(this, request, ...args);
+  };
+  try { Review = require(filename).default; }
+  finally { Module._load = load; delete require.cache[filename]; }
+  const render = () => { cursor = 0; return Review({ userId: activeUser }); };
+  let gets = 0;
+  let rejectSave = false;
+  t.mock.method(globalThis, 'fetch', async (url, init) => {
+    if (init?.method === 'POST') {
+      return rejectSave ? Response.json({ error: 'Concurrent update.' }, { status: 409 }) : Response.json({ message: 'Saved' });
+    }
+    gets++;
+    return Response.json(report);
+  });
+  let tree = render();
+  const adjustment = (node) => node.props['aria-label']?.startsWith('Adjusted hours');
+  findElement(tree, adjustment).props.onChange({ target: { value: '3.5' } });
+  tree = render();
+  const classification = findElement(tree, (node) => node.props['aria-label']?.startsWith('Attendance for'));
+  classification.props.onChange({ target: { value: 'WORKED' } });
+  await new Promise(setImmediate);
+  tree = render();
+  assert.equal(refreshes, 1);
+  assert.match(renderToStaticMarkup(tree), /Updating report in the background/);
+  assert.doesNotMatch(renderToStaticMarkup(tree), /Loading staff timesheets/);
+  assert.equal(findElement(tree, adjustment).props.value, 3.5);
+  finishRefresh();
+  await new Promise(setImmediate);
+  tree = render();
+  assert.equal(findElement(tree, adjustment).props.value, 3.5);
+  rejectSave = true;
+  findElement(tree, (node) => node.props['aria-label']?.startsWith('Attendance for'))
+    .props.onChange({ target: { value: 'LATE_CLOCK_IN' } });
+  await new Promise(setImmediate);
+  assert.equal(refreshes, 1);
+  assert.match(renderToStaticMarkup(render()), /Concurrent update/);
+  assert.equal(findElement(render(), adjustment).props.value, 3.5);
+
+  queryState = { ...queryState, error: new Error('Network unavailable') };
+  tree = render();
+  assert.match(renderToStaticMarkup(tree), /Displayed figures may be outdated/);
+  assert.equal(findElement(tree, (node) => node.type === 'button' &&
+    renderToStaticMarkup(node).includes('Save and Approved All')).props.disabled, true);
+  queryState = { data: undefined, isPending: true, isFetching: true, error: null };
+  states[1] = '2020-10-12';
+  tree = render();
+  assert.match(renderToStaticMarkup(tree), /Loading staff timesheets/);
+  assert.equal(findElement(tree, (node) => node.type === 'tbody'), null);
+
+  states[1] = '2020-10-05';
+  queryState = { data: report, isPending: false, isFetching: false, error: null };
+  render();
+  assert.deepEqual(options.queryKey, ['timesheet-report', 'admin', '2020-10-05']);
+  const client = new QueryClient();
+  t.after(() => client.clear());
+  const observer = new QueryObserver(client, options);
+  const unsubscribe = observer.subscribe(() => {});
+  await client.fetchQuery(options);
+  assert.equal(gets, 1);
+  unsubscribe();
+  const revisit = new QueryObserver(client, options);
+  const stop = revisit.subscribe(() => {});
+  assert.deepEqual(revisit.getCurrentResult().data, report);
+  await new Promise(setImmediate);
+  assert.equal(gets, 1);
+  stop();
+  activeUser = 'another-admin';
+  render();
+  assert.equal(client.getQueryData(options.queryKey), undefined);
+  assert.equal(options.staleTime, 60_000);
+  assert.equal(options.refetchOnWindowFocus, false);
+});
+
 test('overlap review exposes additional same-day entries and requires a manager reason', async (t) => {
   const row = {
     sourceKey: 'log:attendance', userId: 'sam', staffName: 'Sam', workDate: '2020-10-05',
@@ -144,7 +300,7 @@ test('overlap review exposes additional same-day entries and requires a manager 
   };
   const other = { ...row, sourceKey: 'shift:other', periods: [], actual: [] };
   const report = { shifts: [other, row], rows: [], venues: ['Sha Patisserie'], approvedCount: 0, excludedCount: 2 };
-  const states = ['confirm', '2020-10-05', report, false, '', '', 0, '', '', '', row, {}, false];
+  const states = ['confirm', '2020-10-05', '', '', '', '', '', row, {}, false, {}];
   let cursor = 0;
   const hookReact = {
     ...React,
@@ -161,6 +317,10 @@ test('overlap review exposes additional same-day entries and requires a manager 
   delete require.cache[filename];
   let Review;
   Module._load = function (request, ...args) {
+    if (request === '@tanstack/react-query') return {
+      useQuery: () => ({ data: report, isPending: false, isFetching: false, error: null,
+        refetch: async () => ({ data: report, error: null }) }),
+    };
     return request === 'react' ? hookReact : load.call(this, request, ...args);
   };
   try { Review = require(filename).default; }
@@ -168,12 +328,12 @@ test('overlap review exposes additional same-day entries and requires a manager 
   t.mock.method(console, 'error', () => {});
   let writes = 0;
   t.mock.method(globalThis, 'fetch', async () => { writes++; return Response.json({ message: 'Approved' }); });
-  const tree = Review();
+  const tree = Review({ userId: 'admin' });
   const additional = findElement(tree, (node) => node.type === 'button' &&
     renderToStaticMarkup(node).includes('Additional entry:'));
   assert.ok(additional);
   additional.props.onClick();
-  assert.equal(states[10].sourceKey, 'shift:other');
+  assert.equal(states[7].sourceKey, 'shift:other');
 
   const editor = findElement(tree, (node) => typeof node.type === 'function' && node.props.row === row);
   assert.ok(editor);
@@ -195,12 +355,12 @@ test('overlap review exposes additional same-day entries and requires a manager 
   assert.equal(writes, 1);
 
   cursor = 0;
-  const batchTree = Review();
+  const batchTree = Review({ userId: 'admin' });
   const bulk = findElement(batchTree, (node) => node.type === 'button' &&
     renderToStaticMarkup(node).includes('Save and Approved All'));
   assert.ok(bulk);
   await bulk.props.onClick();
-  assert.match(states[4], /individual review/);
+  assert.match(states[2], /individual review/);
   assert.equal(writes, 1);
 });
 
@@ -225,7 +385,7 @@ test('past unfinished attendance is editable with a reason; live and approved ho
   };
   assert.ok(workDate <= pastDate);
   const report = { shifts: [row], rows: [], venues: [], approvedCount: 0, excludedCount: 1 };
-  const states = ['confirm', workDate, report, false, '', '', 0, '', '', '', null, {}, false, {}];
+  const states = ['confirm', workDate, '', '', '', '', '', null, {}, false, {}];
   let cursor = 0;
   const hookReact = {
     ...React,
@@ -241,11 +401,15 @@ test('past unfinished attendance is editable with a reason; live and approved ho
   delete require.cache[filename];
   let Review;
   Module._load = function (request, ...args) {
+    if (request === '@tanstack/react-query') return {
+      useQuery: () => ({ data: report, isPending: false, isFetching: false, error: null,
+        refetch: async () => ({ data: report, error: null }) }),
+    };
     return request === 'react' ? hookReact : load.call(this, request, ...args);
   };
   try { Review = require(filename).default; }
   finally { Module._load = load; delete require.cache[filename]; }
-  const render = () => { cursor = 0; return Review(); };
+  const render = () => { cursor = 0; return Review({ userId: 'admin' }); };
   const adjusted = (tree) => findElement(tree, (node) => node.props['aria-label']?.startsWith('Adjusted hours'));
   const classification = (tree) => findElement(tree, (node) => node.props['aria-label']?.startsWith('Attendance for'));
   const approve = (tree) => findElement(tree, (node) => node.type === 'button' &&
@@ -264,7 +428,7 @@ test('past unfinished attendance is editable with a reason; live and approved ho
   adjusted(tree).props.onChange({ target: { value: '3.5' } });
   await approve(render()).props.onClick();
   assert.equal(writes.length, 0);
-  assert.match(states[4], /Enter a review reason/);
+  assert.match(states[2], /Enter a review reason/);
   tree = render();
   findElement(tree, (node) => node.type === 'textarea').props.onChange({
     target: { value: 'Verified 3.5 hours after forgotten clock-out.' },
@@ -294,7 +458,7 @@ test('past unfinished attendance is editable with a reason; live and approved ho
   assert.equal(classification(tree).props.disabled, true);
 });
 
-async function mountRoster(t, file, { shifts = [], failedLeave = false, rosterStaff = staff } = {}) {
+async function mountRoster(t, file, { shifts = [], failedLeave = false, rosterStaff = staff, selectedWeek = '2026-12-21' } = {}) {
   const states = [];
   const effects = [];
   const listeners = new Map();
@@ -327,7 +491,7 @@ async function mountRoster(t, file, { shifts = [], failedLeave = false, rosterSt
       const index = cursor++;
       if (!(index in states)) {
         states[index] = typeof initial === 'function' ? initial() : initial;
-        if (typeof states[index] === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(states[index])) states[index] = '2026-12-21';
+        if (typeof states[index] === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(states[index])) states[index] = selectedWeek;
       }
       return [states[index], (value) => { states[index] = typeof value === 'function' ? value(states[index]) : value; }];
     },
@@ -363,6 +527,47 @@ async function mountRoster(t, file, { shifts = [], failedLeave = false, rosterSt
 }
 
 for (const file of ['page.tsx', 'rosterview.tsx']) {
+  for (const selectedWeek of ['2026-12-28', '2027-01-04']) {
+    test(`${file}: inactive staff are hidden in ${selectedWeek}, even with saved shifts`, async (t) => {
+      t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-12-30T00:00:00Z') });
+      const roster = await mountRoster(t, file, {
+        selectedWeek,
+        rosterStaff: [{ ...staff[0], name: 'Former staff', status: 'INACTIVE' }],
+        shifts: [{ id: 'old', userId: 'sam', startTime: `${selectedWeek}T01:00:00Z`,
+          endTime: `${selectedWeek}T07:00:00Z`, location: staff[0].location, breakMinutes: 0 }],
+      });
+      const { html } = roster.render();
+      assert.doesNotMatch(html, /Former staff|Edit shift|draft shift/);
+    });
+  }
+
+  test(`${file}: inactive historical staff retain badge/edit option at their saved shift venue only`, async (t) => {
+    t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-12-30T00:00:00Z') });
+    const roster = await mountRoster(t, file, {
+      rosterStaff: [{ ...staff[0], regularWorkingHours: {} }, { ...staff[1], name: 'Former staff', status: 'INACTIVE' }],
+      shifts: [{ id: 'old', userId: 'lee', startTime: '2026-12-21T01:00:00Z',
+        endTime: '2026-12-21T07:00:00Z', location: staff[0].location, roleTag: 'Historical correction', breakMinutes: 0 }],
+    });
+    let { tree, html } = roster.render();
+    assert.match(html, /Former staff/);
+    assert.match(html, />Inactive</);
+    assert.doesNotMatch(html, /Add Former staff/);
+    findElement(tree, (node) => node.props['aria-label'] === 'Add Sam shift on Monday').props.onClick();
+    ({ tree, html } = roster.render());
+    assert.doesNotMatch(html, /option value="lee"/);
+    findElement(tree, (node) => node.type === 'button' && node.props.children === 'Close').props.onClick();
+    ({ tree } = roster.render());
+    findElement(tree, (node) => node.type === 'button' &&
+      renderToStaticMarkup(node).includes('Historical correction')).props.onClick();
+    ({ html } = roster.render());
+    assert.match(html, /option value="lee" selected="">Former staff/);
+    ({ tree } = roster.render());
+    findElement(tree, (node) => node.type === 'button' && node.props.children === 'Close').props.onClick();
+    ({ tree } = roster.render());
+    findElement(tree, (node) => node.type === 'button' && node.props.children === 'Zushi Bento').props.onClick();
+    assert.doesNotMatch(roster.render().html, /Former staff/);
+  });
+
   test(`${file}: manual creation and weekly repeats save explicit Perth instants`, async (t) => {
     const roster = await mountRoster(t, file, {
       rosterStaff: staff.map((user) => ({ ...user, regularWorkingHours: {} })),

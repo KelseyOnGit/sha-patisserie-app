@@ -160,11 +160,61 @@ test('fill regular hours excludes Admin accounts', async () => {
 test('duplicate week excludes shifts belonging to Admin accounts', async () => {
   const api = route('roster/duplicate', { shift: { findMany: async ({ where }) => {
     assert.deepEqual(where.user.role, roles);
+    assert.deepEqual(where.user.status, { not: 'INACTIVE' });
     return [];
   } } });
   const response = await api.POST(request('POST', weekBody));
   assert.equal(response.status, 200);
   assert.equal((await response.json()).count, 0);
+});
+
+test('inactive staff cannot receive new shifts or reassignments, but their old shifts can be corrected', async () => {
+  let originalUserId = 'person';
+  let writes = 0;
+  const api = route('shifts', {
+    user: { findUnique: async () => ({ role: 'STAFF', status: 'INACTIVE' }) },
+    shift: {
+      findUnique: async () => ({ userId: originalUserId, startTime: new Date('2020-10-05T01:00:00Z') }),
+      update: async () => { writes++; return { id: 'shift' }; },
+      create: async () => { throw new Error('Must not create a shift'); },
+    },
+    timesheet: { findUnique: async () => null },
+  });
+  const historic = { ...shiftBody, startTime: '2020-10-05T01:00:00Z', endTime: '2020-10-05T07:00:00Z' };
+  assert.equal((await api.POST(request('POST', historic))).status, 400);
+  assert.equal((await api.PUT(request('PUT', historic))).status, 200);
+  originalUserId = 'another-person';
+  assert.equal((await api.PUT(request('PUT', historic))).status, 400);
+  originalUserId = 'person';
+  assert.equal((await api.PUT(request('PUT', { ...historic,
+    startTime: '2099-01-05T01:00:00Z', endTime: '2099-01-05T07:00:00Z',
+  }))).status, 400);
+  assert.equal(writes, 1);
+});
+
+test('publish excludes inactive staff in current/future weeks but permits historical corrections without emailing them', async () => {
+  for (const [weekStart, historical] of [['2099-01-05', false], ['2020-10-05', true]]) {
+    let updated = false;
+    const api = route('roster/publish', {
+      shift: {
+        findMany: async ({ where }) => {
+          assert.deepEqual(where.user.status, historical ? undefined : { not: 'INACTIVE' });
+          return [{ id: 'old', userId: 'person' }];
+        },
+        updateMany: async ({ where }) => {
+          assert.deepEqual(where.user.status, historical ? undefined : { not: 'INACTIVE' });
+          updated = true;
+          return { count: 1 };
+        },
+      },
+      user: { findMany: async ({ where }) => {
+        assert.deepEqual(where.status, { not: 'INACTIVE' });
+        return [];
+      } },
+    });
+    assert.equal((await api.POST(request('POST', { weekStart, location: 'SHA' }))).status, 200);
+    assert.equal(updated, true);
+  }
 });
 
 test('publish filters Admin shifts and recipients without deleting history', async () => {
