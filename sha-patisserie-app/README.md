@@ -32,6 +32,21 @@ use the Network URL printed by Next.js, on the same local network.
 
 ## Authentication deployment checklist
 
+### Clock-in venue locations
+
+Clock-in/out checks live GPS against the selected venue, independently of login.
+Zushi Bento uses the Google Maps business pin at **125 St Georges Terrace,
+Brookfield Place, Perth**: latitude `-31.9544448`, longitude `115.8548311`, with
+the existing **200 m** radius. The Maps listing labels the unit `11/125`;
+confirm tenancy numbering separately if using `CC108` in business records.
+Source: [Zushibento business pin](https://www.google.com/maps/place/Zushibento/data=!4m6!3m5!1s0x2a32bad50922d4f1:0x29c445be1d731d01!8m2!3d-31.9544448!4d115.8548311!16s%2Fg%2F11xxgqdyx).
+The coordinates live in `lib/geo.ts`; deploy the updated server for them to take
+effect. Do not select Sha Patisserie to work around a Zushi Bento location error:
+clock-ins are recorded against the venue selected, which affects attendance
+and payroll matching. Ask an admin to review any entries recorded at the wrong venue.
+
+Check: `node --test tests/geo.test.cjs`.
+
 - Set a strong, unique `JWT_SECRET` in each environment. The app refuses to start
   without it; no default signing key is used. Rotate the secret before launch if
   the fallback was previously used; rotation signs everyone out.
@@ -62,7 +77,91 @@ use the Network URL printed by Next.js, on the same local network.
 
 Focused checks: `node --test tests/auth-security.test.cjs`.
 
+### Email verification and approval
+
+New staff follow **Register -> verify email -> admin approval -> sign in**.
+Verification links expire after 24 hours and are consumed atomically once.
+Unverified registrations remain visible in Pending Approvals with an
+**Awaiting email verification** label; approval is disabled and the API also
+rejects approval until verified. Remove remains available. Login and existing
+session validation both require verification, approval and ACTIVE status.
+Use **Refresh verification status** to pick up emails verified while the list
+was open, without losing the page.
+
+Before deploying, back up and confirm the database, inspect pending migrations,
+and apply `20261028010000_email_verification_flow` using `npx prisma migrate deploy`.
+It adds the email fields if absent and **grandfathers all already-approved accounts**
+by setting their verification flag to true once. This preserves current staff access;
+it is not evidence that those historical addresses were verified by email.
+Pending accounts are not grandfathered. Deploy migration before the new server
+so approved staff are not locked out. Do not use database reset or db push.
+
+Configure these on the deployed server (never commit secrets):
+
+- `RESEND_API_KEY`: your Resend API key.
+- `FROM_EMAIL`: a sender on a domain verified in Resend, for example
+  `Sha Staff <noreply@shagroup.com.au>`. `EMAIL_FROM` is supported as a legacy alias;
+  `FROM_EMAIL` takes precedence. Verification requires an explicit sender; no
+  Resend test-domain fallback is used by this flow.
+- `NEXT_PUBLIC_APP_URL=https://staff.shagroup.com.au`: production requires an
+  explicit HTTPS URL, not a localhost fallback.
+
+Sending does not require purchasing a mailbox, but you must control the sender
+domain and configure the DNS records Resend provides. Create/use a monitored
+mailbox instead if staff should be able to reply to this address. Domain
+verification, DNS, production environment configuration and actual delivery
+must be checked separately; an accepted send is not a guarantee of inbox delivery.
+
+Registration stays on the confirmation screen instead of redirecting immediately.
+Failed delivery is an explicit error and preserves the pending account for recovery.
+**Resend verification email** on registration/login opens `/verify-email`; enter
+the original email and PIN to request a replacement. Requests are limited to
+one per account per minute using database token expiry and conditional updates
+(including across server instances). A replacement invalidates the previous link.
+Expired/reused links have a friendly recovery page. Existing pending accounts
+created through the admin staff form can use this same recovery form with their
+assigned PIN. This is not a forgotten-PIN reset flow.
+
+Checks: `node --test tests/email-verification.test.cjs tests/auth-security.test.cjs tests/account-management.test.cjs`.
+
 ## Worked-hours review and payroll
+
+### Attendance-session breaks
+
+Clocked-in staff can record one break per active clock-in session, including
+unscheduled work, overnight work and work past a rostered finish time. No roster
+shift is created just to enable a break. Start/End Break uses the signed-in user's
+active attendance session (within the existing 16-hour clock-session window), not
+the venue selector or a client-supplied employee ID. End the break before clock-out.
+The countdown is a guide only; payroll uses the actual recorded duration.
+Clock status refreshes on focus and every 30 seconds; failed break-status lookups
+are shown explicitly with a retry control.
+
+The current week's payroll report refreshes in the background every 15 seconds
+while visible, pausing during saves and while Details is open. Local adjustment
+drafts are retained. Recorded breaks show **Break taken** and their actual duration;
+live open breaks show **On break** with an elapsed minutes/seconds timer updated
+every second. Past unfinished breaks are flagged rather than ticking indefinitely.
+No recorded break is labelled **Not recorded**, not assumed to be a roster preset.
+The elapsed timer is display-only and does not change payable values or approval
+snapshots; approval still requires completed attendance and server validation.
+
+New break timestamps are stored on TimeLog. Existing roster-based breaks are
+retained and can still be finished in their original record. Payroll deducts
+completed recorded breaks instead of adding them to a roster preset; unscheduled
+hours still require manager review and an explanation before approval. Changes to
+recorded session breaks invalidate affected approval snapshots, while historical
+approvals with no new session breaks retain their original snapshot format.
+
+Before deploying this code, back up and confirm the target database, then apply
+the additive `20261028000000_attendance_session_breaks` migration using the normal
+`npx prisma migrate deploy` workflow. This adds nullable start/end columns to
+TimeLog and validates their order; it does not rewrite historical attendance.
+Inspect all pending migrations before deploying, and do not use database reset.
+Generate the Prisma client (`npx prisma generate`, also run by `npm run build`)
+and deploy the updated server and UI together.
+
+Checks: `node --test tests/attendance-breaks.test.cjs tests/timesheet-overlap.test.cjs tests/timesheet-performance.test.cjs`.
 
 Staff Payslips navigation and content are temporarily commented out pending MYOB
 integration. The payroll Approved Leave table and leave CSV rows are also hidden

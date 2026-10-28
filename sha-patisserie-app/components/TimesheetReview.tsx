@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import PayrollBreakStatus from '@/components/PayrollBreakStatus';
 import {
   actualPeriods, approvalError, csvCell, currentWeek, editPeriodTime, perthDate, timeInput,
   isLiveAttendance, paidHours, requiresReason, samePeriods, validatePayable,
@@ -109,6 +110,8 @@ export default function TimesheetReview({ userId }: { userId: string }) {
     staleTime: 60_000,
     gcTime: 10 * 60_000,
     refetchOnWindowFocus: false,
+    refetchInterval: weekStart === currentWeek() && !savingBatch && !selected ? 15_000 : false,
+    refetchIntervalInBackground: false,
     retry: false,
   });
   const report = reportQuery.data;
@@ -567,7 +570,6 @@ export default function TimesheetReview({ userId }: { userId: string }) {
                           const pastUnfinished = row.inProgress && !liveAttendance;
                           const clockInTime = firstLog ? timeShort(firstLog.clockIn) : '—';
                           const clockOutTime = firstLog?.clockOut ? timeShort(firstLog.clockOut) : null;
-                          const breakMin = row.actualBreakMinutes ?? row.breakMinutes ?? 0;
                           const rawComputedHours = paidHours(row.periods, row.breakMinutes);
                           const adjVal = adjustments[row.sourceKey] !== undefined
                             ? adjustments[row.sourceKey]
@@ -606,7 +608,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
                                 </div>
                                 <div className="flex justify-between">
                                   <span className="font-semibold text-stone-500">Break:</span>
-                                  <span className="text-stone-700">{breakMin}m</span>
+                                  <PayrollBreakStatus row={row} />
                                 </div>
                                 <div className="flex justify-between">
                                   <span className="font-semibold text-stone-500">Total:</span>
@@ -861,7 +863,7 @@ function ReviewEditor({ row, weekStart, onClose, onSaved }: {
           {time(log.clockIn)}{dayHint(log.clockIn, row.workDate)} – {log.clockOut ?
             `${time(log.clockOut)}${dayHint(log.clockOut, row.workDate)}` : 'Still clocked in'}
         </p>) : <p>No clock-in/out record.</p>}
-        <p className="mt-1 text-stone-500">Break: {row.actualBreakMinutes === null ? 'Not recorded' : `${row.actualBreakMinutes} min`}</p>
+        <div className="mt-1 text-stone-500">Break: <PayrollBreakStatus row={row} /></div>
         {row.exceptions.filter((exception) => exception !== 'No attendance recorded' &&
           !exception.startsWith('Break not recorded:')).map((exception) =>
           <p key={exception} className="mt-1 text-amber-800">{exception}</p>)}

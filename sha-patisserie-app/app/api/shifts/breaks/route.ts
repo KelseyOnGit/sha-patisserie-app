@@ -1,105 +1,74 @@
-//Build API endpoints /api/shifts/start-break and /api/shifts/end-break
-
 import { NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
+import { activeAttendanceBreak } from '@/lib/attendance-breaks';
 
-async function findCurrentShift(userId: string) {
-  const now = new Date();
-
-  return prisma.shift.findFirst({
-    where: {
-      userId,
-      startTime: { lte: now },
-      endTime: { gte: now },
-    },
-    orderBy: { startTime: 'desc' },
-  });
+class BreakError extends Error {
+  constructor(message: string, public status = 409) { super(message); }
 }
 
 export async function GET() {
   const session = await getSession();
-
-  if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   try {
-    const shift = await findCurrentShift(session.userId);
-    return NextResponse.json({ shift });
+    const active = await activeAttendanceBreak(prisma, session.userId);
+    return NextResponse.json({ session: active?.session ?? null });
   } catch (error) {
     console.error('Failed to fetch break status:', error);
-    return NextResponse.json({ error: 'Failed to fetch break status' }, { status: 500 });
+    return NextResponse.json({ error: 'Unable to load break status. Refresh or ask a manager for help.' }, { status: 500 });
   }
 }
 
 export async function POST(req: Request) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const body = await req.json().catch(() => null);
+    if (!body || !['START', 'FINISH'].includes(body.action) ||
+        typeof body.sessionId !== 'string' || !body.sessionId) {
+      throw new BreakError('Choose an active clock-in session and START or FINISH.', 400);
     }
-
-    const { shiftId: requestedShiftId, action } = await req.json();
-    const shift = requestedShiftId
-      ? await prisma.shift.findFirst({ where: { id: requestedShiftId, userId: session.userId } })
-      : await findCurrentShift(session.userId);
-
-    if (!shift || !action) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
-    }
-
-    const shiftId = shift.id;
-
-    // 1. Manager Manual Checkbox Toggle
-    if (action === 'TOGGLE_APPROVE') {
-      const updatedShift = await prisma.shift.update({
-        where: { id: shiftId },
-        data: { breakApproved: !shift.breakApproved },
-      });
-      return NextResponse.json({ message: 'Break approval updated', shift: updatedShift });
-    }
-
-    // 2. Staff Clocking "Start Break"
-    if (action === 'START') {
-      if (shift.startBreak || shift.endBreak) {
-        return NextResponse.json({ error: 'Break has already been recorded.' }, { status: 400 });
+    const result = await prisma.$transaction(async (tx) => {
+      const now = new Date();
+      const active = await activeAttendanceBreak(tx, session.userId, now);
+      if (!active || active.log.id !== body.sessionId) {
+        throw new BreakError('Your clock-in session changed or expired. Refresh before recording a break.');
       }
-
-      const updatedShift = await prisma.shift.update({
-        where: { id: shiftId },
-        data: {
-          startBreak: new Date(),
-          breakApproved: true, // Auto-ticks once started
-        },
-      });
-      return NextResponse.json({ message: 'Break started', shift: updatedShift });
-    }
-
-    // 3. Staff Clocking "Finish Break"
-    if (action === 'FINISH') {
-      const currentShift = await prisma.shift.findUnique({ where: { id: shiftId } });
-      if (!currentShift || !currentShift.startBreak) {
-        return NextResponse.json({ error: 'Break start time missing' }, { status: 400 });
+      const { log, legacyShift } = active;
+      if (body.action === 'START' && (active.session.startBreak || active.session.endBreak)) {
+        throw new BreakError('A break has already been recorded for this clock-in session.');
       }
-
-      const endBreak = new Date();
-      const durationMs = endBreak.getTime() - new Date(currentShift.startBreak).getTime();
-      const breakMinutes = Math.round(durationMs / (1000 * 60));
-
-      const updatedShift = await prisma.shift.update({
-        where: { id: shiftId },
-        data: {
-          endBreak,
-          breakMinutes: currentShift.breakMinutes + breakMinutes,
-        },
-      });
-      return NextResponse.json({ message: 'Break completed', shift: updatedShift });
-    }
-
-    return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+      if (body.action === 'FINISH' && (!active.session.startBreak || active.session.endBreak)) {
+        throw new BreakError('There is no unfinished break. Refresh the break status.');
+      }
+      // Finish legacy breaks in their original record; do not copy them into
+      // attendance and accidentally deduct the same break twice in payroll.
+      if (legacyShift) {
+        const updated = await tx.shift.updateMany({
+          where: { id: legacyShift.id, startBreak: legacyShift.startBreak, endBreak: null },
+          data: { endBreak: now },
+        });
+        if (updated.count !== 1) throw new BreakError('Break changed. Refresh and retry.');
+      } else {
+        const updated = await tx.timeLog.updateMany({
+          where: { id: log.id, userId: session.userId, clockOut: null,
+            startBreak: log.startBreak, endBreak: log.endBreak },
+          data: body.action === 'START' ? { startBreak: now } : { endBreak: now },
+        });
+        if (updated.count !== 1) throw new BreakError('Attendance or break changed. Refresh and retry.');
+      }
+      return { ...active.session,
+        ...(body.action === 'START' ? { startBreak: now } : { endBreak: now }) };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    return NextResponse.json({ message: body.action === 'START' ? 'Break started.' : 'Break finished.', session: result });
   } catch (error) {
-    console.error('Error handling break route:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    if (error instanceof BreakError) return NextResponse.json({ error: error.message }, { status: error.status });
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
+      return NextResponse.json({ error: 'Attendance changed. Refresh and retry.' }, { status: 409 });
+    }
+    console.error('Failed to update attendance break:', error);
+    return NextResponse.json({ error: 'Unable to update break. Refresh or ask a manager for help.' }, { status: 500 });
   }
+
 }

@@ -39,10 +39,12 @@ async function updateAccount(request: Request, approve: boolean) {
       }
       const target = await tx.user.findUnique({
         where: { id: userId },
-        select: { role: true, isApproved: true, status: true },
+        select: { role: true, isApproved: true, status: true, emailVerified: true },
       });
       if (!target) throw new AccountError('User not found.', 404);
       if (approve && target.isApproved) throw new AccountError('This account is already approved. Refresh the list.', 409);
+      if (approve && !target.emailVerified) throw new AccountError('This person must verify their email before approval.', 409);
+      if (approve && target.status !== 'PENDING') throw new AccountError('Only pending sign-ups can be approved.', 409);
       if (!approve && !target.isApproved) throw new AccountError('Approve this account through Pending Users first.', 409);
       if (target.role === 'ADMIN' && actor.role !== 'ADMIN') {
         throw new AccountError('Only Admins can manage Admin accounts.', 403);

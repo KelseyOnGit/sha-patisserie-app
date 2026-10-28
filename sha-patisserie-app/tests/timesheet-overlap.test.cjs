@@ -121,6 +121,11 @@ function fixture() {
     removeOverlap() { shifts = shifts.slice(0, 1); },
     addOverlap() { shifts.push({ ...shifts[0], id: 'c' }); },
     finishLog(value) { logs = logs.map((log) => ({ ...log, clockOut: value })); },
+    setSessionBreak(startBreak, endBreak) {
+      logs = logs.map((log) => ({ ...log, startBreak, endBreak }));
+    },
+    removeRoster() { shifts = []; },
+    setRosterPreset(minutes) { shifts = shifts.map((shift) => ({ ...shift, breakMinutes: minutes })); },
     changeRate() { user.hourlyPayRate = null; },
     endEmployment() { user.status = 'INACTIVE'; },
   };
@@ -142,6 +147,42 @@ test('ending employment retains approved historical hours, rate, source and payr
   assert.equal(inactive.shifts.find((entry) => entry.sourceKey === row.sourceKey).sourceChanged, false);
   assert.equal(f.logs.length, 1);
   assert.equal(f.audits.length, 1);
+});
+
+for (const scheduled of [false, true]) {
+  test(`session breaks reach ${scheduled ? 'scheduled' : 'unscheduled'} payroll once and changed timestamps invalidate approval`, async () => {
+    const f = fixture();
+    if (scheduled) { f.removeOverlap(); f.setRosterPreset(30); }
+    else f.removeRoster();
+    f.setSessionBreak(new Date('2020-10-05T03:00:00Z'), new Date('2020-10-05T03:30:00Z'));
+    let report = await f.load();
+    let row = report.shifts.find((entry) => entry.actual.length);
+    assert.equal(row.actualBreakMinutes, 30);
+    assert.equal(row.breakMinutes, 30);
+    assert.deepEqual(row.recordedBreaks, [{ start: '2020-10-05T03:00:00.000Z', end: '2020-10-05T03:30:00.000Z' }]);
+    assert.equal((await f.send(f.payload(row, { reason: 'Reviewed actual attendance and recorded session break.' }))).status, 200);
+    report = await f.load();
+    assert.equal(report.rows[0].totalHours, 3.5);
+    assert.equal(report.rows[0].gross, 105);
+    f.setSessionBreak(new Date('2020-10-05T03:00:00Z'), new Date('2020-10-05T03:40:00Z'));
+    report = await f.load();
+    row = report.shifts.find((entry) => entry.actual.length);
+    assert.equal(row.sourceChanged, true);
+    assert.equal(row.actualBreakMinutes, 40);
+    assert.equal(report.rows.length, 0);
+  });
+}
+
+test('unfinished attendance-session breaks remain visible for payroll review', async () => {
+  const f = fixture();
+  f.removeRoster();
+  f.setSessionBreak(new Date('2020-10-05T03:00:00Z'), null);
+  const report = await f.load();
+  const row = report.shifts.find((entry) => entry.actual.length);
+  assert.equal(row.inProgress, true);
+  assert.match(row.exceptions.join(' '), /unfinished/);
+  assert.equal(row.actualBreakMinutes, null);
+  assert.deepEqual(row.recordedBreaks, [{ start: '2020-10-05T03:00:00.000Z', end: null }]);
 });
 
 test('explained overlap approval reaches payroll once, retains rate and audit, and can be reopened', async () => {

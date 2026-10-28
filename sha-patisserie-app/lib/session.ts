@@ -51,9 +51,9 @@ export async function getSession(): Promise<SessionPayload | null> {
   }
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, email: true, role: true, isApproved: true, status: true },
+    select: { id: true, email: true, role: true, isApproved: true, status: true, emailVerified: true },
   });
-  if (!user?.isApproved || user.status !== 'ACTIVE') return null;
+  if (!user?.isApproved || user.status !== 'ACTIVE' || !user.emailVerified) return null;
   return { userId: user.id, email: user.email, role: user.role };
 }
 

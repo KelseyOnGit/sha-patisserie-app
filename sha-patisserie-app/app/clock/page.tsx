@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
 interface ActiveShift {
@@ -60,22 +60,30 @@ export default function ClockPage() {
   }, [router]);
 
   // Fetch active log for current logged-in user
-  const fetchActiveLog = () => {
+  const fetchActiveLog = useCallback(() => {
     if (!currentUser?.id) {
-      setActiveLog(null);
       return;
     }
 
     fetch('/api/shifts/clock')
-      .then((res) => res.json())
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Unable to load attendance.');
+        return data;
+      })
       .then((data) => {
         setActiveLog(data.activeLog || null);
+      }).catch((error) => {
+        setStatusMessage({ type: 'error', text: error instanceof Error ? error.message : 'Unable to load attendance.' });
       });
-  };
+  }, [currentUser?.id]);
 
   useEffect(() => {
     fetchActiveLog();
-  }, [currentUser]);
+    window.addEventListener('focus', fetchActiveLog);
+    const interval = setInterval(fetchActiveLog, 30000);
+    return () => { window.removeEventListener('focus', fetchActiveLog); clearInterval(interval); };
+  }, [fetchActiveLog]);
 
   // Break Handler (Start / End Break)
   const handleBreakAction = async () => {
@@ -89,10 +97,10 @@ export default function ClockPage() {
 
     setLoading(true);
     try {
-      const res = await fetch('/api/shifts/break', {
+      const res = await fetch('/api/shifts/breaks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shiftId: activeLog.id, action }),
+        body: JSON.stringify({ sessionId: activeLog.id, action }),
       });
 
       const data = await res.json();
@@ -104,7 +112,8 @@ export default function ClockPage() {
           type: 'success',
           text: action === 'START' ? '☕ Break started!' : '✅ Break finished!',
         });
-        fetchActiveLog();
+        setActiveLog((current) => current && ({ ...current,
+          startBreak: data.session.startBreak, endBreak: data.session.endBreak }));
       }
     } catch (err) {
       setStatusMessage({ type: 'error', text: 'Network error updating break status.' });

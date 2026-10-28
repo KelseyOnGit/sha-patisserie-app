@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 interface ClockInCardProps {
   userName?: string;
@@ -11,7 +11,6 @@ interface BreakShift {
   startBreak: string | null;
   endBreak: string | null;
   presetBreakMinutes: number;
-  breakMinutes: number;
 }
 
 interface UpcomingShift {
@@ -29,10 +28,12 @@ export default function ClockInCard({ userName = 'Team Member' }: ClockInCardPro
   const [isClockedIn, setIsClockedIn] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [breakShift, setBreakShift] = useState<BreakShift | null>(null);
+  const [breakStatusError, setBreakStatusError] = useState('');
   const [breakSeconds, setBreakSeconds] = useState<number>(0);
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [upcomingShift, setUpcomingShift] = useState<UpcomingShift | null>(null);
-
+  const statusRequest = useRef(0);
+  const actionInFlight = useRef(false);
 
   // Update live clock on client side
   useEffect(() => {
@@ -59,24 +60,33 @@ export default function ClockInCard({ userName = 'Team Member' }: ClockInCardPro
     return () => clearInterval(interval);
   }, []);
 
-  const loadBreakStatus = async () => {
-    try {
-      const res = await fetch('/api/shifts/breaks');
-      if (!res.ok) return;
+  const loadBreakStatus = useCallback(() => {
+    if (actionInFlight.current) return;
+    const requestId = ++statusRequest.current;
+    return fetch('/api/shifts/breaks', { cache: 'no-store' }).then(async (res) => {
       const data = await res.json();
-      setBreakShift(data.shift || null);
-    } catch (error) {
+      if (requestId !== statusRequest.current) return;
+      if (!res.ok) throw new Error(data.error || 'Unable to load break status.');
+      setBreakShift(data.session || null);
+      setIsClockedIn(Boolean(data.session));
+      setBreakStatusError('');
+    }).catch((error: unknown) => {
+      if (requestId !== statusRequest.current) return;
       console.error('Failed to load break status:', error);
-    }
-  };
+      setBreakStatusError(error instanceof Error ? error.message : 'Unable to load break status.');
+    });
+  }, []);
 
   useEffect(() => {
-    loadBreakStatus();
-  }, [isClockedIn]);
+    void loadBreakStatus();
+    const refresh = () => { void loadBreakStatus(); };
+    window.addEventListener('focus', refresh);
+    const interval = setInterval(refresh, 30000);
+    return () => { window.removeEventListener('focus', refresh); clearInterval(interval); };
+  }, [loadBreakStatus]);
 
   useEffect(() => {
     if (!breakShift?.startBreak || breakShift.endBreak) {
-      setBreakSeconds(0);
       return;
     }
 
@@ -93,47 +103,38 @@ export default function ClockInCard({ userName = 'Team Member' }: ClockInCardPro
 
   const handleBreakToggle = async () => {
     if (!breakShift) {
-      setStatusMessage('No scheduled shift is active for a break.');
+      setStatusMessage('Clock in before recording a break.');
       return;
     }
 
     setLoading(true);
+    actionInFlight.current = true;
+    statusRequest.current++;
     const action = breakShift.startBreak && !breakShift.endBreak ? 'FINISH' : 'START';
 
     try {
       const res = await fetch('/api/shifts/breaks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shiftId: breakShift.id, action }),
+        body: JSON.stringify({ sessionId: breakShift.id, action }),
       });
       const data = await res.json();
 
       if (!res.ok) {
         setStatusMessage(data.error || 'Unable to update break.');
       } else {
-        setBreakShift(data.shift);
+        setBreakShift(data.session);
         setStatusMessage(action === 'START' ? 'Break started successfully.' : 'Break finished successfully.');
       }
-    } catch (error) {
+    } catch {
       setStatusMessage('Unable to connect to the server.');
     } finally {
+      actionInFlight.current = false;
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetch('/api/shifts/clock')
-      .then(async (res) => {
-        if (!res.ok) return null;
-        return res.json();
-      })
-      .then((data) => {
-        setIsClockedIn(Boolean(data?.activeLog));
-      })
-      .catch((error) => {
-        console.error('Failed to load clock status:', error);
-      });
-
     // Fetch upcoming shift for the logged-in staff
     fetch('/api/roster/mine')
       .then(async (res) => {
@@ -157,6 +158,8 @@ export default function ClockInCard({ userName = 'Team Member' }: ClockInCardPro
     }
 
     setLoading(true);
+    actionInFlight.current = true;
+    statusRequest.current++;
 
     const submitClockAction = async (userLat: number, userLng: number) => {
       try {
@@ -182,12 +185,13 @@ export default function ClockInCard({ userName = 'Team Member' }: ClockInCardPro
           setIsClockedIn(action === 'in');
             setStatusMessage(action === 'in' ? 'You have successfully clocked in.' : 'You have successfully clocked out.');
             if (action === 'out') setBreakShift(null);
-            await loadBreakStatus();
         }
       } catch (err) {
         console.error('Clocking error:', err);
         alert('An error occurred while connecting to the server.');
       } finally {
+        actionInFlight.current = false;
+        await loadBreakStatus();
         setLoading(false);
       }
     };
@@ -210,6 +214,7 @@ export default function ClockInCard({ userName = 'Team Member' }: ClockInCardPro
         }
 
         alert(`${errorMessage} Please allow location access and try again.`);
+        actionInFlight.current = false;
         setLoading(false);
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
@@ -306,7 +311,7 @@ export default function ClockInCard({ userName = 'Team Member' }: ClockInCardPro
 
         <button
           onClick={() => handleClockAction('out')}
-          disabled={loading || !isClockedIn}
+          disabled={loading || !isClockedIn || Boolean(breakShift?.startBreak && !breakShift.endBreak) || Boolean(breakStatusError)}
           className="w-full py-3.5 rounded-2xl font-bold text-sm bg-rose-200 hover:bg-rose-300 text-rose-900 shadow-sm disabled:opacity-50 transition-all"
         >
           {loading ? '...' : 'Clock Out'}
@@ -317,14 +322,14 @@ export default function ClockInCard({ userName = 'Team Member' }: ClockInCardPro
         <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-center">
           <button
             onClick={handleBreakToggle}
-            disabled={loading || !breakShift || Boolean(breakShift.endBreak)}
+            disabled={loading || !breakShift || Boolean(breakShift.endBreak) || Boolean(breakStatusError)}
             className="w-full rounded-xl bg-amber-700 px-4 py-3 text-sm font-bold text-white transition hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {breakShift?.endBreak
               ? 'Break Recorded'
               : breakShift?.startBreak
                 ? 'End Break'
-                : 'Start 30-Minute Break'}
+                : 'Start Break'}
           </button>
           {breakShift?.startBreak && !breakShift.endBreak && (
             <p className="mt-2 text-xs font-semibold text-amber-800">
@@ -332,13 +337,16 @@ export default function ClockInCard({ userName = 'Team Member' }: ClockInCardPro
             </p>
           )}
           {!breakShift && (
-            <p className="mt-2 text-xs text-amber-800">No scheduled shift is active for a break.</p>
+            <p className="mt-2 text-xs text-amber-800">No active clock-in session. Refresh your status or clock in first.</p>
           )}
         </div>
       )}
 
+      {breakStatusError && <p role="alert" className="mt-3 text-center text-xs text-rose-700">
+        {breakStatusError} <button type="button" onClick={() => void loadBreakStatus()} className="underline">Retry status</button>
+      </p>}
       {statusMessage && (
-        <p className="mt-3 text-center text-xs font-semibold text-emerald-700">{statusMessage}</p>
+        <p role="status" className="mt-3 text-center text-xs font-semibold text-stone-700">{statusMessage}</p>
       )}
 
       <p className="text-center text-[11px] text-stone-400 mt-4">

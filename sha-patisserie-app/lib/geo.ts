@@ -5,11 +5,14 @@ type Site = { lat: number; lng: number; radiusMeters: number };
 // Each venue can have more than one accepted site.
 export const VENUE_SITES: Record<VenueName, Site[]> = {
   Sha: [
-    { lat: -31.954819, lng: 115.854858, radiusMeters: 200 }, // Sha shop
-    { lat: -31.9056, lng: 115.9392, radiusMeters: 200 },     
+    { lat: -31.954819, lng: 115.854858, radiusMeters: 400, // Sha shop
+    },
+    { lat: -31.9056, lng: 115.9392, radiusMeters: 400, // Another Sha site
+    },
   ],
   ZB: [
-    { lat: -31.9520, lng: 115.8580, radiusMeters: 200 },
+    { lat: -31.9544448, lng: 115.8548311, radiusMeters: 400, // Zushibento, 125 St Georges Terrace
+    },
   ],
 };
 

@@ -124,6 +124,10 @@ model User {
   timesheets         Timesheet[] @relation("TimesheetStaff")
   timesheetActions   TimesheetAudit[] @relation("TimesheetActor")
 
+  emailVerified         Boolean   @default(false)
+  verificationToken     String?   @unique
+  tokenExpires          DateTime?
+
 
 }
 
@@ -186,6 +190,8 @@ model TimeLog {
   
   clockIn   DateTime  @default(now())
   clockOut  DateTime?
+  startBreak DateTime?
+  endBreak   DateTime?
   
   locationId String?
   location   Location? @relation(fields: [locationId], references: [id])

@@ -1,12 +1,9 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
 export default function RegisterPage() {
-  const router = useRouter();
-
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [contactNumber, setContactNumber] = useState('');
@@ -37,14 +34,8 @@ export default function RegisterPage() {
         return;
       }
 
-      // 1. Use the dynamic message from API route()
-      setSuccessMessage(data.message || 'Account pending admin approval! Redirecting...');
-      
-
-      setTimeout(() => {
-        router.push('/login');
-      }, 4000);
-    } catch (error) {
+      setSuccessMessage(data.message || 'Check your email to verify your address. Admin approval follows verification.');
+    } catch {
       setErrorMessage('Something went wrong. Please try again.');
     } finally {
       setLoading(false);
@@ -64,7 +55,7 @@ export default function RegisterPage() {
             Create Staff Account
           </h1>
           <p className="text-xs text-stone-500 mt-1">
-            Register your name, email, optional phone number, and PIN
+            Register, verify your email, then wait for admin approval
           </p>
         </div>
 
@@ -82,7 +73,7 @@ export default function RegisterPage() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        {!successMessage && <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label
               htmlFor="name"
@@ -166,9 +157,12 @@ export default function RegisterPage() {
           >
             {loading ? 'Creating Account...' : 'Sign Up'}
           </button>
-        </form>
+        </form>}
 
         <div className="mt-8 pt-6 border-t border-stone-100 text-center">
+          <Link href="/verify-email" className="mb-4 block text-xs font-semibold text-stone-800 hover:underline">
+            Resend verification email
+          </Link>
           <p className="text-xs text-stone-500">
             Already have an account?{' '}
             <Link href="/login" className="font-semibold text-stone-800 hover:underline">

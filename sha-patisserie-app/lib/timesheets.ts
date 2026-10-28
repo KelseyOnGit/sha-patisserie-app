@@ -23,6 +23,7 @@ export interface ReviewRow {
   scheduledEnd: string | null;
   actual: AttendanceRecord[];
   actualBreakMinutes: number | null;
+  recordedBreaks?: { start: string; end: string | null }[];
   scheduledBreakMinutes: number;
   periods: PayablePeriod[];
   breakMinutes: number;

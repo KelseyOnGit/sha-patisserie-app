@@ -7,13 +7,14 @@ interface User {
   id: string;
   name: string | null;
   email: string;
+  emailVerified: boolean;
   createdAt: string;
 }
 
 export default function PendingUsersList({ initialUsers, canAssignAdmin = false }: { initialUsers: User[]; canAssignAdmin?: boolean }) {
   const router = useRouter();
-  // Store the list of pending users in state
-  const [users, setUsers] = useState<User[]>(initialUsers);
+  const [removedIds, setRemovedIds] = useState<string[]>([]);
+  const users = initialUsers.filter((user) => !removedIds.includes(user.id));
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [loadingAction, setLoadingAction] = useState<'approve' | 'remove' | null>(null);
   const [roles, setRoles] = useState<Record<string, 'STAFF' | 'ADMIN'>>({});
@@ -34,7 +35,7 @@ export default function PendingUsersList({ initialUsers, canAssignAdmin = false 
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to approve user.');
-      setUsers((current) => current.filter((user) => user.id !== userId));
+      setRemovedIds((current) => [...current, userId]);
       router.refresh();
     } catch (error) {
       console.error('Failed to approve user:', error);
@@ -62,7 +63,7 @@ export default function PendingUsersList({ initialUsers, canAssignAdmin = false 
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to remove user.');
-      setUsers((current) => current.filter((item) => item.id !== user.id));
+      setRemovedIds((current) => [...current, user.id]);
       router.refresh();
     } catch (error) {
       console.error('Failed to remove user:', error);
@@ -78,12 +79,19 @@ export default function PendingUsersList({ initialUsers, canAssignAdmin = false 
     return (
       <div className="p-8 text-center bg-stone-50 border border-stone-200/80 rounded-2xl">
         <p className="text-xs text-stone-500">No users are currently awaiting approval.</p>
+        <button type="button" onClick={() => router.refresh()} className="mt-3 text-xs font-semibold text-stone-700 underline">
+          Refresh verification status
+        </button>
       </div>
     );
   }
 
   return (
     <div className="space-y-3">
+      <button type="button" onClick={() => router.refresh()} disabled={loadingId !== null}
+        className="text-xs font-semibold text-stone-700 underline disabled:opacity-50">
+        Refresh verification status
+      </button>
       {error && <p role="alert" className="text-sm text-rose-700">{error}</p>}
       {users.map((user) => (
         <div
@@ -93,6 +101,9 @@ export default function PendingUsersList({ initialUsers, canAssignAdmin = false 
           <div className="min-w-0">
             <p className="text-sm font-medium text-stone-800">{user.name || 'Unnamed user'}</p>
             <p className="break-all text-xs text-stone-500">{user.email}</p>
+            <p className={`mt-1 text-xs ${user.emailVerified ? 'text-emerald-700' : 'text-amber-700'}`}>
+              {user.emailVerified ? 'Email verified' : 'Awaiting email verification'}
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <label className="text-xs font-semibold text-stone-600">
@@ -100,7 +111,7 @@ export default function PendingUsersList({ initialUsers, canAssignAdmin = false 
               <select
                 aria-label={`Role for ${user.name || user.email}`}
                 value={roles[user.id] ?? 'STAFF'}
-                disabled={loadingId !== null}
+                disabled={loadingId !== null || !user.emailVerified}
                 onChange={(event) => setRoles((current) => ({ ...current, [user.id]: event.target.value === 'ADMIN' ? 'ADMIN' : 'STAFF' }))}
                 className="ml-2 rounded-md border border-stone-300 bg-white px-2 py-1.5 text-sm"
               >
@@ -119,7 +130,7 @@ export default function PendingUsersList({ initialUsers, canAssignAdmin = false 
             <button
               type="button"
               onClick={() => handleApprove(user.id)}
-              disabled={loadingId !== null}
+              disabled={loadingId !== null || !user.emailVerified}
               className="px-4 py-2 text-xs font-medium text-stone-50 bg-stone-900 hover:bg-stone-800 rounded-xl transition-all disabled:opacity-50"
             >
               {loadingId === user.id && loadingAction === 'approve' ? 'Approving...' : `Approve ${roles[user.id] === 'ADMIN' ? 'Admin' : 'Staff'}`}

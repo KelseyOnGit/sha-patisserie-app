@@ -35,7 +35,7 @@ export default function LoginPage() {
 
       const isAdmin = data.role === 'ADMIN' || data.role === 'MANAGER';
       router.push(isAdmin ? '/admin' : '/dashboard');
-    } catch (error) {
+    } catch {
       setErrorMessage('Something went wrong. Please try again.');
     } finally {
       setLoading(false);
@@ -152,6 +152,11 @@ export default function LoginPage() {
 
         {/* Footer Section with Registration Link */}
         <div className="mt-8 pt-6 border-t border-stone-100 text-center space-y-2">
+          <p className="text-xs text-stone-500">
+            <Link href="/verify-email" className="font-semibold text-stone-800 hover:underline">
+              Resend verification email
+            </Link>
+          </p>
           <p className="text-xs text-stone-500">
             Need a staff account?{' '}
             <Link href="/register" className="font-semibold text-stone-800 hover:underline">

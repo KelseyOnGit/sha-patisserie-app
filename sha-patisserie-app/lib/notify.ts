@@ -86,7 +86,7 @@ export async function sendEmail(
 ): Promise<{ sent: boolean; reason?: string }> {
   try {
     const { error } = await resend.emails.send({
-      from: process.env.FROM_EMAIL || 'onboarding@resend.dev',
+      from: process.env.FROM_EMAIL?.trim() || process.env.EMAIL_FROM?.trim() || 'onboarding@resend.dev',
       to,
       subject,
       html: htmlMessage,

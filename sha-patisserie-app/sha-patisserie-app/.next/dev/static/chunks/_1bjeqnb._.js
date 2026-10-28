@@ -108,6 +108,7 @@ function ClockInCard({ userName = 'Team Member' }) {
     const [isClockedIn, setIsClockedIn] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(false);
     const [loading, setLoading] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(false);
     const [breakShift, setBreakShift] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
+    const [breakStatusError, setBreakStatusError] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])('');
     const [breakSeconds, setBreakSeconds] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(0);
     const [statusMessage, setStatusMessage] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])('');
     const [upcomingShift, setUpcomingShift] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
@@ -140,22 +141,42 @@ function ClockInCard({ userName = 'Team Member' }) {
             })["ClockInCard.useEffect"];
         }
     }["ClockInCard.useEffect"], []);
-    const loadBreakStatus = async ()=>{
-        try {
-            const res = await fetch('/api/shifts/breaks');
-            if (!res.ok) return;
-            const data = await res.json();
-            setBreakShift(data.shift || null);
-        } catch (error) {
-            console.error('Failed to load break status:', error);
+    const loadBreakStatus = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useCallback"])({
+        "ClockInCard.useCallback[loadBreakStatus]": async ()=>{
+            try {
+                const res = await fetch('/api/shifts/breaks', {
+                    cache: 'no-store'
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Unable to load break status.');
+                setBreakShift(data.session || null);
+                setIsClockedIn(Boolean(data.session));
+                setBreakStatusError('');
+            } catch (error) {
+                console.error('Failed to load break status:', error);
+                setBreakStatusError(error instanceof Error ? error.message : 'Unable to load break status.');
+            }
         }
-    };
+    }["ClockInCard.useCallback[loadBreakStatus]"], []);
     (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
         "ClockInCard.useEffect": ()=>{
-            loadBreakStatus();
+            void loadBreakStatus();
+            const refresh = {
+                "ClockInCard.useEffect.refresh": ()=>{
+                    void loadBreakStatus();
+                }
+            }["ClockInCard.useEffect.refresh"];
+            window.addEventListener('focus', refresh);
+            const interval = setInterval(refresh, 30000);
+            return ({
+                "ClockInCard.useEffect": ()=>{
+                    window.removeEventListener('focus', refresh);
+                    clearInterval(interval);
+                }
+            })["ClockInCard.useEffect"];
         }
     }["ClockInCard.useEffect"], [
-        isClockedIn
+        loadBreakStatus
     ]);
     (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
         "ClockInCard.useEffect": ()=>{
@@ -181,7 +202,7 @@ function ClockInCard({ userName = 'Team Member' }) {
     ]);
     const handleBreakToggle = async ()=>{
         if (!breakShift) {
-            setStatusMessage('No scheduled shift is active for a break.');
+            setStatusMessage('Clock in before recording a break.');
             return;
         }
         setLoading(true);
@@ -193,7 +214,7 @@ function ClockInCard({ userName = 'Team Member' }) {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    shiftId: breakShift.id,
+                    sessionId: breakShift.id,
                     action
                 })
             });
@@ -201,7 +222,7 @@ function ClockInCard({ userName = 'Team Member' }) {
             if (!res.ok) {
                 setStatusMessage(data.error || 'Unable to update break.');
             } else {
-                setBreakShift(data.shift);
+                setBreakShift(data.session);
                 setStatusMessage(action === 'START' ? 'Break started successfully.' : 'Break finished successfully.');
             }
         } catch (error) {
@@ -212,20 +233,6 @@ function ClockInCard({ userName = 'Team Member' }) {
     };
     (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
         "ClockInCard.useEffect": ()=>{
-            fetch('/api/shifts/clock').then({
-                "ClockInCard.useEffect": async (res)=>{
-                    if (!res.ok) return null;
-                    return res.json();
-                }
-            }["ClockInCard.useEffect"]).then({
-                "ClockInCard.useEffect": (data)=>{
-                    setIsClockedIn(Boolean(data?.activeLog));
-                }
-            }["ClockInCard.useEffect"]).catch({
-                "ClockInCard.useEffect": (error)=>{
-                    console.error('Failed to load clock status:', error);
-                }
-            }["ClockInCard.useEffect"]);
             // Fetch upcoming shift for the logged-in staff
             fetch('/api/roster/mine').then({
                 "ClockInCard.useEffect": async (res)=>{
@@ -312,7 +319,7 @@ function ClockInCard({ userName = 'Team Member' }) {
                             children: currentDate || 'Loading date...'
                         }, void 0, false, {
                             fileName: "[project]/components/ClockInCard.tsx",
-                            lineNumber: 224,
+                            lineNumber: 219,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -322,25 +329,25 @@ function ClockInCard({ userName = 'Team Member' }) {
                                     className: "h-2 w-2 rounded-full bg-emerald-500 animate-pulse"
                                 }, void 0, false, {
                                     fileName: "[project]/components/ClockInCard.tsx",
-                                    lineNumber: 226,
+                                    lineNumber: 221,
                                     columnNumber: 13
                                 }, this),
                                 time || '12:00:00 PM'
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/ClockInCard.tsx",
-                            lineNumber: 225,
+                            lineNumber: 220,
                             columnNumber: 11
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/components/ClockInCard.tsx",
-                    lineNumber: 223,
+                    lineNumber: 218,
                     columnNumber: 9
                 }, this)
             }, void 0, false, {
                 fileName: "[project]/components/ClockInCard.tsx",
-                lineNumber: 222,
+                lineNumber: 217,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -352,7 +359,7 @@ function ClockInCard({ userName = 'Team Member' }) {
                         children: "Venue Location"
                     }, void 0, false, {
                         fileName: "[project]/components/ClockInCard.tsx",
-                        lineNumber: 234,
+                        lineNumber: 229,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -369,7 +376,7 @@ function ClockInCard({ userName = 'Team Member' }) {
                                         children: "📍 Sha Patisserie"
                                     }, void 0, false, {
                                         fileName: "[project]/components/ClockInCard.tsx",
-                                        lineNumber: 244,
+                                        lineNumber: 239,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
@@ -377,7 +384,7 @@ function ClockInCard({ userName = 'Team Member' }) {
                                         children: "📍 Zushi Bento"
                                     }, void 0, false, {
                                         fileName: "[project]/components/ClockInCard.tsx",
-                                        lineNumber: 245,
+                                        lineNumber: 240,
                                         columnNumber: 13
                                     }, this),
                                     ("TURBOPACK compile-time value", "true") === 'true' && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
@@ -385,13 +392,13 @@ function ClockInCard({ userName = 'Team Member' }) {
                                         children: "🧪 Office (Test)"
                                     }, void 0, false, {
                                         fileName: "[project]/components/ClockInCard.tsx",
-                                        lineNumber: 247,
+                                        lineNumber: 242,
                                         columnNumber: 3
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/ClockInCard.tsx",
-                                lineNumber: 238,
+                                lineNumber: 233,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -403,29 +410,29 @@ function ClockInCard({ userName = 'Team Member' }) {
                                         d: "M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
                                     }, void 0, false, {
                                         fileName: "[project]/components/ClockInCard.tsx",
-                                        lineNumber: 252,
+                                        lineNumber: 247,
                                         columnNumber: 15
                                     }, this)
                                 }, void 0, false, {
                                     fileName: "[project]/components/ClockInCard.tsx",
-                                    lineNumber: 251,
+                                    lineNumber: 246,
                                     columnNumber: 13
                                 }, this)
                             }, void 0, false, {
                                 fileName: "[project]/components/ClockInCard.tsx",
-                                lineNumber: 250,
+                                lineNumber: 245,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/ClockInCard.tsx",
-                        lineNumber: 237,
+                        lineNumber: 232,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/ClockInCard.tsx",
-                lineNumber: 233,
+                lineNumber: 228,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -438,7 +445,7 @@ function ClockInCard({ userName = 'Team Member' }) {
                                 children: "Logged in as"
                             }, void 0, false, {
                                 fileName: "[project]/components/ClockInCard.tsx",
-                                lineNumber: 261,
+                                lineNumber: 256,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -446,13 +453,13 @@ function ClockInCard({ userName = 'Team Member' }) {
                                 children: userName
                             }, void 0, false, {
                                 fileName: "[project]/components/ClockInCard.tsx",
-                                lineNumber: 264,
+                                lineNumber: 259,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/ClockInCard.tsx",
-                        lineNumber: 260,
+                        lineNumber: 255,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -462,18 +469,18 @@ function ClockInCard({ userName = 'Team Member' }) {
                             children: isClockedIn ? 'Clocked In' : 'Clocked Out'
                         }, void 0, false, {
                             fileName: "[project]/components/ClockInCard.tsx",
-                            lineNumber: 267,
+                            lineNumber: 262,
                             columnNumber: 11
                         }, this)
                     }, void 0, false, {
                         fileName: "[project]/components/ClockInCard.tsx",
-                        lineNumber: 266,
+                        lineNumber: 261,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/ClockInCard.tsx",
-                lineNumber: 259,
+                lineNumber: 254,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -487,7 +494,7 @@ function ClockInCard({ userName = 'Team Member' }) {
                                 children: "Upcoming Shift"
                             }, void 0, false, {
                                 fileName: "[project]/components/ClockInCard.tsx",
-                                lineNumber: 278,
+                                lineNumber: 273,
                                 columnNumber: 11
                             }, this),
                             upcomingShift && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -495,13 +502,13 @@ function ClockInCard({ userName = 'Team Member' }) {
                                 children: "Scheduled"
                             }, void 0, false, {
                                 fileName: "[project]/components/ClockInCard.tsx",
-                                lineNumber: 280,
+                                lineNumber: 275,
                                 columnNumber: 13
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/ClockInCard.tsx",
-                        lineNumber: 277,
+                        lineNumber: 272,
                         columnNumber: 9
                     }, this),
                     upcomingShift ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -517,7 +524,7 @@ function ClockInCard({ userName = 'Team Member' }) {
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/ClockInCard.tsx",
-                                lineNumber: 287,
+                                lineNumber: 282,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -528,26 +535,26 @@ function ClockInCard({ userName = 'Team Member' }) {
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/ClockInCard.tsx",
-                                lineNumber: 290,
+                                lineNumber: 285,
                                 columnNumber: 13
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/ClockInCard.tsx",
-                        lineNumber: 286,
+                        lineNumber: 281,
                         columnNumber: 11
                     }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                         className: "text-xs text-stone-500 italic",
                         children: "No upcoming shifts scheduled soon."
                     }, void 0, false, {
                         fileName: "[project]/components/ClockInCard.tsx",
-                        lineNumber: 293,
+                        lineNumber: 288,
                         columnNumber: 11
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/ClockInCard.tsx",
-                lineNumber: 276,
+                lineNumber: 271,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -560,23 +567,23 @@ function ClockInCard({ userName = 'Team Member' }) {
                         children: loading ? '...' : 'Clock In'
                     }, void 0, false, {
                         fileName: "[project]/components/ClockInCard.tsx",
-                        lineNumber: 299,
+                        lineNumber: 294,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
                         onClick: ()=>handleClockAction('out'),
-                        disabled: loading || !isClockedIn,
+                        disabled: loading || !isClockedIn || Boolean(breakShift?.startBreak && !breakShift.endBreak) || Boolean(breakStatusError),
                         className: "w-full py-3.5 rounded-2xl font-bold text-sm bg-rose-200 hover:bg-rose-300 text-rose-900 shadow-sm disabled:opacity-50 transition-all",
                         children: loading ? '...' : 'Clock Out'
                     }, void 0, false, {
                         fileName: "[project]/components/ClockInCard.tsx",
-                        lineNumber: 307,
+                        lineNumber: 302,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/ClockInCard.tsx",
-                lineNumber: 298,
+                lineNumber: 293,
                 columnNumber: 7
             }, this),
             isClockedIn && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -584,12 +591,12 @@ function ClockInCard({ userName = 'Team Member' }) {
                 children: [
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
                         onClick: handleBreakToggle,
-                        disabled: loading || !breakShift || Boolean(breakShift.endBreak),
+                        disabled: loading || !breakShift || Boolean(breakShift.endBreak) || Boolean(breakStatusError),
                         className: "w-full rounded-xl bg-amber-700 px-4 py-3 text-sm font-bold text-white transition hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-50",
-                        children: breakShift?.endBreak ? 'Break Recorded' : breakShift?.startBreak ? 'End Break' : 'Start 30-Minute Break'
+                        children: breakShift?.endBreak ? 'Break Recorded' : breakShift?.startBreak ? 'End Break' : 'Start Break'
                     }, void 0, false, {
                         fileName: "[project]/components/ClockInCard.tsx",
-                        lineNumber: 318,
+                        lineNumber: 313,
                         columnNumber: 11
                     }, this),
                     breakShift?.startBreak && !breakShift.endBreak && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -602,29 +609,51 @@ function ClockInCard({ userName = 'Team Member' }) {
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/ClockInCard.tsx",
-                        lineNumber: 330,
+                        lineNumber: 325,
                         columnNumber: 13
                     }, this),
                     !breakShift && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                         className: "mt-2 text-xs text-amber-800",
-                        children: "No scheduled shift is active for a break."
+                        children: "No active clock-in session. Refresh your status or clock in first."
                     }, void 0, false, {
                         fileName: "[project]/components/ClockInCard.tsx",
-                        lineNumber: 335,
+                        lineNumber: 330,
                         columnNumber: 13
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/ClockInCard.tsx",
-                lineNumber: 317,
+                lineNumber: 312,
                 columnNumber: 9
+            }, this),
+            breakStatusError && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                role: "alert",
+                className: "mt-3 text-center text-xs text-rose-700",
+                children: [
+                    breakStatusError,
+                    " ",
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                        type: "button",
+                        onClick: ()=>void loadBreakStatus(),
+                        className: "underline",
+                        children: "Retry status"
+                    }, void 0, false, {
+                        fileName: "[project]/components/ClockInCard.tsx",
+                        lineNumber: 336,
+                        columnNumber: 28
+                    }, this)
+                ]
+            }, void 0, true, {
+                fileName: "[project]/components/ClockInCard.tsx",
+                lineNumber: 335,
+                columnNumber: 28
             }, this),
             statusMessage && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                 className: "mt-3 text-center text-xs font-semibold text-emerald-700",
                 children: statusMessage
             }, void 0, false, {
                 fileName: "[project]/components/ClockInCard.tsx",
-                lineNumber: 341,
+                lineNumber: 339,
                 columnNumber: 9
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -632,17 +661,17 @@ function ClockInCard({ userName = 'Team Member' }) {
                 children: "Onsite location required"
             }, void 0, false, {
                 fileName: "[project]/components/ClockInCard.tsx",
-                lineNumber: 344,
+                lineNumber: 342,
                 columnNumber: 7
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/components/ClockInCard.tsx",
-        lineNumber: 220,
+        lineNumber: 215,
         columnNumber: 5
     }, this);
 }
-_s(ClockInCard, "4Nw7Anxb+7RufpoKztLhli9yZaM=");
+_s(ClockInCard, "/vlksb2yea9TTZNguXZ6OTOzEpE=");
 _c = ClockInCard;
 var _c;
 __turbopack_context__.k.register(_c, "ClockInCard");

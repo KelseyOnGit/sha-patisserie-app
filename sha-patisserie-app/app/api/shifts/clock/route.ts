@@ -2,8 +2,12 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { isWithinOnsiteRange } from '@/lib/geo';
 import { getSession } from '@/lib/session';
+import { Prisma } from '@prisma/client';
+import { activeAttendanceBreak } from '@/lib/attendance-breaks';
+
+class ClockError extends Error {}
 // GET active log for the currently authenticated user
-export async function GET(request: Request) {
+export async function GET() {
   const session = await getSession();
 
   if (!session) {
@@ -11,11 +15,9 @@ export async function GET(request: Request) {
   }
 
   try {
-    const sixteenHoursAgo = new Date(Date.now() - 16 * 60 * 60 * 1000);
-    const activeLog = await prisma.timeLog.findFirst({
-      where: { userId: session.userId, clockOut: null, clockIn: { gte: sixteenHoursAgo } },
-      orderBy: { clockIn: 'desc' },
-    });
+    const active = await activeAttendanceBreak(prisma, session.userId);
+    const activeLog = active ? { ...active.log,
+      startBreak: active.session.startBreak, endBreak: active.session.endBreak } : null;
     return NextResponse.json({ activeLog });
   } catch (error) {
     console.error('Failed to fetch clock status:', error);
@@ -101,27 +103,27 @@ export async function POST(request: Request) {
     }
 
     if (action === 'clock-out') {
-      const activeLog = await prisma.timeLog.findFirst({
-        where: { userId, clockOut: null },
-      });
-
-      if (!activeLog) {
-        return NextResponse.json(
-          { error: 'No active shift found to clock out from.' },
-          { status: 400 }
-        );
-      }
-
-      const updatedLog = await prisma.timeLog.update({
-        where: { id: activeLog.id },
-        data: { clockOut: new Date() },
-      });
+      const updatedLog = await prisma.$transaction(async (tx) => {
+        const active = await activeAttendanceBreak(tx, userId);
+        if (!active) throw new ClockError('No active clock-in session found. Ask a manager to review missing clock-outs.');
+        if (active.session.startBreak && !active.session.endBreak) {
+          throw new ClockError('Please end your break before clocking out.');
+        }
+        return tx.timeLog.update({
+          where: { id: active.log.id },
+          data: { clockOut: new Date() },
+        });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
       return NextResponse.json({ message: 'Clocked out successfully!', log: updatedLog });
     }
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
   } catch (error) {
+    if (error instanceof ClockError) return NextResponse.json({ error: error.message }, { status: 409 });
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
+      return NextResponse.json({ error: 'Attendance changed. Refresh and retry.' }, { status: 409 });
+    }
     console.error('Failed to process clock request:', error);
     return NextResponse.json({ error: 'Server error processing clock request' }, { status: 500 });
   }

@@ -5,7 +5,8 @@ import { verifyPin } from '@/lib/pins';
 
 export async function POST(request: Request) {
   try {
-    const { email, pinCode } = await request.json();
+    const body = await request.json().catch(() => null);
+    const { email, pinCode } = body || {};
 
     // 1. Validate input presence
     if (typeof email !== 'string' || !email || typeof pinCode !== 'string' || !/^\d{4,6}$/.test(pinCode)) {
@@ -16,8 +17,11 @@ export async function POST(request: Request) {
     }
 
     // 2. Lookup user in database
-    const user = await prisma.user.findUnique({
-      where: { email },
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const user = await prisma.user.findFirst({
+      where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
     });
 
     // 3. Verify user and PIN
@@ -28,8 +32,16 @@ export async function POST(request: Request) {
       );
     }
 
-    //ADD ISAPPROVED CHECK
-    if(!user.isApproved) {
+    if (user.status === 'INACTIVE') {
+      return NextResponse.json({ error: 'This account is inactive. Contact your manager.' }, { status: 403 });
+    }
+    if (!user.emailVerified) {
+      return NextResponse.json(
+        { error: 'Verify your email before signing in. Check your inbox or use Resend verification email.' },
+        { status: 403 }
+      );
+    }
+    if (!user.isApproved || user.status !== 'ACTIVE') {
       return NextResponse.json(
         {error:'Your account is pending admin approval. Please contact your manager'},
         {status: 403}

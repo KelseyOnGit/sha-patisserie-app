@@ -39,7 +39,7 @@ function fixture() {
   const state = {
     session: { userId: 'actor', role: 'ADMIN' },
     actor: { role: 'ADMIN', isApproved: true, status: 'ACTIVE' },
-    target: { role: 'STAFF', isApproved: false, status: 'PENDING' },
+    target: { role: 'STAFF', isApproved: false, status: 'PENDING', emailVerified: true },
     admins: 2,
     writes: [],
   };
@@ -95,6 +95,16 @@ test('Managers may approve Staff but never assign, approve or remove Admin roles
   state.target.role = 'STAFF';
   assert.equal((await api.PATCH(body({ userId: 'target', role: 'STAFF' }))).status, 200);
   assert.deepEqual(state.writes, [{ role: 'STAFF', isApproved: true, status: 'ACTIVE' }]);
+});
+
+test('approval rejects unverified and non-pending accounts without writes', async () => {
+  const { api, state } = fixture();
+  state.target.emailVerified = false;
+  assert.equal((await api.PATCH(body({ userId: 'target', role: 'STAFF' }))).status, 409);
+  state.target.emailVerified = true;
+  state.target.status = 'INACTIVE';
+  assert.equal((await api.PATCH(body({ userId: 'target', role: 'STAFF' }))).status, 409);
+  assert.equal(state.writes.length, 0);
 });
 
 test('Staff and unauthenticated callers cannot approve or change roles', async () => {
@@ -166,7 +176,7 @@ test('existing cookies use current database roles and disabled accounts lose acc
     if (previous === undefined) delete process.env.JWT_SECRET;
     else process.env.JWT_SECRET = previous;
   });
-  const user = { id: 'user', email: 'test@example.invalid', role: 'STAFF', isApproved: true, status: 'ACTIVE' };
+  const user = { id: 'user', email: 'test@example.invalid', role: 'STAFF', isApproved: true, status: 'ACTIVE', emailVerified: true };
   let failDatabase = false;
   const session = loadFile('lib/session.ts', {
     jose: { jwtVerify: async () => ({ payload: { userId: 'user', role: 'ADMIN' } }) },
@@ -180,6 +190,9 @@ test('existing cookies use current database roles and disabled accounts lose acc
   assert.equal((await session.getSession()).role, 'STAFF');
   user.role = 'ADMIN';
   assert.equal((await session.getSession()).role, 'ADMIN');
+  user.emailVerified = false;
+  assert.equal(await session.getSession(), null);
+  user.emailVerified = true;
   user.status = 'INACTIVE';
   assert.equal(await session.getSession(), null);
   user.status = 'ACTIVE';
@@ -195,7 +208,7 @@ test('pending approval UI shows Admin selection only to Admins', () => {
       'next/navigation': { useRouter: () => ({ refresh() {} }) },
     }).default;
     const html = renderToStaticMarkup(React.createElement(component, {
-      initialUsers: [{ id: 'pending', name: 'Test', email: 'test@example.invalid', createdAt: '' }],
+      initialUsers: [{ id: 'pending', name: 'Test', email: 'test@example.invalid', createdAt: '', emailVerified: true }],
       canAssignAdmin,
     }));
     assert.match(html, /Approve as/);
@@ -391,7 +404,7 @@ test('pending approval sends the chosen Admin role and displays API failures', a
     react: hooks.react,
     'next/navigation': { useRouter: () => ({ refresh() { refreshes++; } }) },
   }).default;
-  const props = { initialUsers: [{ id: 'pending', name: 'Test', email: 'test@example.invalid', createdAt: '' }], canAssignAdmin: true };
+  const props = { initialUsers: [{ id: 'pending', name: 'Test', email: 'test@example.invalid', createdAt: '', emailVerified: true }], canAssignAdmin: true };
   const render = () => { hooks.reset(); return component(props); };
   findElement(render(), (node) => node.type === 'select').props.onChange({ target: { value: 'ADMIN' } });
   t.mock.method(console, 'error', () => {});
@@ -402,6 +415,22 @@ test('pending approval sends the chosen Admin role and displays API failures', a
   await findElement(render(), (node) => node.type === 'button' && node.props.children === 'Approve Admin').props.onClick();
   assert.match(renderToStaticMarkup(render()), /No users are currently awaiting approval/);
   assert.equal(refreshes, 1);
+});
+
+test('refreshing pending users picks up email verification without remounting', () => {
+  const hooks = hookState();
+  const props = { initialUsers: [{ id: 'pending', name: 'Test', email: 'test@example.invalid', emailVerified: false }] };
+  const component = loadFile('components/PendingUsersList.tsx', {
+    react: hooks.react,
+    'next/navigation': { useRouter: () => ({ refresh() {
+      props.initialUsers = [{ ...props.initialUsers[0], emailVerified: true }];
+    } }) },
+  }).default;
+  const render = () => { hooks.reset(); return component(props); };
+  assert.equal(findElement(render(), (node) => node.type === 'button' && node.props.children === 'Approve Staff').props.disabled, true);
+  findElement(render(), (node) => node.type === 'button' && node.props.children === 'Refresh verification status').props.onClick();
+  assert.equal(findElement(render(), (node) => node.type === 'button' && node.props.children === 'Approve Staff').props.disabled, false);
+  assert.match(renderToStaticMarkup(render()), /Email verified/);
 });
 
 test('pending removal enforces permissions, pending status and history protection transactionally', async () => {

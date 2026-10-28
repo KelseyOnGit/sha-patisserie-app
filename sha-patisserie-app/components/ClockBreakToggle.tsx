@@ -35,25 +35,28 @@ export default function ClockBreakToggle({
 
   // Handle Break Action (Start / Finish)
   const handleBreakToggle = async () => {
-    if (!shiftId) return;
     setLoading(true);
     const action = isOnBreak ? 'FINISH' : 'START';
 
     try {
-      const res = await fetch('/api/shifts/break', {
+      const status = await fetch('/api/shifts/breaks', { cache: 'no-store' });
+      const current = await status.json();
+      if (!status.ok) throw new Error(current.error || 'Unable to load break status.');
+      if (!current.session) throw new Error('Clock in before recording a break.');
+      const res = await fetch('/api/shifts/breaks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shiftId, action }),
+        body: JSON.stringify({ sessionId: current.session.id, action }),
       });
 
       const data = await res.json();
 
       if (res.ok) {
         if (action === 'START') {
-          setStartBreak(new Date(data.shift.startBreak));
+          setStartBreak(new Date(data.session.startBreak));
           setEndBreak(null);
         } else {
-          setEndBreak(new Date(data.shift.endBreak));
+          setEndBreak(new Date(data.session.endBreak));
         }
         router.refresh();
       } else {
@@ -61,7 +64,7 @@ export default function ClockBreakToggle({
       }
     } catch (error) {
       console.error(error);
-      alert('Error updating break.');
+      alert(error instanceof Error ? error.message : 'Error updating break.');
     } finally {
       setLoading(false);
     }
@@ -121,14 +124,14 @@ export default function ClockBreakToggle({
           {/* Break Toggle Button */}
           <button
             onClick={handleBreakToggle}
-            disabled={loading}
+            disabled={loading || Boolean(endBreak)}
             className={`w-full py-3 font-semibold rounded-lg transition-colors text-white ${
               isOnBreak
                 ? 'bg-amber-600 hover:bg-amber-700'
                 : 'bg-stone-800 hover:bg-stone-900'
             }`}
           >
-            {loading ? 'Updating...' : isOnBreak ? 'End Break' : 'Start Break'}
+            {loading ? 'Updating...' : endBreak ? 'Break Recorded' : isOnBreak ? 'End Break' : 'Start Break'}
           </button>
 
           {/* Clock Out Button (Disabled while on break) */}

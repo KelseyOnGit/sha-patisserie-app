@@ -1,21 +1,33 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { hashPin } from '@/lib/pins';
+import { verificationConfig, verificationToken, sendVerificationEmail } from '@/lib/email-verification';
+import { Prisma } from '@prisma/client';
 
 export async function POST(request: Request) {
   try {
-    const { email, pinCode, name, contactNumber } = await request.json();
+    const body = await request.json().catch(() => null);
+    if (!body || typeof body !== 'object') {
+      return NextResponse.json({ error: 'Enter your registration details.' }, { status: 400 });
+    }
+    const { email, pinCode, name, contactNumber } = body;
 
     // 1. Email Presence & Format Validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    if (!email || !email.trim() || !emailRegex.test(email)) {
+    if (typeof email !== 'string' || !emailRegex.test(email.trim())) {
       return NextResponse.json(
         { error: "Oops, this email doesn't look right." },
         { status: 400 }
       );
     }
 
+    // Normalize email to lowercase and trim whitespace
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (name !== undefined && typeof name !== 'string') {
+      return NextResponse.json({ error: 'Name must be text.' }, { status: 400 });
+    }
     if (contactNumber !== undefined && typeof contactNumber !== 'string') {
       return NextResponse.json(
         { error: 'Contact number must be text.' },
@@ -47,37 +59,52 @@ export async function POST(request: Request) {
     }
 
     // 3. Check if user already exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
+    const existingUser = await prisma.user.findFirst({
+      where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
     });
 
     if (existingUser) {
       return NextResponse.json(
-        { error: 'An account with this email already exists.' },
+        { error: 'An account with this email already exists. Sign in, or use Resend verification email with your existing PIN.' },
         { status: 400 }
       );
     }
 
-    // 4. Create new staff account with Admin Approval Flag
+    const origin = verificationConfig();
+    const token = verificationToken();
+
+    // 4. Create new staff account with Verification Tokens & Admin Approval Flag
     const user = await prisma.user.create({
       data: {
-        name: name?.trim() || email.split('@')[0],
-        email,
+        name: name?.trim() || normalizedEmail.split('@')[0],
+        email: normalizedEmail,
         contactNumber: contactNumber?.trim() || null,
         pinCode: await hashPin(pinCode),
-        isApproved: false, // Requires admin approval before access is granted
+        isApproved: false,       // Requires admin approval before access is granted
+        emailVerified: false,    // Requires email verification first
+        ...token,
       },
     });
 
+    if (!await sendVerificationEmail(normalizedEmail, token.verificationToken, origin)) {
+      return NextResponse.json(
+        { error: 'Your account was saved, but the verification email could not be sent. Use Resend verification email with your email and PIN after one minute.' },
+        { status: 502 }
+      );
+    }
+
     return NextResponse.json(
-      { 
-        message: 'Registration submitted successfully! Your account is pending admin approval.', 
-        user: { id: user.id, email: user.email } 
+      {
+        message: 'Registration successful! Please check your email inbox to verify your address.',
+        user: { id: user.id, email: user.email }
       },
       { status: 201 }
     );
-  } catch {
-    console.error('Registration failed.');
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return NextResponse.json({ error: 'An account with this email or phone number already exists.' }, { status: 409 });
+    }
+    console.error('Registration failed:', error);
     return NextResponse.json(
       { error: 'Failed to create account.' },
       { status: 500 }

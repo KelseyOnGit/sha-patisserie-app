@@ -101,7 +101,8 @@ export async function GET(req: NextRequest) {
         actualArrival = formatPerthTime(matchingLog.clockIn, targetDate);
 
         if (matchingLog.clockOut === null) {
-          if (shift.startBreak && !shift.endBreak) {
+          if (matchingLog.startBreak ? !matchingLog.endBreak :
+              shift.startBreak && !shift.endBreak && shift.startBreak >= matchingLog.clockIn) {
             status = 'ON_BREAK';
           } else {
             status = 'CLOCKED_IN';
@@ -139,7 +140,8 @@ export async function GET(req: NextRequest) {
       if (matchedLogIds.has(log.id)) continue;
 
       const actualArrival = formatPerthTime(log.clockIn, targetDate);
-      const status = log.clockOut === null ? 'CLOCKED_IN' : 'COMPLETED';
+      const status = log.clockOut === null ?
+        (log.startBreak && !log.endBreak ? 'ON_BREAK' : 'CLOCKED_IN') : 'COMPLETED';
       const site = log.location?.name || 'Sha Patisserie';
 
       rows.push({

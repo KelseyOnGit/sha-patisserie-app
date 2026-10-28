@@ -286,6 +286,18 @@ test('reports retain table/drafts while syncing and reuse account/week cache on 
   assert.equal(client.getQueryData(options.queryKey), undefined);
   assert.equal(options.staleTime, 60_000);
   assert.equal(options.refetchOnWindowFocus, false);
+  assert.equal(options.refetchInterval, false);
+  states[1] = require('../lib/timesheets.ts').currentWeek();
+  render();
+  assert.equal(options.refetchInterval, 15_000);
+  assert.equal(options.refetchIntervalInBackground, false);
+  states[9] = true;
+  render();
+  assert.equal(options.refetchInterval, false);
+  states[9] = false;
+  states[7] = row;
+  render();
+  assert.equal(options.refetchInterval, false);
 });
 
 test('overlap review exposes additional same-day entries and requires a manager reason', async (t) => {
@@ -335,7 +347,8 @@ test('overlap review exposes additional same-day entries and requires a manager 
   additional.props.onClick();
   assert.equal(states[7].sourceKey, 'shift:other');
 
-  const editor = findElement(tree, (node) => typeof node.type === 'function' && node.props.row === row);
+  const editor = findElement(tree, (node) => typeof node.type === 'function' && node.props.row === row &&
+    typeof node.props.onClose === 'function');
   assert.ok(editor);
   const editorOffset = cursor;
   const renderEditor = () => { cursor = editorOffset; return editor.type(editor.props); };

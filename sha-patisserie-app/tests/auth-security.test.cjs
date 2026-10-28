@@ -117,9 +117,14 @@ test('registration stores a hash and does not return credentials', async () => {
   let saved;
   const route = loadFile('app/api/auth/register/route.ts', {
     '@/lib/prisma': { prisma: { user: {
-      findUnique: async () => null,
+      findFirst: async () => null,
       create: async ({ data }) => { saved = data; return { id: 'new', ...data }; },
     } } },
+    '@/lib/email-verification': {
+      verificationConfig: () => 'https://staff.example.invalid',
+      verificationToken: () => ({ verificationToken: 'a'.repeat(64), tokenExpires: new Date(Date.now() + 86400000) }),
+      sendVerificationEmail: async () => true,
+    },
   });
   const response = await route.POST(body({ email: 'test@example.invalid', name: 'Test', pinCode: '5837' }));
   assert.equal(response.status, 201);
@@ -129,10 +134,10 @@ test('registration stores a hash and does not return credentials', async () => {
 });
 
 test('login verifies hashes, preserves approval checks and rejects legacy plaintext', async () => {
-  const user = { id: 'staff', email: 'test@example.invalid', role: 'STAFF', isApproved: true, pinCode: await hashPin('5837') };
+  const user = { id: 'staff', email: 'test@example.invalid', role: 'STAFF', isApproved: true, status: 'ACTIVE', emailVerified: true, pinCode: await hashPin('5837') };
   let sessions = 0;
   const route = loadFile('app/api/auth/login/route.ts', {
-    '@/lib/prisma': { prisma: { user: { findUnique: async () => user } } },
+    '@/lib/prisma': { prisma: { user: { findFirst: async () => user } } },
     '@/lib/session': { createSession: async () => { sessions++; } },
   });
   const login = (pinCode) => route.POST(body({ email: user.email, pinCode }));

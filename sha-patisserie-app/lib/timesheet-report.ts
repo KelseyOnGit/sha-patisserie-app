@@ -17,6 +17,7 @@ const reportShiftSelect = {
 } satisfies Prisma.ShiftSelect;
 const reportLogSelect = {
   id: true, userId: true, locationId: true, clockIn: true, clockOut: true, timesheetId: true,
+  startBreak: true, endBreak: true,
   user: { select: reportUserSelect }, location: { select: reportLocationSelect },
 } satisfies Prisma.TimeLogSelect;
 
@@ -128,7 +129,14 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
     // Shift.breakMinutes also stores the roster's preset deduction, and the
     // legacy break handler adds elapsed minutes to it. It is not reliable proof
     // of an actual break. Derive recorded duration from the raw break timestamps.
-    const actualBreakMinutes = recordedBreakMinutes(shift?.startBreak ?? null, shift?.endBreak ?? null);
+    const sessionBreaks = attendance.filter((log) => log.startBreak || log.endBreak).map((log) => ({
+      id: log.id, startBreak: log.startBreak?.toISOString() ?? null, endBreak: log.endBreak?.toISOString() ?? null,
+    }));
+    const completedBreaks = [
+      recordedBreakMinutes(shift?.startBreak ?? null, shift?.endBreak ?? null),
+      ...attendance.map((log) => recordedBreakMinutes(log.startBreak ?? null, log.endBreak ?? null)),
+    ].filter((minutes): minutes is number => minutes !== null);
+    const actualBreakMinutes = completedBreaks.length ? completedBreaks.reduce((sum, minutes) => sum + minutes, 0) : null;
     const scheduledBreakMinutes = shift?.breakMinutes ?? 0;
     const ambiguous = attendance.some((log) => ambiguousLogs.has(log.id)) ||
       Boolean(shift && ambiguousShifts.has(shift.id));
@@ -143,9 +151,11 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
       startBreak: shift?.startBreak?.toISOString() ?? null,
       endBreak: shift?.endBreak?.toISOString() ?? null,
       ...(ambiguous ? { rosterOverlap: true } : {}),
+      ...(sessionBreaks.length ? { sessionBreaks } : {}),
     });
     const sourceChanged = Boolean(sheet && sheet.sourceSnapshot !== snapshot);
-    const inProgress = actual.some((log) => !log.clockOut) || Boolean(shift?.startBreak && !shift.endBreak);
+    const inProgress = actual.some((log) => !log.clockOut) || Boolean(shift?.startBreak && !shift.endBreak) ||
+      attendance.some((log) => log.startBreak && !log.endBreak);
     const exceptions: string[] = [];
     const rosterIdentityChanged = Boolean(sheet && shift && (
       shift.userId !== sheet.userId || perthDate(shift.startTime) !== workDate || sourceSite !== sheet.site
@@ -175,6 +185,10 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
       scheduledStart: shift?.startTime.toISOString() ?? null,
       scheduledEnd: shift?.endTime.toISOString() ?? null,
       actual, actualBreakMinutes, scheduledBreakMinutes, periods,
+      recordedBreaks: [
+        ...(shift?.startBreak ? [{ start: shift.startBreak.toISOString(), end: shift.endBreak?.toISOString() ?? null }] : []),
+        ...sessionBreaks.flatMap((entry) => entry.startBreak ? [{ start: entry.startBreak, end: entry.endBreak }] : []),
+      ],
       breakMinutes: sheet?.breakMinutes ?? (periods.length ? actualBreakMinutes ?? scheduledBreakMinutes : 0),
       reason: sheet?.reason ?? '', status: sheet?.status ?? 'PENDING',
       needsAttention: exceptions.length > 0,
