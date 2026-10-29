@@ -20,18 +20,20 @@ export default async function AdminAccountsPage() {
         <p className="mt-2 text-sm text-stone-600">Admin accounts are separate from staff scheduling. Move an account back to Staff without deleting its profile or history.</p>
       </div>
       <div className="overflow-x-auto rounded-2xl border border-stone-200 bg-white">
-        <table className="w-full text-left text-sm">
+        <table role="table" aria-label="Admin accounts" className="admin-responsive-table w-full text-left text-sm">
           <thead className="bg-stone-50 text-stone-500"><tr>{['Name', 'Email', 'Status', 'Action'].map((heading) => <th key={heading} className="px-6 py-3">{heading}</th>)}</tr></thead>
           <tbody className="divide-y divide-stone-100">
             {admins.length === 0 && <tr><td colSpan={4} className="p-6 text-stone-500">No approved Admin accounts.</td></tr>}
             {admins.map((admin) => (
               <tr key={admin.id}>
-                <td className="px-6 py-4 font-semibold">{admin.name || 'Unnamed Admin'}</td>
-                <td className="px-6 py-4">{admin.email}</td>
-                <td className="px-6 py-4">{admin.status}</td>
-                <td className="space-x-3 px-6 py-4">
+                <td data-label="Name" className="px-6 py-4 font-semibold">{admin.name || 'Unnamed Admin'}</td>
+                <td data-label="Email" className="px-6 py-4">{admin.email}</td>
+                <td data-label="Status" className="px-6 py-4">{admin.status}</td>
+                <td data-label="Actions" className="px-6 py-4">
+                  <div className="flex flex-wrap items-center gap-3">
                   <Link href={`/admin/staff/${admin.id}`} className="text-stone-700 underline">View Profile</Link>
                   {admin.id === session.userId ? <span className="text-xs text-stone-500">Your account</span> : <AccountRoleButton userId={admin.id} name={admin.name || admin.email} role="STAFF" />}
+                  </div>
                 </td>
               </tr>
             ))}

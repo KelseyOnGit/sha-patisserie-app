@@ -9,7 +9,6 @@
       --tw-scale-y: 1;
       --tw-scale-z: 1;
       --tw-space-y-reverse: 0;
-      --tw-space-x-reverse: 0;
       --tw-divide-y-reverse: 0;
       --tw-border-style: solid;
       --tw-gradient-position: initial;
@@ -77,7 +76,6 @@
     --color-orange-50: #fff7ed;
     --color-orange-100: #ffedd5;
     --color-orange-200: #ffd7a8;
-    --color-orange-300: #ffb96d;
     --color-orange-800: #9f2d00;
     --color-orange-900: #7e2a0c;
     --color-amber-50: #fffbeb;
@@ -113,12 +111,7 @@
     --color-emerald-800: #005f46;
     --color-emerald-900: #004e3b;
     --color-emerald-950: #002c22;
-    --color-teal-100: #cbfbf1;
-    --color-teal-300: #46ecd5;
-    --color-teal-900: #0b4f4a;
     --color-sky-50: #f0f9ff;
-    --color-sky-100: #dff2fe;
-    --color-sky-300: #77d4ff;
     --color-sky-500: #00a5ef;
     --color-sky-600: #0084cc;
     --color-sky-700: #0069a4;
@@ -130,12 +123,6 @@
     --color-indigo-400: #7d87ff;
     --color-indigo-800: #372aac;
     --color-indigo-900: #312c85;
-    --color-violet-100: #ede9fe;
-    --color-violet-300: #c4b4ff;
-    --color-violet-900: #4d179a;
-    --color-fuchsia-100: #fae8ff;
-    --color-fuchsia-300: #f2a9ff;
-    --color-fuchsia-900: #721378;
     --color-rose-50: #fff1f2;
     --color-rose-100: #ffe4e6;
     --color-rose-200: #ffccd3;
@@ -226,7 +213,6 @@
       --color-orange-50: lab(97.7008% 1.53738 5.90646);
       --color-orange-100: lab(94.7127% 3.58391 14.3151);
       --color-orange-200: lab(88.4871% 9.94918 28.8378);
-      --color-orange-300: lab(80.8059% 21.7313 50.4455);
       --color-orange-800: lab(37.1566% 46.6433 50.5562);
       --color-orange-900: lab(30.2951% 36.0434 37.671);
       --color-amber-50: lab(98.6252% -.635982 8.42309);
@@ -262,12 +248,7 @@
       --color-emerald-800: lab(35.3675% -33.1188 8.04002);
       --color-emerald-900: lab(28.8637% -26.9249 5.45986);
       --color-emerald-950: lab(15.0582% -17.9507 2.38369);
-      --color-teal-100: lab(95.1845% -17.4212 -.425434);
-      --color-teal-300: lab(84.8977% -48.1517 -1.3321);
-      --color-teal-900: lab(29.506% -21.4706 -3.59886);
       --color-sky-50: lab(97.3623% -2.33799 -4.13098);
-      --color-sky-100: lab(94.3709% -4.56053 -8.23453);
-      --color-sky-300: lab(80.3307% -20.2945 -31.385);
       --color-sky-500: lab(63.3038% -18.433 -51.0407);
       --color-sky-600: lab(51.7754% -11.4713 -49.8349);
       --color-sky-700: lab(41.6013% -9.10804 -42.5648);
@@ -279,12 +260,6 @@
       --color-indigo-400: lab(59.866% 22.4833 -64.4485);
       --color-indigo-800: lab(26.6645% 37.9804 -68.6402);
       --color-indigo-900: lab(23.3911% 24.6978 -50.4719);
-      --color-violet-100: lab(93.0838% 4.35197 -9.88284);
-      --color-violet-300: lab(76.7419% 18.391 -37.0706);
-      --color-violet-900: lab(24.3783% 45.7525 -61.4902);
-      --color-fuchsia-100: lab(93.9419% 9.5765 -9.08735);
-      --color-fuchsia-300: lab(78.5378% 39.3533 -32.9615);
-      --color-fuchsia-900: lab(27.755% 48.6174 -34.3553);
       --color-rose-50: lab(96.2369% 4.94152 1.28012);
       --color-rose-100: lab(92.8221% 9.86832 2.60077);
       --color-rose-200: lab(86.806% 19.1909 4.07754);
@@ -823,8 +798,12 @@
     height: 100%;
   }
 
-  .max-h-\[90vh\] {
-    max-height: 90vh;
+  .max-h-\[90dvh\] {
+    max-height: 90dvh;
+  }
+
+  .max-h-\[calc\(100dvh-2rem\)\] {
+    max-height: calc(100dvh - 2rem);
   }
 
   .max-h-\[calc\(100dvh-4rem\)\] {
@@ -837,6 +816,10 @@
 
   .min-h-8 {
     min-height: calc(var(--spacing) * 8);
+  }
+
+  .min-h-11 {
+    min-height: calc(var(--spacing) * 11);
   }
 
   .min-h-24 {
@@ -1072,6 +1055,10 @@
     align-items: flex-start;
   }
 
+  .items-stretch {
+    align-items: stretch;
+  }
+
   .justify-around {
     justify-content: space-around;
   }
@@ -1156,12 +1143,6 @@
     --tw-space-y-reverse: 0;
     margin-block-start: calc(calc(var(--spacing) * 8) * var(--tw-space-y-reverse));
     margin-block-end: calc(calc(var(--spacing) * 8) * calc(1 - var(--tw-space-y-reverse)));
-  }
-
-  :where(.space-x-3 > :not(:last-child)) {
-    --tw-space-x-reverse: 0;
-    margin-inline-start: calc(calc(var(--spacing) * 3) * var(--tw-space-x-reverse));
-    margin-inline-end: calc(calc(var(--spacing) * 3) * calc(1 - var(--tw-space-x-reverse)));
   }
 
   :where(.divide-y > :not(:last-child)) {
@@ -1371,10 +1352,6 @@
     border-color: var(--color-emerald-300);
   }
 
-  .border-fuchsia-300 {
-    border-color: var(--color-fuchsia-300);
-  }
-
   .border-green-200 {
     border-color: var(--color-green-200);
   }
@@ -1389,10 +1366,6 @@
 
   .border-orange-200 {
     border-color: var(--color-orange-200);
-  }
-
-  .border-orange-300 {
-    border-color: var(--color-orange-300);
   }
 
   .border-red-200 {
@@ -1425,10 +1398,6 @@
 
   .border-rose-300 {
     border-color: var(--color-rose-300);
-  }
-
-  .border-sky-300 {
-    border-color: var(--color-sky-300);
   }
 
   .border-stone-100 {
@@ -1495,16 +1464,8 @@
     border-color: var(--color-stone-900);
   }
 
-  .border-teal-300 {
-    border-color: var(--color-teal-300);
-  }
-
   .border-transparent {
     border-color: #0000;
-  }
-
-  .border-violet-300 {
-    border-color: var(--color-violet-300);
   }
 
   .border-yellow-200 {
@@ -1687,10 +1648,6 @@
     background-color: var(--foreground);
   }
 
-  .bg-fuchsia-100 {
-    background-color: var(--color-fuchsia-100);
-  }
-
   .bg-gray-50 {
     background-color: var(--color-gray-50);
   }
@@ -1763,10 +1720,6 @@
     }
   }
 
-  .bg-rose-100 {
-    background-color: var(--color-rose-100);
-  }
-
   .bg-rose-200 {
     background-color: var(--color-rose-200);
   }
@@ -1777,10 +1730,6 @@
 
   .bg-rose-600 {
     background-color: var(--color-rose-600);
-  }
-
-  .bg-sky-100 {
-    background-color: var(--color-sky-100);
   }
 
   .bg-sky-600 {
@@ -1859,14 +1808,6 @@
     .bg-stone-900\/80 {
       background-color: color-mix(in oklab, var(--color-stone-900) 80%, transparent);
     }
-  }
-
-  .bg-teal-100 {
-    background-color: var(--color-teal-100);
-  }
-
-  .bg-violet-100 {
-    background-color: var(--color-violet-100);
   }
 
   .bg-white {
@@ -2324,10 +2265,6 @@
     color: var(--color-emerald-950);
   }
 
-  .text-fuchsia-900 {
-    color: var(--color-fuchsia-900);
-  }
-
   .text-gray-500 {
     color: var(--color-gray-500);
   }
@@ -2404,10 +2341,6 @@
     color: var(--color-sky-600);
   }
 
-  .text-sky-900 {
-    color: var(--color-sky-900);
-  }
-
   .text-stone-50 {
     color: var(--color-stone-50);
   }
@@ -2448,14 +2381,6 @@
     color: var(--color-stone-900);
   }
 
-  .text-teal-900 {
-    color: var(--color-teal-900);
-  }
-
-  .text-violet-900 {
-    color: var(--color-violet-900);
-  }
-
   .text-white {
     color: var(--color-white);
   }
@@ -2474,6 +2399,10 @@
 
   .text-zinc-950 {
     color: var(--color-zinc-950);
+  }
+
+  .lowercase {
+    text-transform: lowercase;
   }
 
   .normal-case {
@@ -2605,6 +2534,10 @@
   .select-none {
     -webkit-user-select: none;
     user-select: none;
+  }
+
+  .group-focus-within\:opacity-100:is(:where(.group):focus-within *) {
+    opacity: 1;
   }
 
   @media (hover: hover) {
@@ -2923,8 +2856,16 @@
   }
 
   @media (min-width: 40rem) {
+    .sm\:flex {
+      display: flex;
+    }
+
     .sm\:w-80 {
       width: calc(var(--spacing) * 80);
+    }
+
+    .sm\:w-auto {
+      width: auto;
     }
 
     .sm\:grid-cols-2 {
@@ -2939,12 +2880,20 @@
       grid-template-columns: repeat(4, minmax(0, 1fr));
     }
 
+    .sm\:grid-cols-\[1fr_1fr_auto\] {
+      grid-template-columns: 1fr 1fr auto;
+    }
+
     .sm\:grid-cols-\[10rem_1fr\] {
       grid-template-columns: 10rem 1fr;
     }
 
     .sm\:flex-row {
       flex-direction: row;
+    }
+
+    .sm\:flex-wrap {
+      flex-wrap: wrap;
     }
 
     .sm\:items-center {
@@ -2995,6 +2944,11 @@
       font-size: var(--text-3xl);
       line-height: var(--tw-leading, var(--text-3xl--line-height));
     }
+
+    .sm\:text-sm {
+      font-size: var(--text-sm);
+      line-height: var(--tw-leading, var(--text-sm--line-height));
+    }
   }
 
   @media (min-width: 48rem) {
@@ -3016,6 +2970,10 @@
 
     .md\:flex {
       display: flex;
+    }
+
+    .md\:grid {
+      display: grid;
     }
 
     .md\:hidden {
@@ -3040,6 +2998,10 @@
 
     .md\:grid-cols-2 {
       grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .md\:grid-cols-3 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
     .md\:flex-col {
@@ -3086,6 +3048,24 @@
 
     .md\:pt-6 {
       padding-top: calc(var(--spacing) * 6);
+    }
+  }
+
+  @media (min-width: 80rem) {
+    .xl\:flex {
+      display: flex;
+    }
+
+    .xl\:hidden {
+      display: none;
+    }
+
+    .xl\:flex-wrap {
+      flex-wrap: wrap;
+    }
+
+    .xl\:text-\[10px\] {
+      font-size: 10px;
     }
   }
 
@@ -3157,6 +3137,187 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+@media not (min-width: 80rem) {
+  .admin-calendar-scroll {
+    isolation: isolate;
+    max-width: 100%;
+    max-height: 70dvh;
+    overflow: auto;
+  }
+
+  .admin-calendar-table {
+    table-layout: fixed;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  .admin-payroll-calendar {
+    width: 1492px;
+    min-width: 1492px;
+  }
+
+  .admin-roster-calendar {
+    width: 1108px;
+    min-width: 1108px;
+  }
+
+  .admin-payroll-summary {
+    width: 660px;
+    min-width: 660px;
+  }
+
+  .admin-calendar-table > thead > tr > th {
+    z-index: 20;
+    background: var(--color-stone-50);
+    position: sticky;
+    top: 0;
+  }
+
+  .admin-calendar-table > :is(thead, tbody, tfoot) > tr > :first-child:not([colspan]) {
+    z-index: 10;
+    overflow-wrap: anywhere;
+    width: 100px;
+    min-width: 100px;
+    max-width: 100px;
+    box-shadow: 2px 0 0 var(--color-stone-200);
+    background: #fff;
+    position: sticky;
+    left: 0;
+  }
+
+  .admin-calendar-table > thead > tr > :first-child:not([colspan]) {
+    z-index: 30;
+    background: var(--color-stone-50);
+  }
+
+  .admin-calendar-table > :is(thead, tbody, tfoot) > tr > :is(th, td) {
+    padding: .5rem;
+  }
+
+  .admin-calendar-table > tbody > tr > :first-child p, .admin-calendar-table > tbody > tr > :first-child span {
+    font-size: .6875rem;
+    line-height: 1.4;
+  }
+
+  .admin-payroll-calendar > thead > tr > th:not(:first-child) {
+    width: 164px;
+    min-width: 164px;
+  }
+
+  .admin-payroll-calendar > thead > tr > th:nth-last-child(2) {
+    width: 100px;
+    min-width: 100px;
+  }
+
+  .admin-payroll-calendar > thead > tr > th:last-child {
+    width: 144px;
+    min-width: 144px;
+  }
+
+  .admin-calendar-table :is(input, select, textarea) {
+    min-width: 0;
+    max-width: 100%;
+    min-height: 2.75rem;
+    font-size: 1rem;
+  }
+
+  .admin-calendar-table button {
+    white-space: normal;
+    min-height: 2.75rem;
+  }
+
+  .admin-responsive-table, .admin-responsive-table > tbody, .admin-responsive-table > tfoot {
+    width: 100%;
+    min-width: 0;
+    display: block;
+  }
+
+  .admin-responsive-table > thead {
+    clip-path: inset(50%);
+    white-space: nowrap;
+    width: 1px;
+    height: 1px;
+    position: absolute;
+    overflow: hidden;
+  }
+
+  .admin-responsive-table > :is(tbody, tfoot) > tr {
+    border-bottom: 4px solid var(--color-stone-200);
+    min-width: 0;
+    display: block;
+  }
+
+  .admin-responsive-table > :is(tbody, tfoot) > tr:last-child {
+    border-bottom: 0;
+  }
+
+  .admin-responsive-table > :is(tbody, tfoot) > tr > :is(th, td) {
+    text-align: left;
+    overflow-wrap: anywhere;
+    border-left: 0;
+    border-right: 0;
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    padding: 1rem;
+    display: block;
+    position: static;
+  }
+
+  .admin-responsive-table [data-label]:before {
+    content: attr(data-label);
+    color: var(--color-stone-600);
+    margin-bottom: .5rem;
+    font-size: .75rem;
+    font-weight: 700;
+    display: block;
+  }
+
+  .admin-responsive-table .admin-empty-day {
+    display: none;
+  }
+
+  .admin-responsive-table :is(input, select, textarea) {
+    min-width: 0;
+    max-width: 100%;
+    font-size: 1rem;
+  }
+
+  .admin-responsive-table button {
+    white-space: normal;
+    min-height: 2.75rem;
+  }
+
+  :is(.admin-responsive-table, .admin-calendar-table) .admin-touch-actions {
+    opacity: 1;
+    background: none;
+    flex-wrap: wrap;
+    margin-top: .5rem;
+    position: static;
+  }
+
+  .admin-roster-calendar .admin-touch-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 0;
+    display: grid;
+  }
+
+  .admin-roster-calendar .admin-touch-actions button {
+    padding-inline: .25rem;
+    font-size: .6875rem;
+  }
+
+  .admin-responsive-form :is(label, fieldset, input, select, textarea) {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .admin-responsive-form :is(input, select, textarea) {
+    width: 100%;
+    font-size: 1rem;
+  }
+}
+
 @property --tw-translate-x {
   syntax: "*";
   inherits: false;
@@ -3194,12 +3355,6 @@ body {
 }
 
 @property --tw-space-y-reverse {
-  syntax: "*";
-  inherits: false;
-  initial-value: 0;
-}
-
-@property --tw-space-x-reverse {
   syntax: "*";
   inherits: false;
   initial-value: 0;

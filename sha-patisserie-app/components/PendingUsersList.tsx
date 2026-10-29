@@ -101,21 +101,21 @@ export default function PendingUsersList({ initialUsers, canAssignAdmin = false,
           className="flex flex-col gap-3 p-4 bg-white border border-stone-200/80 rounded-2xl shadow-sm sm:flex-row sm:items-center sm:justify-between"
         >
           <div className="min-w-0">
-            <p className="text-sm font-medium text-stone-800">{user.name || 'Unnamed user'}</p>
+            <p className="break-words text-sm font-medium text-stone-800">{user.name || 'Unnamed user'}</p>
             <p className="break-all text-xs text-stone-500">{user.email}</p>
             <p className={`mt-1 text-xs ${user.emailVerified ? 'text-emerald-700' : 'text-amber-700'}`}>
               {user.emailVerified ? 'Email verified' : requireEmailVerification ? 'Awaiting email verification' : 'Email verification temporarily disabled'}
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <label className="text-xs font-semibold text-stone-600">
+          <div className="grid min-w-0 grid-cols-2 items-center gap-3 sm:flex sm:flex-wrap">
+            <label className="col-span-2 flex min-w-0 flex-wrap items-center gap-2 text-xs font-semibold text-stone-600">
               Approve as
               <select
                 aria-label={`Role for ${user.name || user.email}`}
                 value={roles[user.id] ?? 'STAFF'}
                 disabled={loadingId !== null || (requireEmailVerification && !user.emailVerified)}
                 onChange={(event) => setRoles((current) => ({ ...current, [user.id]: event.target.value === 'ADMIN' ? 'ADMIN' : 'STAFF' }))}
-                className="ml-2 rounded-md border border-stone-300 bg-white px-2 py-1.5 text-sm"
+                className="min-h-11 min-w-0 max-w-full rounded-md border border-stone-300 bg-white px-2 py-1.5 text-base sm:text-sm"
               >
                 <option value="STAFF">Staff</option>
                 {canAssignAdmin && <option value="ADMIN">Admin</option>}

@@ -472,14 +472,14 @@ export default function ShiftRoster() {
           <p className="text-xs font-bold uppercase tracking-widest text-stone-500">Admin scheduling</p>
           <h1 className="mt-1 text-3xl font-serif text-stone-900">Upcoming roster</h1>
         </div>
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="text-sm font-semibold text-stone-700">
+        <div className="admin-responsive-form flex w-full min-w-0 flex-col items-stretch gap-3 sm:w-auto sm:flex-row sm:flex-wrap sm:items-end">
+          <label className="grid min-w-0 gap-1 text-sm font-semibold text-stone-700">
             Week starting Monday
             <input
               type="date"
               value={weekStart}
               onChange={(event) => setWeekStart(localDate(mondayOf(event.target.value)))}
-              className="ml-3 rounded-lg border border-stone-300 bg-white px-3 py-2 font-normal shadow-sm"
+              className="min-w-0 max-w-full rounded-lg border border-stone-300 bg-white px-3 py-2 font-normal shadow-sm"
             />
           </label>
           <button
@@ -553,8 +553,9 @@ export default function ShiftRoster() {
         </div>
       </div>
 
-      <section className="overflow-x-auto rounded-xl border border-stone-300 bg-white">
-        <table className="w-full min-w-[1100px] table-fixed border-collapse text-left">
+      <p className="text-xs text-stone-500 xl:hidden">Swipe dates sideways. Staff names stay fixed; scroll down for more staff.</p>
+      <section role="region" aria-label="Scrollable weekly staff roster" tabIndex={0} className="admin-calendar-scroll overflow-x-auto rounded-xl border border-stone-300 bg-white">
+        <table role="table" aria-label="Weekly staff roster" className="admin-calendar-table admin-roster-calendar w-full min-w-[1100px] table-fixed border-collapse text-left">
           <thead className="bg-stone-50">
             <tr>
               <th className="sticky left-0 z-20 w-48 border-b border-r border-stone-300 bg-stone-50 px-4 py-3 text-xs font-bold uppercase text-stone-500">Staff</th>
@@ -595,7 +596,7 @@ export default function ShiftRoster() {
                     ? null
                     : regularHoursFor(user.regularWorkingHours, WORKING_DAYS[(day.date.getDay() + 6) % 7]);
                   return (
-                    <td key={`${user.id}-${day.key}`} className="h-28 border-r border-stone-200 p-2 align-top last:border-r-0">
+                    <td key={`${user.id}-${day.key}`} data-label={`${day.name} ${formatDMY(day.date)}`} className="h-28 border-r border-stone-200 p-2 align-top last:border-r-0">
                       <div className="flex min-h-24 flex-col gap-2">
                         {userLeave.map((entry) => <RosterLeaveCard key={entry.id} leave={entry} />)}
                         {showShifts && userShifts.map((shift) => {
@@ -627,7 +628,7 @@ export default function ShiftRoster() {
                             </span>
 
                             {/* Hover Overlay with Action Button */}
-                            <div className="absolute inset-0 flex items-center justify-center gap-1 rounded-md bg-stone-900/80 p-1 opacity-0 transition-opacity group-hover:opacity-100">
+                            <div className="admin-touch-actions absolute inset-0 flex items-center justify-center gap-1 rounded-md bg-stone-900/80 p-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                               <button
                                 type="button"
                                 onClick={() => addSingleRegularShift(user.id, day.date)}
@@ -670,7 +671,7 @@ export default function ShiftRoster() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onMouseDown={(event) => {
           if (event.target === event.currentTarget) resetForm();
         }}>
-          <form onSubmit={handleSubmit} role="dialog" aria-modal="true" aria-labelledby="shift-form-title" className="w-full max-w-2xl space-y-5 rounded-xl bg-white p-6 shadow-xl">
+          <form onSubmit={handleSubmit} role="dialog" aria-modal="true" aria-labelledby="shift-form-title" className="admin-responsive-form max-h-[calc(100dvh-2rem)] w-full min-w-0 max-w-2xl space-y-5 overflow-y-auto rounded-xl bg-white p-4 sm:p-6 shadow-xl">
             <div className="flex items-center justify-between border-b border-stone-200 pb-3">
               <h2 id="shift-form-title" className="text-lg font-semibold text-stone-900">{editingId ? 'Edit shift' : 'Add shift'}</h2>
               <button type="button" onClick={resetForm} disabled={deleting} className="rounded-md px-3 py-1.5 text-sm font-semibold text-stone-600 hover:bg-stone-100 disabled:opacity-50">Close</button>
@@ -717,13 +718,13 @@ export default function ShiftRoster() {
               <p role="alert" className="text-sm text-rose-700">This staff member already has a shift on that day.</p>
             )}
             {formError && <p role="alert" className="text-sm text-rose-700">{formError}</p>}
-            <div className="flex items-center justify-between gap-3 border-t border-stone-200 pt-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-stone-200 pt-4">
               {editingId ? (
                 <button type="button" onClick={handleDeleteShift} disabled={deleting} className="rounded-lg border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50">
                   {deleting ? 'Deleting...' : 'Delete shift'}
                 </button>
               ) : <span />}
-              <div className="flex justify-end gap-2">
+              <div className="flex flex-wrap justify-end gap-2">
                 <button type="button" onClick={resetForm} disabled={deleting} className="rounded-lg border border-stone-300 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50 disabled:opacity-50">Cancel</button>
                 <button type="submit" disabled={deleting || loading || availableUsers.length === 0 || !availableUsers.some((user) => user.id === formData.userId)} className="rounded-lg bg-stone-900 px-5 py-2 text-sm font-semibold text-white hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-50">
                   {editingId ? 'Save changes' : 'Save as draft'}

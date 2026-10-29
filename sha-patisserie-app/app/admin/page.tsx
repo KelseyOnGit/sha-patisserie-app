@@ -90,7 +90,7 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* Top Stats Cards */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
+      <div data-testid="dashboard-summary" className="hidden gap-4 md:grid md:grid-cols-3">
         {stats.map((stat) => (
           <Link key={stat.label} href={stat.href} className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm hover:border-stone-400 sm:p-5">
             <p className="text-xs font-bold uppercase tracking-wide text-stone-500">{stat.label}</p>

@@ -75,7 +75,7 @@ function getWeekDays(weekStartStr: string): WeekDay[] {
   return days;
 }
 
-const inputClass = 'rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm disabled:bg-stone-100';
+const inputClass = 'min-w-0 max-w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-base sm:text-sm disabled:bg-stone-100';
 const buttonClass = 'rounded-lg border border-stone-300 px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50';
 const InactiveBadge = () => (
     <span className="ml-2 inline-block rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-600">Inactive</span>
@@ -392,7 +392,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
       </div>
 
       {/* Filter Toolbar */}
-      <div className="flex flex-wrap items-end gap-4 rounded-2xl border border-stone-200 bg-white p-4">
+      <div className="admin-responsive-form grid min-w-0 grid-cols-1 items-end gap-4 rounded-2xl border border-stone-200 bg-white p-4 sm:grid-cols-2 xl:flex xl:flex-wrap">
         <label className="grid gap-1 text-sm font-medium">
           Week starting Monday
           <input
@@ -494,8 +494,9 @@ export default function TimesheetReview({ userId }: { userId: string }) {
             <p className="font-mono text-stone-400">Times in Perth AWST (UTC+08)</p>
           </div>
 
-          <div className="overflow-x-auto rounded-2xl border border-stone-200 bg-white shadow-sm">
-            <table className="w-full text-left text-xs border-collapse">
+          <p className="text-xs text-stone-500 xl:hidden">Swipe dates sideways. Staff names stay fixed; scroll down for more staff.</p>
+          <div role="region" aria-label="Scrollable weekly worked hours" tabIndex={0} className="admin-calendar-scroll overflow-x-auto rounded-2xl border border-stone-200 bg-white shadow-sm">
+            <table role="table" aria-label="Weekly worked hours" className="admin-calendar-table admin-payroll-calendar w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-stone-50 border-b border-stone-200 text-stone-600 uppercase tracking-wider text-[11px]">
                   <th className="p-3 font-bold min-w-[140px]">Staff Member</th>
@@ -541,14 +542,14 @@ export default function TimesheetReview({ userId }: { userId: string }) {
                     return (
                       <tr key={staffItem.userId} className="border-b border-stone-200 hover:bg-stone-50/50">
                         {/* Staff Name & Site */}
-                        <td className="p-3.5 align-top">
+                        <th scope="row" className="p-3.5 align-top font-normal">
                           <p className="font-bold text-stone-900 text-sm">{staffItem.staffName}{inactiveIds.has(staffItem.userId) && <InactiveBadge />}</p>
                           <p className="mt-0.5 text-[11px] font-semibold text-stone-600">{employmentLabel(staffItem.employmentType)}</p>
                           <p className="text-stone-500 text-[11px] mt-0.5">{staffItem.site}</p>
                           {staffItem.rate !== null && (
                             <p className="text-stone-400 text-[10px] mt-0.5">${staffItem.rate.toFixed(2)} / hr</p>
                           )}
-                        </td>
+                        </th>
 
                         {/* Monday to Sunday Columns */}
                         {weekDays.map((d) => {
@@ -558,7 +559,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
                             return (
                               <td
                                 key={d.dateStr}
-                                className="p-3 text-center align-middle border-l border-stone-200/60 bg-stone-50/30 text-stone-300 select-none"
+                                className="admin-empty-day p-3 text-center align-middle border-l border-stone-200/60 bg-stone-50/30 text-stone-300 select-none"
                               >
                                 —
                               </td>
@@ -578,6 +579,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
                           return (
                             <td
                               key={d.dateStr}
+                              data-label={`${d.dayShort} ${d.displayDate}`}
                               className={`p-2.5 align-top border-l border-stone-200/60 ${
                                 row.status === 'APPROVED' ? 'bg-emerald-50/20' : 'bg-white'
                               }`}
@@ -619,7 +621,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
 
                                 {/* Yellow Adjustment Total Hour Input */}
                                 <div className="pt-1 border-t border-stone-100 flex items-center justify-between gap-1">
-                                  <span className="text-[10px] font-bold text-stone-600">Adj:</span>
+                                  <span className="text-[10px] font-bold text-stone-600">Adjusted hours:</span>
                                   <input
                                     type="number"
                                     step="0.1"
@@ -649,7 +651,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
                                   <button
                                     onClick={() => setSelected(row)}
                                     disabled={writesBlocked}
-                                    className="text-[10px] text-stone-400 hover:text-stone-700 underline"
+                                    className="text-sm xl:text-[10px] text-stone-500 hover:text-stone-700 underline"
                                   >
                                     Details
                                   </button>
@@ -668,7 +670,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
                         })}
 
                         {/* Final Weekly Total */}
-                        <td className="p-3 text-right align-middle border-l border-stone-200/60">
+                        <td data-label="Final total (hours)" className="p-3 text-right align-middle border-l border-stone-200/60">
                           <p className="text-base font-extrabold text-stone-900 font-mono">
                             {finalStaffTotal.toFixed(2)}
                           </p>
@@ -676,7 +678,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
                         </td>
 
                         {/* Single Save & Approved Action Button per Staff */}
-                        <td className="p-3 text-center align-middle border-l border-stone-200/60">
+                        <td data-label="Actions" className="p-3 text-center align-middle border-l border-stone-200/60">
                           {isAllApproved ? (
                             <div className="flex flex-col items-center gap-1.5">
                               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">
@@ -712,8 +714,9 @@ export default function TimesheetReview({ userId }: { userId: string }) {
       ) : report && (
         <div className="space-y-3">
 
-          <div className="overflow-x-auto rounded-xl border border-stone-200 bg-white shadow-sm">
-            <table className="w-full text-left text-sm">
+          <p className="text-xs text-stone-500 xl:hidden">Swipe to see payroll columns. Staff names stay fixed.</p>
+          <div role="region" aria-label="Scrollable approved payroll summary" tabIndex={0} className="admin-calendar-scroll overflow-x-auto rounded-xl border border-stone-200 bg-white shadow-sm">
+            <table role="table" aria-label="Approved payroll summary" className="admin-calendar-table admin-payroll-summary w-full text-left text-sm">
               <thead className="bg-stone-50 text-xs font-bold uppercase text-stone-500">
                 <tr>
                   {['Staff', 'Venue', 'Approved rate', 'Approved hours', 'Gross'].map((label) => (
@@ -733,11 +736,11 @@ export default function TimesheetReview({ userId }: { userId: string }) {
                 ) : (
                   payroll.map((row) => (
                     <tr key={row.key} className="border-t border-stone-100">
-                      <td className="p-4 font-semibold">{row.staffName}{inactiveIds.has(row.userId) && <InactiveBadge />}<span className="block text-xs font-normal text-stone-500">{employmentLabel(row.employmentType)}</span></td>
-                      <td className="p-4 text-stone-600">{row.site}</td>
-                      <td className="p-4 font-mono">${row.rate.toFixed(2)}</td>
-                      <td className="p-4 font-mono font-bold">{row.totalHours.toFixed(2)} h</td>
-                      <td className="p-4 font-mono font-bold text-emerald-800">${row.gross.toFixed(2)}</td>
+                      <td data-label="Staff" className="p-4 font-semibold">{row.staffName}{inactiveIds.has(row.userId) && <InactiveBadge />}<span className="block text-xs font-normal text-stone-500">{employmentLabel(row.employmentType)}</span></td>
+                      <td data-label="Venue" className="p-4 text-stone-600">{row.site}</td>
+                      <td data-label="Approved rate" className="p-4 font-mono">${row.rate.toFixed(2)}</td>
+                      <td data-label="Approved hours" className="p-4 font-mono font-bold">{row.totalHours.toFixed(2)} h</td>
+                      <td data-label="Gross" className="p-4 font-mono font-bold text-emerald-800">${row.gross.toFixed(2)}</td>
                     </tr>
                   ))
                 )}
@@ -745,8 +748,8 @@ export default function TimesheetReview({ userId }: { userId: string }) {
               <tfoot className="border-t bg-stone-50 font-semibold">
                 <tr>
                   <td colSpan={3} className="p-4">Total</td>
-                  <td className="p-4 font-mono font-extrabold">{totalHours.toFixed(2)} h</td>
-                  <td className="p-4 font-mono font-extrabold text-emerald-900">${totalGross.toFixed(2)}</td>
+                  <td data-label="Total approved hours" className="p-4 font-mono font-extrabold">{totalHours.toFixed(2)} h</td>
+                  <td data-label="Total gross" className="p-4 font-mono font-extrabold text-emerald-900">${totalGross.toFixed(2)}</td>
                 </tr>
               </tfoot>
             </table>
@@ -851,9 +854,9 @@ function ReviewEditor({ row, weekStart, onClose, onSaved }: {
   };
 
   return <dialog ref={dialog} aria-labelledby="review-title" onCancel={(event) => { event.preventDefault(); close(); }}
-      className="m-auto max-h-[90vh] w-[calc(100%_-_2rem)] max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 text-stone-900 shadow-xl backdrop:bg-black/40">
+      className="admin-responsive-form m-auto max-h-[90dvh] w-[calc(100%_-_2rem)] max-w-3xl overflow-y-auto rounded-2xl bg-white p-4 sm:p-6 text-stone-900 shadow-xl backdrop:bg-black/40">
       <div className="flex items-start justify-between gap-4">
-        <div><h2 id="review-title" className="text-xl font-semibold">{row.staffName}: {row.workDate}</h2>
+        <div className="min-w-0 break-words"><h2 id="review-title" className="text-xl font-semibold">{row.staffName}: {row.workDate}</h2>
           <p className="text-sm text-stone-500">{row.site} · {status(row)}{dirty ? ' · Unsaved changes' : ''}</p></div>
         <button autoFocus onClick={close} disabled={busy} className={buttonClass}>Close</button>
       </div>
@@ -892,7 +895,7 @@ function ReviewEditor({ row, weekStart, onClose, onSaved }: {
       )}
       <fieldset disabled={busy || locked} className="mt-5 space-y-3">
         <legend className="font-semibold">Payable hours</legend>
-        {periods.map((period, index) => <div key={index} className="flex flex-wrap items-end gap-3">
+        {periods.map((period, index) => <div key={index} className="grid min-w-0 items-end gap-3 sm:grid-cols-[1fr_1fr_auto]">
           <label className="grid gap-1 text-sm">Start{dayHint(period.start, row.workDate)}
             <input type="time" step="60" value={timeInput(period.start)}
               onChange={(e) => changePeriod(index, 'start', e.target.value)} className={inputClass} />

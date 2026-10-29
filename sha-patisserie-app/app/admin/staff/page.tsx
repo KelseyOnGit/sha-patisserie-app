@@ -112,7 +112,7 @@ export default function StaffListPage() {
         ) : filteredStaff.length === 0 ? (
           <p role="status" className="p-6 text-sm text-stone-500">No staff members match your search and status filter.</p>
         ) : (
-          <table className="w-full text-left text-sm text-stone-700">
+          <table role="table" aria-label="Staff profiles" className="admin-responsive-table w-full text-left text-sm text-stone-700">
             <thead className="border-b border-stone-200 bg-stone-50 text-xs font-bold uppercase tracking-wide text-stone-500">
               <tr>
                 <th className="px-6 py-3">Name</th>
@@ -130,11 +130,11 @@ export default function StaffListPage() {
                   <tr><td colSpan={5} className="bg-rose-50 px-6 py-2 text-xs font-bold uppercase tracking-wide text-rose-700">Inactive staff</td></tr>
                 )}
                 <tr className={staff.status === 'INACTIVE' ? 'bg-rose-50 hover:bg-rose-100 transition' : 'hover:bg-stone-50/80 transition'}>
-                  <td className="px-6 py-4 font-semibold text-stone-900">
+                  <td data-label="Name" className="px-6 py-4 font-semibold text-stone-900">
                     {staff.name || 'Unnamed Staff'}
                   </td>
-                  <td className="px-6 py-4 text-stone-600">{staff.email || '-'}</td>
-                  <td className="px-6 py-4">
+                  <td data-label="Email" className="px-6 py-4 text-stone-600">{staff.email || '-'}</td>
+                  <td data-label="Location" className="px-6 py-4">
                     <select
                       aria-label={`Venue for ${staff.name || 'unnamed staff'}`}
                       value={staff.location?.code || ''}
@@ -147,12 +147,12 @@ export default function StaffListPage() {
                       <option value="ZB">Zushi Bento</option>
                     </select>
                   </td>
-                  <td className="px-6 py-4">
+                  <td data-label="Status" className="px-6 py-4">
                     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold border ${staff.status === 'INACTIVE' ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
                       {staff.status}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-right">
+                  <td data-label="Actions" className="px-6 py-4 text-right">
                     <Link
                       href={`/admin/staff/${staff.id}`}
                       className="shrink-0 overflow-x-auto rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 shadow-xs hover:bg-stone-100 transition"

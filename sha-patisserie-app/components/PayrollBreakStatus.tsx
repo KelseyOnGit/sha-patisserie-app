@@ -23,6 +23,6 @@ export default function PayrollBreakStatus({ row }: { row: Pick<ReviewRow, 'reco
   }
   if (open.length) return <span className="font-semibold text-amber-800">Unfinished break</span>;
   return row.actualBreakMinutes !== null
-    ? <span className="font-semibold text-emerald-700">Break taken · {row.actualBreakMinutes}m</span>
+    ? <span className="font-semibold text-emerald-700">{row.actualBreakMinutes}m</span>
     : <span className="text-stone-500">Not recorded</span>;
 }

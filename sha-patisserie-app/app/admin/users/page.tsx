@@ -30,7 +30,7 @@ export default async function AdminUserPage() {
 
     // Pass the formatted plain objets into your Client Component
     return (
-        <main className="max-w-4xl mx-auto p-6">
+        <div className="min-w-0 max-w-4xl mx-auto">
             <h1 className="text-xl front-medium mb-4">Pending Approvals</h1>
             <p className="mb-4 text-sm text-stone-600">{emailVerificationRequired()
                 ? 'Staff must verify their email before approval. Unverified sign-ups can still be removed.'
@@ -38,7 +38,7 @@ export default async function AdminUserPage() {
             <PendingUsersList initialUsers={formattedUsers} canAssignAdmin={session.role === 'ADMIN'} requireEmailVerification={emailVerificationRequired()} />
 
         
-        </main>
+        </div>
 
 
     )

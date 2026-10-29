@@ -142,6 +142,29 @@ Checks: `node --test tests/email-verification.test.cjs tests/auth-security.test.
 
 ## Worked-hours review and payroll
 
+### Mobile admin layouts
+
+Below 1280 px, payroll and roster keep a compact grid with staff names pinned on
+the left and column headers pinned at the top. Swipe dates/payroll columns
+sideways and scroll staff vertically inside the grid (up to 70% of the viewport
+height). All seven days, staff totals and approval actions remain available.
+Desktop table layouts remain unchanged at 1280 px and wider.
+
+Admin Users and Staff Profiles still stack rows vertically to fit narrow screens.
+The dashboard's Active staff, Pending users and Upcoming shifts summary cards are
+hidden below 768 px; quick links and live attendance remain available.
+
+Filters and approval controls wrap to the available width. Regular-hours
+Add/Edit buttons stay visible on touch layouts rather than requiring hover.
+Roster and timesheet dialogs scroll vertically within the viewport, with
+full-width mobile inputs. These are presentation changes only: approval,
+permissions, payroll calculations, roster publishing and save handlers are unchanged.
+
+Checks: `node --test tests/mobile-admin.test.cjs tests/account-management.test.cjs`.
+The mobile fixture tests use synthetic staff data. Set `MOBILE_FIXTURE_DIR` to
+an external scratch folder to render the actual components for browser checks
+with the application stylesheet; no real accounts or database writes are needed.
+
 ### Attendance-session breaks
 
 Clocked-in staff can record one break per active clock-in session, including
