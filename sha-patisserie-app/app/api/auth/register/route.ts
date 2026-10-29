@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { hashPin } from '@/lib/pins';
 import { verificationConfig, verificationToken, sendVerificationEmail } from '@/lib/email-verification';
 import { Prisma } from '@prisma/client';
+import { emailVerificationRequired } from '@/lib/auth-config';
 
 export async function POST(request: Request) {
   try {
@@ -65,13 +66,16 @@ export async function POST(request: Request) {
 
     if (existingUser) {
       return NextResponse.json(
-        { error: 'An account with this email already exists. Sign in, or use Resend verification email with your existing PIN.' },
+        { error: emailVerificationRequired()
+          ? 'An account with this email already exists. Sign in, or use Resend verification email with your existing PIN.'
+          : 'An account with this email already exists. Sign in once your admin approves your account.' },
         { status: 400 }
       );
     }
 
-    const origin = verificationConfig();
-    const token = verificationToken();
+    const requiresVerification = emailVerificationRequired();
+    const origin = requiresVerification ? verificationConfig() : null;
+    const token = requiresVerification ? verificationToken() : { verificationToken: null, tokenExpires: null };
 
     // 4. Create new staff account with Verification Tokens & Admin Approval Flag
     const user = await prisma.user.create({
@@ -81,12 +85,13 @@ export async function POST(request: Request) {
         contactNumber: contactNumber?.trim() || null,
         pinCode: await hashPin(pinCode),
         isApproved: false,       // Requires admin approval before access is granted
-        emailVerified: false,    // Requires email verification first
+        emailVerified: false,
         ...token,
       },
     });
 
-    if (!await sendVerificationEmail(normalizedEmail, token.verificationToken, origin)) {
+    if (origin && token.verificationToken &&
+        !await sendVerificationEmail(normalizedEmail, token.verificationToken, origin)) {
       return NextResponse.json(
         { error: 'Your account was saved, but the verification email could not be sent. Use Resend verification email with your email and PIN after one minute.' },
         { status: 502 }
@@ -95,7 +100,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json(
       {
-        message: 'Registration successful! Please check your email inbox to verify your address.',
+        message: requiresVerification
+          ? 'Registration successful! Please check your email inbox to verify your address.'
+          : 'Registration successful! Your account is awaiting admin approval. Contact your manager before signing in.',
         user: { id: user.id, email: user.email }
       },
       { status: 201 }

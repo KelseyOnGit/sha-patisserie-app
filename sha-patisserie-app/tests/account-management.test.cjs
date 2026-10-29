@@ -97,7 +97,10 @@ test('Managers may approve Staff but never assign, approve or remove Admin roles
   assert.deepEqual(state.writes, [{ role: 'STAFF', isApproved: true, status: 'ACTIVE' }]);
 });
 
-test('approval rejects unverified and non-pending accounts without writes', async () => {
+test('approval rejects unverified and non-pending accounts without writes', async (t) => {
+  const previous = process.env.NEXT_PUBLIC_EMAIL_VERIFICATION_ENABLED;
+  process.env.NEXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'true';
+  t.after(() => previous === undefined ? delete process.env.NEXT_PUBLIC_EMAIL_VERIFICATION_ENABLED : process.env.NEXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = previous);
   const { api, state } = fixture();
   state.target.emailVerified = false;
   assert.equal((await api.PATCH(body({ userId: 'target', role: 'STAFF' }))).status, 409);
@@ -171,10 +174,14 @@ test('alternate staff-creation endpoint cannot bypass Admin-only assignments', a
 
 test('existing cookies use current database roles and disabled accounts lose access', async (t) => {
   const previous = process.env.JWT_SECRET;
+  const previousVerification = process.env.NEXT_PUBLIC_EMAIL_VERIFICATION_ENABLED;
+  process.env.NEXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'true';
   process.env.JWT_SECRET = 'unit-test-secret-not-for-production';
   t.after(() => {
     if (previous === undefined) delete process.env.JWT_SECRET;
     else process.env.JWT_SECRET = previous;
+    if (previousVerification === undefined) delete process.env.NEXT_PUBLIC_EMAIL_VERIFICATION_ENABLED;
+    else process.env.NEXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = previousVerification;
   });
   const user = { id: 'user', email: 'test@example.invalid', role: 'STAFF', isApproved: true, status: 'ACTIVE', emailVerified: true };
   let failDatabase = false;
@@ -192,6 +199,9 @@ test('existing cookies use current database roles and disabled accounts lose acc
   assert.equal((await session.getSession()).role, 'ADMIN');
   user.emailVerified = false;
   assert.equal(await session.getSession(), null);
+  process.env.NEXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'false';
+  assert.equal((await session.getSession()).role, 'ADMIN');
+  process.env.NEXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'true';
   user.emailVerified = true;
   user.status = 'INACTIVE';
   assert.equal(await session.getSession(), null);

@@ -37,7 +37,11 @@ function fixture() {
   const db = {
     leaveRequest: { findMany: async () => [] },
     location: { findMany: async () => [location] },
-    shift: { findMany: async () => shifts },
+    shift: { findMany: async ({ where }) => shifts.filter((shift) =>
+      where.OR ? where.OR.some((condition) =>
+        (condition.publishedAt && shift.publishedAt) ||
+        (condition.startBreak && shift.startBreak) ||
+        (condition.endBreak && shift.endBreak)) : Boolean(shift.publishedAt)) },
     timeLog: {
       findMany: async () => logs,
       updateMany: async ({ where, data }) => {
@@ -126,11 +130,113 @@ function fixture() {
     },
     removeRoster() { shifts = []; },
     setRosterPreset(minutes) { shifts = shifts.map((shift) => ({ ...shift, breakMinutes: minutes })); },
+    setRosterDraft() { shifts = shifts.map((shift) => ({ ...shift, publishedAt: null })); },
+    setLegacyBreak(startBreak, endBreak) { shifts = shifts.map((shift) => ({ ...shift, startBreak, endBreak })); },
+    moveAttendance() { logs = logs.map((log) => ({ ...log, locationId: 'zb', location: { name: 'Zushi Bento' } })); },
     changeRate() { user.hourlyPayRate = null; },
     endEmployment() { user.status = 'INACTIVE'; },
   };
 }
 
+test('recorded breaks on unpublished roster shifts remain visible and linked to attendance but cannot be approved', async () => {
+  const f = fixture();
+  f.removeOverlap();
+  f.setRosterDraft();
+  f.setRosterPreset(30);
+  f.setLegacyBreak(new Date('2020-10-05T03:00:00Z'), new Date('2020-10-05T03:21:00Z'));
+  const report = await f.load();
+  assert.equal(report.shifts.length, 1);
+  const row = report.shifts[0];
+  assert.equal(row.actual.length, 1);
+  assert.equal(row.actualBreakMinutes, 21);
+  assert.equal(row.breakMinutes, 21);
+  assert.equal(row.recordedBreaks.length, 1);
+  assert.ok(row.exceptions.includes('Roster shift unpublished'));
+  assert.match(row.approvalBlockedReason, /Publish the roster/);
+  assert.equal((await f.send(f.payload(row, { reason: 'Reviewed recorded break.' }))).status, 400);
+  assert.equal(f.audits.length, 0);
+  assert.deepEqual(report.rows, []);
+});
+
+test('unfinished legacy breaks on drafts stay visible and ordinary draft rosters stay excluded', async () => {
+  const f = fixture();
+  f.removeOverlap();
+  f.setRosterDraft();
+  let report = await f.load();
+  assert.equal(report.shifts.length, 1);
+  assert.equal(report.shifts[0].sourceKey, 'log:log');
+  f.setLegacyBreak(new Date('2020-10-05T03:00:00Z'), null);
+  report = await f.load();
+  assert.equal(report.shifts[0].sourceKey, 'shift:a');
+  assert.equal(report.shifts[0].actualBreakMinutes, null);
+  assert.equal(report.shifts[0].inProgress, true);
+  assert.equal(report.shifts[0].recordedBreaks.length, 1);
+});
+
+test('legacy draft breaks combine with attendance across venues without hiding roster overlaps', async () => {
+  const f = fixture();
+  f.setRosterDraft();
+  f.setLegacyBreak(new Date('2020-10-05T03:00:00Z'), new Date('2020-10-05T03:30:00Z'));
+  let report = await f.load();
+  const attendance = report.shifts.find((row) => row.actual.length);
+  assert.equal(attendance.sourceKey, 'log:log');
+  assert.equal(attendance.ambiguous, true);
+  f.removeOverlap();
+  f.moveAttendance();
+  report = await f.load();
+  assert.equal(report.shifts.length, 1);
+  assert.equal(report.shifts[0].sourceKey, 'shift:a');
+  assert.equal(report.shifts[0].actual.length, 1);
+  assert.equal(report.shifts[0].actualBreakMinutes, 30);
+  assert.equal(report.shifts[0].recordedBreaks.length, 1);
+  assert.equal(report.shifts[0].site, 'Sha Patisserie');
+  assert.equal(f.logs[0].locationId, 'zb');
+  assert.match(report.shifts[0].approvalBlockedReason, /Publish the roster/);
+});
+
+for (const legacy of [false, true]) {
+  test(`different-venue ${legacy ? 'legacy' : 'session'} break stays on one roster row, deducts once and invalidates stale approval`, async () => {
+    const f = fixture();
+    f.removeOverlap();
+    f.moveAttendance();
+    f.setRosterPreset(30);
+    const setBreak = legacy ? f.setLegacyBreak : f.setSessionBreak;
+    setBreak(new Date('2020-10-05T03:00:00Z'), new Date('2020-10-05T03:27:00Z'));
+    let report = await f.load();
+    assert.equal(report.shifts.length, 1);
+    let row = report.shifts[0];
+    assert.equal(row.sourceKey, 'shift:a');
+    assert.equal(row.actual.length, 1);
+    assert.equal(row.actualBreakMinutes, 27);
+    assert.equal(row.breakMinutes, 27);
+    assert.equal(row.recordedBreaks.length, 1);
+    assert.equal(row.site, 'Sha Patisserie');
+    assert.equal((await f.send(f.payload(row))).status, 200);
+    report = await f.load();
+    assert.equal(report.rows.length, 1);
+    assert.equal(report.rows[0].site, 'Sha Patisserie');
+    assert.equal(report.rows[0].totalHours, 3.55);
+    assert.equal(f.logs[0].locationId, 'zb');
+    assert.equal(f.logs[0].timesheetId, 'sheet-1');
+    setBreak(new Date('2020-10-05T03:00:00Z'), new Date('2020-10-05T03:35:00Z'));
+    report = await f.load();
+    row = report.shifts[0];
+    assert.equal(row.actualBreakMinutes, 35);
+    assert.equal(row.sourceChanged, true);
+    assert.equal(report.rows.length, 0);
+  });
+}
+
+test('overlapping rosters across venues are flagged rather than preferring the clock-in venue', async () => {
+  const f = fixture();
+  f.moveAttendance();
+  const report = await f.load();
+  const attendance = report.shifts.find((row) => row.actual.length);
+  assert.equal(attendance.sourceKey, 'log:log');
+  assert.equal(attendance.ambiguous, true);
+  assert.equal(report.shifts.reduce((count, row) => count + row.actual.length, 0), 1);
+  assert.equal((await f.send(f.payload(attendance))).status, 400);
+});
 test('ending employment retains approved historical hours, rate, source and payroll total', async () => {
   const f = fixture();
   f.removeOverlap();

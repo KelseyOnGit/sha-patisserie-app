@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { getSession, isPrivilegedRole } from '@/lib/session';
 import { staffListSelect } from '@/lib/user-select';
+import { emailVerificationRequired } from '@/lib/auth-config';
 
 class AccountError extends Error {
   constructor(message: string, public status: number) { super(message); }
@@ -43,7 +44,9 @@ async function updateAccount(request: Request, approve: boolean) {
       });
       if (!target) throw new AccountError('User not found.', 404);
       if (approve && target.isApproved) throw new AccountError('This account is already approved. Refresh the list.', 409);
-      if (approve && !target.emailVerified) throw new AccountError('This person must verify their email before approval.', 409);
+      if (approve && emailVerificationRequired() && !target.emailVerified) {
+        throw new AccountError('This person must verify their email before approval.', 409);
+      }
       if (approve && target.status !== 'PENDING') throw new AccountError('Only pending sign-ups can be approved.', 409);
       if (!approve && !target.isApproved) throw new AccountError('Approve this account through Pending Users first.', 409);
       if (target.role === 'ADMIN' && actor.role !== 'ADMIN') {

@@ -59,7 +59,9 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
   const latest = logs.reduce((date, log) => (log.clockOut ?? now) > date ? (log.clockOut ?? now) : date, end);
   const fetchedShifts = await db.shift.findMany({
     where: {
-      publishedAt: { not: null },
+      // Draft roster entries may contain real breaks recorded by older clients.
+      // Keep that evidence visible; approval still requires a published roster.
+      OR: [{ publishedAt: { not: null } }, { startBreak: { not: null } }, { endBreak: { not: null } }],
       startTime: { lt: latest },
       endTime: { gt: earliest },
     },
@@ -82,7 +84,7 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
   const ambiguousShifts = new Set<string>();
   const shiftsByUser = new Map<string, typeof shifts>();
   for (const shift of shifts) {
-    if (!shift.publishedAt) continue;
+    if (!shift.publishedAt && !shift.startBreak && !shift.endBreak) continue;
     const userShifts = shiftsByUser.get(shift.userId) ?? [];
     userShifts.push(shift);
     shiftsByUser.set(shift.userId, userShifts);

@@ -42,8 +42,9 @@ confirm tenancy numbering separately if using `CC108` in business records.
 Source: [Zushibento business pin](https://www.google.com/maps/place/Zushibento/data=!4m6!3m5!1s0x2a32bad50922d4f1:0x29c445be1d731d01!8m2!3d-31.9544448!4d115.8548311!16s%2Fg%2F11xxgqdyx).
 The coordinates live in `lib/geo.ts`; deploy the updated server for them to take
 effect. Do not select Sha Patisserie to work around a Zushi Bento location error:
-clock-ins are recorded against the venue selected, which affects attendance
-and payroll matching. Ask an admin to review any entries recorded at the wrong venue.
+clock-ins are recorded against the venue selected. Attendance now matches the
+staff member's overlapping roster regardless of venue; payroll uses the roster
+venue for matched records. Ask an admin to review entries recorded at the wrong venue.
 
 Check: `node --test tests/geo.test.cjs`.
 
@@ -79,13 +80,28 @@ Focused checks: `node --test tests/auth-security.test.cjs`.
 
 ### Email verification and approval
 
-New staff follow **Register -> verify email -> admin approval -> sign in**.
+**Temporarily disabled while Resend setup is pending:** email verification is
+opt-in via `NEXT_PUBLIC_EMAIL_VERIFICATION_ENABLED=true`. With the flag unset or
+`false`, staff follow **Register -> admin approval -> sign in**, with no Resend
+call or email configuration required. Existing unverified pending sign-ups can
+also be approved; they do not need to register again. Approval, ACTIVE status,
+PIN checks and role restrictions remain mandatory. The bypass does not mark
+addresses as verified or change existing database records.
+
+To re-enable verification, finish the configuration below, set the flag to
+`true` **before building**, then rebuild and deploy the server and UI together.
+This public, non-secret flag is inlined into the client build; keep the same
+value in build and runtime environments. Re-enabling also requires previously
+bypassed accounts to verify before their next login/session check; arrange
+verification using the resend form and their existing PINs.
+
+When enabled, new staff follow **Register -> verify email -> admin approval -> sign in**.
 Verification links expire after 24 hours and are consumed atomically once.
 Unverified registrations remain visible in Pending Approvals with an
 **Awaiting email verification** label; approval is disabled and the API also
 rejects approval until verified. Remove remains available. Login and existing
 session validation both require verification, approval and ACTIVE status.
-Use **Refresh verification status** to pick up emails verified while the list
+Use **Refresh verification status** (or **Refresh pending users** while disabled) to pick up emails verified while the list
 was open, without losing the page.
 
 Before deploying, back up and confirm the database, inspect pending migrations,
@@ -152,6 +168,23 @@ completed recorded breaks instead of adding them to a roster preset; unscheduled
 hours still require manager review and an explanation before approval. Changes to
 recorded session breaks invalidate affected approval snapshots, while historical
 approvals with no new session breaks retain their original snapshot format.
+
+Historical roster-based breaks remain visible even if their roster shift is
+unpublished. Attendance and breaks match the same employee's overlapping roster
+by time, regardless of the Sha/Zushi venue selected at clock-in. A unique match
+combines attendance and recorded breaks on one roster row rather than creating
+an additional attendance entry solely for a venue mismatch. Payroll uses the
+roster venue; raw clock-in venue, GPS and timestamps are not rewritten.
+Overlapping roster matches remain separate and flagged for manager review:
+the clock-in venue is not used to guess between them. Saved reviews retain
+their existing attendance allocation; changed source snapshots require review.
+Unpublished roster shifts still show **Roster shift unpublished** and cannot
+be approved until published.
+Ordinary drafts without recorded breaks remain excluded. No timestamps are
+copied or backfilled, and the change does not invent missing break durations.
+Active legacy break lookup also ignores venue, so those breaks remain finishable
+and cannot be recorded twice by changing venue. GPS checks still apply to the
+selected venue when clocking in or out.
 
 Before deploying this code, back up and confirm the target database, then apply
 the additive `20261028000000_attendance_session_breaks` migration using the normal
@@ -293,8 +326,10 @@ Monday, then filter by venue, staff or review status. All dates/times use Perth
   labels an absent clock-out as **Missing clock-out**, and requires a review
   reason before approving those hours. Today/future unfinished attendance stays
   locked. Approved entries must be reopened before editing.
-- Attendance is matched only when the staff member and venue agree and the log
-  overlaps one published roster shift. Attendance overlapping several shifts stays
+- Attendance is matched when the staff member agrees and the log overlaps one
+  published roster shift (or an unpublished shift with recorded break evidence),
+  regardless of the clock-in venue. Payroll uses the matched roster venue.
+  Attendance overlapping several shifts stays
   in a separate row unless already allocated to a saved review. Open **Details**,
   verify the payable periods and enter a reason explaining the allocation; bulk
   approval will not automatically approve these rows. Approved overrides appear

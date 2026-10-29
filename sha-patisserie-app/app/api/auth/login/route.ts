@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma'; // Your shared Prisma client
 import { createSession } from '@/lib/session';
 import { verifyPin } from '@/lib/pins';
+import { emailVerificationRequired } from '@/lib/auth-config';
 
 export async function POST(request: Request) {
   try {
@@ -35,7 +36,7 @@ export async function POST(request: Request) {
     if (user.status === 'INACTIVE') {
       return NextResponse.json({ error: 'This account is inactive. Contact your manager.' }, { status: 403 });
     }
-    if (!user.emailVerified) {
+    if (emailVerificationRequired() && !user.emailVerified) {
       return NextResponse.json(
         { error: 'Verify your email before signing in. Check your inbox or use Resend verification email.' },
         { status: 403 }

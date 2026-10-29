@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
+import { emailVerificationRequired } from '@/lib/auth-config';
 
 export default function RegisterPage() {
   const [name, setName] = useState('');
@@ -34,7 +35,7 @@ export default function RegisterPage() {
         return;
       }
 
-      setSuccessMessage(data.message || 'Check your email to verify your address. Admin approval follows verification.');
+      setSuccessMessage(data.message || 'Registration successful. Contact your manager for admin approval.');
     } catch {
       setErrorMessage('Something went wrong. Please try again.');
     } finally {
@@ -55,7 +56,9 @@ export default function RegisterPage() {
             Create Staff Account
           </h1>
           <p className="text-xs text-stone-500 mt-1">
-            Register, verify your email, then wait for admin approval
+            {emailVerificationRequired()
+              ? 'Register, verify your email, then wait for admin approval'
+              : 'Register, then wait for admin approval'}
           </p>
         </div>
 
@@ -160,9 +163,9 @@ export default function RegisterPage() {
         </form>}
 
         <div className="mt-8 pt-6 border-t border-stone-100 text-center">
-          <Link href="/verify-email" className="mb-4 block text-xs font-semibold text-stone-800 hover:underline">
+          {emailVerificationRequired() && <Link href="/verify-email" className="mb-4 block text-xs font-semibold text-stone-800 hover:underline">
             Resend verification email
-          </Link>
+          </Link>}
           <p className="text-xs text-stone-500">
             Already have an account?{' '}
             <Link href="/login" className="font-semibold text-stone-800 hover:underline">

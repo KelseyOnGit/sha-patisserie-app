@@ -1,7 +1,5 @@
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
 interface ShiftItem {
   startTime: Date | string;
   endTime: Date | string;
@@ -84,7 +82,11 @@ export async function sendEmail(
   subject: string,
   htmlMessage: string
 ): Promise<{ sent: boolean; reason?: string }> {
+  if (!process.env.RESEND_API_KEY?.trim()) {
+    return { sent: false, reason: 'RESEND_API_KEY is not configured.' };
+  }
   try {
+    const resend = new Resend(process.env.RESEND_API_KEY);
     const { error } = await resend.emails.send({
       from: process.env.FROM_EMAIL?.trim() || process.env.EMAIL_FROM?.trim() || 'onboarding@resend.dev',
       to,

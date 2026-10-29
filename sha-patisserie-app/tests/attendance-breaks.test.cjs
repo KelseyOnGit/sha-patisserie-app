@@ -51,7 +51,8 @@ function fixture() {
     },
     shift: {
       findMany: async ({ where }) => state.shifts.filter((s) => s.userId === where.userId &&
-        s.locationId === where.locationId && s.startTime < where.startTime.lt && s.endTime > where.endTime.gt),
+        (where.locationId === undefined || s.locationId === where.locationId) &&
+        s.startTime < where.startTime.lt && s.endTime > where.endTime.gt),
       updateMany: async ({ where, data }) => {
         const shift = state.shifts.find((s) => s.id === where.id && s.startBreak === where.startBreak && !s.endBreak);
         if (!shift) return { count: 0 };
@@ -160,6 +161,49 @@ test('a prior session break does not consume a new attendance break', async (t) 
   f.state.shifts = [shift({ startBreak: new Date('2026-10-28T02:00:00Z'),
     endBreak: new Date('2026-10-28T02:30:00Z'), endTime: new Date('2026-10-28T05:00:00Z') })];
   assert.equal((await f.send('START')).status, 200);
+});
+
+test('legacy break at a different venue is shown, finishable and prevents duplicate breaks and premature clock-out', async (t) => {
+  freeze(t);
+  const f = fixture();
+  f.state.shifts = [shift({ locationId: 'zb', startBreak: new Date('2026-10-28T03:45:00Z') })];
+  const current = await (await f.breaks.GET()).json();
+  assert.equal(current.session.startBreak, '2026-10-28T03:45:00.000Z');
+  const clock = await (await f.clock.GET()).json();
+  assert.equal(clock.activeLog.startBreak, current.session.startBreak);
+  assert.equal((await f.send('START')).status, 409);
+  assert.equal((await f.clockOut()).status, 409);
+  assert.equal((await f.send('FINISH')).status, 200);
+  assert.equal(f.state.shifts[0].endBreak.toISOString(), '2026-10-28T04:00:00.000Z');
+  assert.equal(f.state.log.startBreak, null);
+  assert.equal(f.state.log.locationId, 'sha');
+  assert.equal((await f.send('START')).status, 409);
+  assert.equal((await f.clockOut()).status, 200);
+});
+
+test('session breaks work with a different roster venue and preserve the original attendance venue', async (t) => {
+  freeze(t);
+  const f = fixture();
+  f.state.shifts = [shift({ locationId: 'zb', presetBreakMinutes: 45 })];
+  assert.equal((await (await f.breaks.GET()).json()).session.presetBreakMinutes, 45);
+  assert.equal((await f.send('START')).status, 200);
+  t.mock.timers.tick(30 * 60000);
+  assert.equal((await f.send('FINISH')).status, 200);
+  assert.equal(f.state.log.locationId, 'sha');
+  assert.equal(f.state.shifts[0].startBreak, null);
+});
+
+test('conflicting legacy breaks across venues fail explicitly instead of choosing one', async (t) => {
+  freeze(t);
+  t.mock.method(console, 'error', () => {});
+  const f = fixture();
+  f.state.shifts = [
+    shift({ startBreak: new Date('2026-10-28T03:30:00Z') }),
+    shift({ id: 'other', locationId: 'zb', startBreak: new Date('2026-10-28T03:45:00Z') }),
+  ];
+  assert.equal((await f.breaks.GET()).status, 500);
+  assert.equal((await f.send('FINISH')).status, 500);
+  assert.equal(f.state.writes, 0);
 });
 
 test('duplicate concurrent break submissions cannot record the same start twice', async (t) => {

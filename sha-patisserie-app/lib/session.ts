@@ -1,6 +1,7 @@
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/prisma';
+import { emailVerificationRequired } from '@/lib/auth-config';
 
 const secret = process.env.JWT_SECRET;
 if (!secret?.trim()) throw new Error('JWT_SECRET must be configured before starting the app.');
@@ -53,7 +54,8 @@ export async function getSession(): Promise<SessionPayload | null> {
     where: { id: userId },
     select: { id: true, email: true, role: true, isApproved: true, status: true, emailVerified: true },
   });
-  if (!user?.isApproved || user.status !== 'ACTIVE' || !user.emailVerified) return null;
+  if (!user?.isApproved || user.status !== 'ACTIVE' ||
+      (emailVerificationRequired() && !user.emailVerified)) return null;
   return { userId: user.id, email: user.email, role: user.role };
 }
 

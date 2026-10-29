@@ -208,15 +208,17 @@ test('payable validation rejects overlap, reversed periods, bad breaks and remot
   ]) assert.throws(() => rules.validatePayable(periods, deduction, '2026-10-05'));
 });
 
-test('matching requires staff, venue and overlap; ambiguous matches are not guessed', () => {
+test('matching requires staff and overlap regardless of venue; ambiguous matches are not guessed', () => {
   const shift = { id: 'a', userId: 'u', locationId: 'sha', startTime: new Date('2026-10-05T01:00Z'), endTime: new Date('2026-10-05T09:00Z') };
   const log = { userId: 'u', locationId: 'sha', clockIn: new Date('2026-10-05T01:12Z'), clockOut: new Date('2026-10-05T09:08Z') };
   const now = new Date('2026-10-12');
   assert.equal(candidateShifts(log, [shift], now).length, 1);
-  assert.equal(candidateShifts({ ...log, locationId: 'zb' }, [shift], now).length, 0);
+  assert.equal(candidateShifts({ ...log, locationId: 'zb' }, [shift], now).length, 1);
+  assert.equal(candidateShifts({ ...log, locationId: null }, [shift], now).length, 1);
   assert.equal(candidateShifts({ ...log, userId: 'other' }, [shift], now).length, 0);
   assert.equal(candidateShifts({ ...log, clockIn: shift.endTime }, [shift], now).length, 0);
   assert.equal(candidateShifts(log, [shift, { ...shift, id: 'b' }], now).length, 2);
+  assert.equal(candidateShifts(log, [shift, { ...shift, id: 'b', locationId: 'zb' }], now).length, 2);
 });
 
 test('live attendance uses the Perth work date, not just a missing clock-out', () => {

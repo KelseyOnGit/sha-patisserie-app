@@ -1,12 +1,16 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyPin } from '@/lib/pins';
+import { emailVerificationRequired } from '@/lib/auth-config';
 import {
   verificationConfig, verificationToken, sendVerificationEmail,
   VERIFICATION_LIFETIME_MS, VERIFICATION_COOLDOWN_MS,
 } from '@/lib/email-verification';
 
 export async function POST(request: Request) {
+  if (!emailVerificationRequired()) {
+    return NextResponse.json({ error: 'Email verification is temporarily disabled. Contact your manager for account approval.' }, { status: 503 });
+  }
   try {
     const body = await request.json().catch(() => null);
     if (!body || typeof body.email !== 'string' ||

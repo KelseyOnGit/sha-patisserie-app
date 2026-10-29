@@ -10,7 +10,7 @@ export async function activeAttendanceBreak(db: Prisma.TransactionClient, userId
   // Existing shift-based breaks remain finishable after deployment. Only use
   // legacy timestamps belonging to this attendance session, never a prior punch.
   const shifts = await db.shift.findMany({
-    where: { userId, locationId: log.locationId, startTime: { lt: now }, endTime: { gt: log.clockIn } },
+    where: { userId, startTime: { lt: now }, endTime: { gt: log.clockIn } },
     orderBy: { startTime: 'desc' },
   });
   const legacy = !log.startBreak ? shifts.filter((shift) =>

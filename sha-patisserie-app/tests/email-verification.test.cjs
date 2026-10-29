@@ -35,6 +35,7 @@ function environment(t) {
   for (const [name, value] of Object.entries({
     RESEND_API_KEY: 'test-only', FROM_EMAIL: 'Staff <staff@example.invalid>',
     NEXT_PUBLIC_APP_URL: 'https://staff.example.invalid', NODE_ENV: 'production',
+    NEXT_PUBLIC_EMAIL_VERIFICATION_ENABLED: 'true',
   })) {
     const previous = process.env[name];
     process.env[name] = value;
@@ -250,7 +251,8 @@ test('shared mail helper honors sender config and reports returned and thrown Re
   assert.deepEqual(await mail.sendEmail('staff@example.invalid', 'Test', ''), { sent: false, reason: 'Network failed' });
 });
 
-test('verification pages explain success and recovery and offer resend only when needed', async () => {
+test('verification pages explain success and recovery and offer resend only when needed', async (t) => {
+  environment(t);
   const page = loadFile('app/verify-email/page.tsx', {
     'next/link': { default: ({ children, href }) => React.createElement('a', { href }, children) },
     '@/components/ResendVerificationForm': { default: () => React.createElement('form', null, 'Resend verification email') },
@@ -283,4 +285,80 @@ test('migration grandfathers only approved accounts and leaves new registrations
   assert.match(sql, /"emailVerified" BOOLEAN NOT NULL DEFAULT false/);
   assert.match(sql, /SET "emailVerified" = true[\s\S]*WHERE "isApproved" = true/);
   assert.doesNotMatch(sql, /DROP|DELETE FROM/);
+});
+
+test('temporary bypass registers without email configuration and still requires admin approval', async (t) => {
+  const f = fixture(t);
+  delete process.env.NEXT_PUBLIC_EMAIL_VERIFICATION_ENABLED;
+  for (const key of ['RESEND_API_KEY', 'FROM_EMAIL', 'NEXT_PUBLIC_APP_URL']) delete process.env[key];
+  const response = await f.register(request(registration));
+  assert.equal(response.status, 201);
+  assert.match((await response.json()).message, /awaiting admin approval/);
+  assert.equal(f.state.user.emailVerified, false);
+  assert.equal(f.state.user.verificationToken, null);
+  assert.equal(f.state.user.tokenExpires, null);
+  assert.equal(f.state.user.isApproved, false);
+  assert.equal(f.state.user.status, 'PENDING');
+  assert.equal(f.state.emails.length, 0);
+  assert.equal((await f.login(request(credentials))).status, 403);
+  assert.equal(f.state.sessions, 0);
+  assert.equal((await f.approve(request({ userId: 'staff', role: 'STAFF' }))).status, 200);
+  assert.equal((await f.login(request(credentials))).status, 200);
+  assert.equal(f.state.sessions, 1);
+  assert.equal(f.state.user.emailVerified, false);
+  assert.equal((await f.resend(request(credentials))).status, 503);
+  assert.equal(f.state.emails.length, 0);
+  process.env.NEXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'true';
+  assert.equal((await f.login(request(credentials))).status, 403);
+  assert.equal(f.state.sessions, 1);
+});
+
+test('temporary bypass recovers previously saved unverified accounts without re-registration', async (t) => {
+  const f = fixture(t);
+  await f.register(request(registration));
+  process.env.NEXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'false';
+  assert.equal((await f.approve(request({ userId: 'staff', role: 'STAFF' }))).status, 200);
+  assert.equal((await f.login(request(credentials))).status, 200);
+  f.state.user.status = 'INACTIVE';
+  assert.equal((await f.login(request(credentials))).status, 403);
+});
+
+test('temporary bypass UI allows approval without claiming the email was verified', async (t) => {
+  environment(t);
+  process.env.NEXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'false';
+  const component = loadFile('components/PendingUsersList.tsx', {
+    'next/navigation': { useRouter: () => ({ refresh() {} }) },
+  }).default;
+  const html = renderToStaticMarkup(React.createElement(component, {
+    requireEmailVerification: false,
+    initialUsers: [{ id: 'staff', name: 'Test', email: 'staff@example.invalid', emailVerified: false, createdAt: '' }],
+  }));
+  assert.match(html, /Email verification temporarily disabled/);
+  assert.doesNotMatch(html, /<button[^>]* disabled=""[^>]*>Approve Staff<\/button>/);
+  const page = loadFile('app/verify-email/page.tsx', {
+    'next/link': { default: ({ children, href }) => React.createElement('a', { href }, children) },
+    '@/components/ResendVerificationForm': { default: () => React.createElement('form', null, 'Resend verification email') },
+  }).default;
+  const recovery = renderToStaticMarkup(await page({ searchParams: Promise.resolve({}) }));
+  assert.match(recovery, /account still needs admin approval/);
+  assert.doesNotMatch(recovery, /Resend verification email/);
+  for (const file of ['app/register/page.tsx', 'app/login/page.tsx']) {
+    const Page = loadFile(file, {
+      'next/link': { default: ({ children, href }) => React.createElement('a', { href }, children) },
+      'next/navigation': { useRouter: () => ({ push() {} }) },
+    }).default;
+    const rendered = renderToStaticMarkup(React.createElement(Page));
+    assert.doesNotMatch(rendered, /Resend verification email|verify your email/);
+  }
+});
+
+test('mail helper loads without a Resend key and returns an explicit configuration error', async (t) => {
+  environment(t);
+  delete process.env.RESEND_API_KEY;
+  const mail = loadFile('lib/notify.ts', {
+    resend: { Resend: class { constructor() { throw new Error('Must not construct an unconfigured client'); } } },
+  });
+  assert.deepEqual(await mail.sendEmail('staff@example.invalid', 'Test', ''), {
+    sent: false, reason: 'RESEND_API_KEY is not configured.',
+  });
 });

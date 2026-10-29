@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { emailVerificationRequired } from '@/lib/auth-config';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -152,11 +153,11 @@ export default function LoginPage() {
 
         {/* Footer Section with Registration Link */}
         <div className="mt-8 pt-6 border-t border-stone-100 text-center space-y-2">
-          <p className="text-xs text-stone-500">
+          {emailVerificationRequired() && <p className="text-xs text-stone-500">
             <Link href="/verify-email" className="font-semibold text-stone-800 hover:underline">
               Resend verification email
             </Link>
-          </p>
+          </p>}
           <p className="text-xs text-stone-500">
             Need a staff account?{' '}
             <Link href="/register" className="font-semibold text-stone-800 hover:underline">
