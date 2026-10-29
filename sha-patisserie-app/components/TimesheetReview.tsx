@@ -92,6 +92,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
   const [adjustments, setAdjustments] = useState<Record<string, number>>({});
   const [savingBatch, setSavingBatch] = useState(false);
   const [reviewReasons, setReviewReasons] = useState<Record<string, string>>({});
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const reportQuery = useQuery<Report>({
     queryKey: ['timesheet-report', userId, weekStart],
@@ -392,8 +393,8 @@ export default function TimesheetReview({ userId }: { userId: string }) {
       </div>
 
       {/* Filter Toolbar */}
-      <div className="admin-responsive-form grid min-w-0 grid-cols-1 items-end gap-4 rounded-2xl border border-stone-200 bg-white p-4 sm:grid-cols-2 xl:flex xl:flex-wrap">
-        <label className="grid gap-1 text-sm font-medium">
+      <div className="admin-responsive-form flex min-w-0 flex-wrap items-end gap-3 rounded-2xl border border-stone-200 bg-white p-3 sm:p-4">
+        <label className="grid w-44 min-w-0 max-w-full gap-1 text-sm font-medium">
           Week starting Monday
           <input
             type="date"
@@ -409,40 +410,55 @@ export default function TimesheetReview({ userId }: { userId: string }) {
               setVenue('');
               setStaff('');
             }}
-            className={inputClass}
+            className={`${inputClass} w-full min-h-11`}
           />
         </label>
-        <label className="grid gap-1 text-sm font-medium">
-          Venue
-          <select value={venue} onChange={(e) => setVenue(e.target.value)} className={inputClass}>
-            <option value="">All venues</option>
-            {sites.map((site) => (
-              <option key={site}>{site}</option>
-            ))}
-          </select>
-        </label>
-        <label className="grid gap-1 text-sm font-medium">
-          Staff
-          <select value={staff} onChange={(e) => setStaff(e.target.value)} className={inputClass}>
-            <option value="">All staff</option>
-            {people.map(([id, name]) => (
-              <option key={id} value={id}>
-               {name}{inactiveIds.has(id) && <InactiveBadge />}
-              </option>
-            ))}
-          </select>
-        </label>
-        {tab === 'confirm' && (
+        <button
+          type="button"
+          aria-expanded={filtersOpen}
+          aria-controls="payroll-filters"
+          onClick={() => setFiltersOpen((open) => !open)}
+          className={`${buttonClass} min-h-11 xl:hidden`}
+        >
+          Filters{(venue || staff || (tab === 'confirm' && statusFilter))
+            ? ` (${[venue, staff, tab === 'confirm' ? statusFilter : ''].filter(Boolean).length})` : ''}
+        </button>
+        <div
+          id="payroll-filters"
+          className={`${filtersOpen ? 'grid' : 'hidden'} order-last w-full min-w-0 gap-3 border-t border-stone-200 pt-3 sm:grid-cols-3 xl:order-none xl:flex xl:w-auto xl:flex-wrap xl:border-0 xl:pt-0`}
+        >
           <label className="grid gap-1 text-sm font-medium">
-            Status
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={inputClass}>
-              <option value="">All statuses</option>
-              {['Pending review', 'Needs attention', 'Approved'].map((value) => (
-                <option key={value}>{value}</option>
+            Venue
+            <select value={venue} onChange={(e) => setVenue(e.target.value)} className={inputClass}>
+              <option value="">All venues</option>
+              {sites.map((site) => (
+                <option key={site}>{site}</option>
               ))}
             </select>
           </label>
-        )}
+          <label className="grid gap-1 text-sm font-medium">
+            Staff
+            <select value={staff} onChange={(e) => setStaff(e.target.value)} className={inputClass}>
+              <option value="">All staff</option>
+              {people.map(([id, name]) => (
+                <option key={id} value={id}>
+                 {name}{inactiveIds.has(id) && <InactiveBadge />}
+                </option>
+              ))}
+            </select>
+          </label>
+          {tab === 'confirm' && (
+            <label className="grid gap-1 text-sm font-medium">
+              Status
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={inputClass}>
+                <option value="">All statuses</option>
+                {['Pending review', 'Needs attention', 'Approved'].map((value) => (
+                  <option key={value}>{value}</option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
         <button onClick={() => void refreshReport()} disabled={syncing || savingBatch} className={buttonClass}>
           {syncing ? 'Refreshing...' : 'Refresh'}
         </button>
@@ -466,7 +482,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
 
       {/* Metric Cards */}
       {report && (
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div data-testid="payroll-summary-cards" className="hidden gap-3 md:grid md:grid-cols-3">
           {[
             ['Staff with shifts thisweek', consolidatedStaffList.length],
             ['Awaiting approval / pending', shifts.filter((row) => row.status !== 'APPROVED').length],

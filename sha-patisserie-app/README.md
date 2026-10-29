@@ -153,9 +153,13 @@ Desktop table layouts remain unchanged at 1280 px and wider.
 Admin Users and Staff Profiles still stack rows vertically to fit narrow screens.
 The dashboard's Active staff, Pending users and Upcoming shifts summary cards are
 hidden below 768 px; quick links and live attendance remain available.
+Payroll's staff count, pending approval count and approved-hours summary cards
+are also hidden below 768 px on both report tabs.
 
-Filters and approval controls wrap to the available width. Regular-hours
-Add/Edit buttons stay visible on touch layouts rather than requiring hover.
+Filters and approval controls wrap to the available width.
+Venue, Staff and Status filters collapse behind a Filters button below 1280 px,
+with an active-filter count; the week picker stays compact and visible.
+Regular-hours Add/Edit buttons stay visible on touch layouts rather than requiring hover.
 Roster and timesheet dialogs scroll vertically within the viewport, with
 full-width mobile inputs. These are presentation changes only: approval,
 permissions, payroll calculations, roster publishing and save handlers are unchanged.

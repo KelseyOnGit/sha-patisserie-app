@@ -28,12 +28,13 @@ function load(file, mocks) {
   try { return require(filename).default; }
   finally { Module._load = original; delete require.cache[filename]; }
 }
-function hooks(values) {
+function hooks(values, onChange = () => {}) {
   let cursor = 0;
   return { ...React,
     useState(initial) {
       const index = cursor++;
-      return [index in values ? values[index] : typeof initial === 'function' ? initial() : initial, () => {}];
+      const value = index in values ? values[index] : typeof initial === 'function' ? initial() : initial;
+      return [value, (next) => onChange(index, typeof next === 'function' ? next(value) : next)];
     },
     useRef: (current) => ({ current }),
     useEffect() {},
@@ -82,6 +83,10 @@ test('worked-hours and payroll keep all staff in a scrollable calendar grid with
       }) },
     });
     const html = renderToStaticMarkup(Review({ userId: 'admin' }));
+    assert.match(html, /data-testid="payroll-summary-cards" class="hidden gap-3 md:grid md:grid-cols-3"/);
+    assert.match(html, /aria-expanded="false" aria-controls="payroll-filters"/);
+    assert.match(html, /id="payroll-filters" class="hidden /);
+    assert.match(html, /grid w-44 min-w-0 max-w-full/);
     assert.match(html, /admin-calendar-table/);
     assert.doesNotMatch(html, /admin-responsive-table/);
     assert.match(html, /role="region"[^>]+tabindex="0"[^>]+admin-calendar-scroll/);
@@ -105,6 +110,35 @@ test('worked-hours and payroll keep all staff in a scrollable calendar grid with
     if (view === 'review-dialog') assert.match(html, /admin-responsive-form.*max-h-\[90dvh\]/);
     saveFixture(view, html);
   }
+});
+test('payroll Filters button opens and closes one panel while preserving selected filters', () => {
+  const states = ['confirm', '2026-10-26', '', '', 'Sha Patisserie', '', 'Approved'];
+  const render = () => {
+    const Review = load('components/TimesheetReview.tsx', {
+      react: hooks(states, (index, value) => { states[index] = value; }),
+      '@tanstack/react-query': { useQuery: () => ({ data: { shifts: [], rows: [], venues: ['Sha Patisserie'] }, isPending: false, isFetching: false, error: null }) },
+    });
+    return Review({ userId: 'admin' });
+  };
+  const toggle = (tree) => {
+    if (!React.isValidElement(tree)) return null;
+    if (tree.props['aria-controls'] === 'payroll-filters') return tree;
+    return React.Children.toArray(tree.props.children).map(toggle).find(Boolean);
+  };
+  let tree = render();
+  assert.match(renderToStaticMarkup(tree), />Filters \(2\)<\/button>/);
+  toggle(tree).props.onClick();
+  tree = render();
+  assert.equal(toggle(tree).props['aria-expanded'], true);
+  const html = renderToStaticMarkup(tree);
+  assert.match(html, /id="payroll-filters" class="grid /);
+  assert.equal((html.match(/<select/g) || []).length, 3);
+  saveFixture('filters-open', html);
+  toggle(tree).props.onClick();
+  tree = render();
+  assert.equal(toggle(tree).props['aria-expanded'], false);
+  assert.equal(states[4], 'Sha Patisserie');
+  assert.equal(states[6], 'Approved');
 });
 test('roster labels every day and keeps regular-hours actions and mobile dialog accessible', () => {
   for (const open of [false, true]) {
