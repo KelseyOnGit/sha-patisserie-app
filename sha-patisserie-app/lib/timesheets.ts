@@ -249,6 +249,19 @@ export function approvalError(row: ReviewRow, periods: PayablePeriod[]): string 
   return null;
 }
 
+// timesheets status update automatically from "Not classified" to the appropriate status. e.g,."Worked"
+if (typeof window !== 'undefined') {
+  // Example logic for automatically updating timesheet status on the client side.
+  // This is a placeholder and should be replaced with actual implementation.
+  const timesheets = document.querySelectorAll('.timesheet-row');
+  timesheets.forEach((row) => {
+    const statusCell = row.querySelector('.status-cell');
+    if (statusCell && statusCell.textContent === 'Not classified') {
+      statusCell.textContent = 'Worked';
+    }
+  });
+}
+
 export function csvCell(value: string | number): string {
   const text = String(value);
   // Staff-controlled text must not become a spreadsheet formula on export.

@@ -659,14 +659,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
                                     Details
                                   </button>
                                 </div>
-                                {(rowsByUserDay.get(row.userId)?.get(row.workDate) ?? [])
-                                  .filter((entry) => entry.sourceKey !== row.sourceKey)
-                                  .map((entry) => <button key={entry.sourceKey}
-                                    onClick={() => setSelected(entry)}
-                                    disabled={writesBlocked}
-                                    className="block text-left text-[10px] text-amber-800 underline">
-                                    Additional entry: {entry.site} · {paidHours(entry.periods, entry.breakMinutes).toFixed(2)}h · {status(entry)} · Details
-                                  </button>)}
+                                
                               </div>
                             </td>
                           );
