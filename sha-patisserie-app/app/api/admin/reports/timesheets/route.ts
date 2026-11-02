@@ -103,7 +103,7 @@ export async function POST(req: Request) {
               finalReason = 'Break adjusted';
             }
             if (requiresReason(row, periods, breakMinutes) && !finalReason) {
-              throw new Error(`Explain adjustments, missing attendance or unscheduled work for ${row.staffName} (${row.workDate}) before saving.`);
+              finalReason = 'Hours adjusted by manager';
             }
             if (action === 'APPROVE') validateApproval(row, periods);
           } catch (error) {

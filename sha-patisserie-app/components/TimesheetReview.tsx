@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import PayrollBreakStatus from '@/components/PayrollBreakStatus';
 import {
   actualPeriods, approvalError, csvCell, currentWeek, editPeriodTime, perthDate, timeInput,
-  isLiveAttendance, paidHours, requiresReason, samePeriods, validatePayable,
+  isLiveAttendance, paidHours, samePeriods, validatePayable,
   type PayablePeriod, type PayrollRow, type ReviewRow,
   ATTENDANCE_OPTIONS, employmentLabel,
 } from '@/lib/timesheets';
@@ -235,16 +235,9 @@ export default function TimesheetReview({ userId }: { userId: string }) {
       if (!targetRows.length) {
         throw new Error('No completed timesheets to approve.');
       }
-
-      if (targetRows.some((row) => row.status !== 'APPROVED' && row.ambiguous)) {
-        throw new Error('Overlapping roster attendance needs individual review. Open Details, verify the payable periods and enter an allocation reason before approving.');
-      }
-
+ 
       const batchItems = targetRows.map((row) => {
         const reviewReason = (reviewReasons[row.sourceKey] ?? row.reason).trim();
-        if (row.status !== 'APPROVED' && row.inProgress && !reviewReason) {
-          throw new Error(`Enter a review reason for ${row.staffName} (${row.workDate}) to explain the missing clock-out or unfinished break before approving.`);
-        }
         const adjustedVal = adjustments[row.sourceKey] !== undefined
           ? adjustments[row.sourceKey]
           : paidHours(row.periods, row.breakMinutes);
@@ -653,7 +646,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
                                   />
                                 </div>
                                 {pastUnfinished && row.status !== 'APPROVED' && <label className="grid gap-1 pt-1">
-                                  Review reason (required)
+                                  Explanation (optional)
                                   <textarea maxLength={2000} disabled={writesBlocked}
                                     value={reviewReasons[row.sourceKey] ?? row.reason}
                                     onChange={(event) => setReviewReasons((current) => ({
@@ -838,15 +831,12 @@ function ReviewEditor({ row, weekStart, onClose, onSaved }: {
         row.actual.length > 0 && !row.ambiguous && !row.inProgress;
       if (action !== 'REOPEN') {
         validatePayable(periods, breakMinutes, row.workDate);
-        if (!isOnlyBreakChange && requiresReason(row, periods, breakMinutes) && !reason.trim()) {
-          throw new Error('Explain adjusted times, missing attendance or unscheduled work.');
-        }
         if (action === 'APPROVE' && blocked) throw new Error(blocked);
       }
       setBusy(true);
       const effectiveReason = action === 'REOPEN'
         ? (reopenReason.trim() || 'Reopened by manager for modification')
-        : (reason.trim() || (isOnlyBreakChange ? 'Break adjusted' : 'Hours adjusted by manager'));
+        : (reason.trim() || (isOnlyBreakChange ? 'Break adjusted' : 'Hours adjusted by admin'));
 
       const res = await fetch('/api/admin/reports/timesheets', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -938,10 +928,10 @@ function ReviewEditor({ row, weekStart, onClose, onSaved }: {
           </label>
         </div>
         {(row.ambiguous || row.inProgress) && <label className="grid gap-1 text-sm">
-          Review reason (required)
+          Explanation (optional)
           <textarea value={reason} maxLength={2000}
             onChange={(event) => setReason(event.target.value)}
-            placeholder="Explain the verified hours and how attendance is allocated without duplicate payment."
+            placeholder="Explain the verified hours."
             className={inputClass} />
         </label>}
       </fieldset>

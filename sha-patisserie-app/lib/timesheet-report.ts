@@ -166,7 +166,7 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
       'Reviewed roster staff, venue or date changed. Restore the original roster identity before approving.' :
       shift && !shift.publishedAt ? 'Publish the roster shift before approving its hours.' : null;
     if (!shift) exceptions.push('Unscheduled attendance');
-    if (ambiguous) exceptions.push('Attendance overlaps roster shifts: review payable periods and explain the allocation');
+    if (ambiguous) exceptions.push('Attendance overlaps roster shifts');
     if (shift && !shift.publishedAt) exceptions.push('Roster shift unpublished');
     if (actual.length === 0) exceptions.push('No attendance recorded');
     if (inProgress) exceptions.push('Clock-out or break unfinished');

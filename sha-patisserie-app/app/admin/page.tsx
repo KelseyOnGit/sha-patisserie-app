@@ -79,7 +79,6 @@ export default function AdminDashboardPage() {
   const stats = [
     { label: 'Active staff', value: statsData?.totalStaff ?? '—', href: '/admin/staff' },
     { label: 'Pending users', value: pendingCount, href: '/admin/users' },
-    { label: 'Upcoming shifts (7d)', value: statsData?.upcomingShifts ?? '—', href: '/admin/roster' },
   ];
 
   return (
