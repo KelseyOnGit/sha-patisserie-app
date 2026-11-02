@@ -6,6 +6,7 @@ import { WA_PUBLIC_HOLIDAYS } from '@/lib/holidays';
 import { fetchRosterLeave, type RosterLeave } from '@/lib/roster-leave';
 import RosterLeaveCard from '@/components/RosterLeaveCard';
 import { parseRosterTime, perthDateTime } from '@/lib/roster-time';
+import { formatDMY } from '@/lib/date-format';
 import { currentWeek, perthDate } from '@/lib/timesheets';
 import { rosterStaff, assignableStaff } from '@/lib/roster-staff';
 
@@ -56,12 +57,6 @@ function localDate(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-function formatDMY(date: Date) {
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const year = String(date.getFullYear()).slice(-2);
-  return `${day}/${month}/${year}`;
-}
 
 function formatShiftTime(value: string) {
   return new Intl.DateTimeFormat('en-AU', {

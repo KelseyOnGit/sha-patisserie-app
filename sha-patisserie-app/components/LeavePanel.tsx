@@ -1,5 +1,6 @@
 'use client';
 
+import { formatDMY } from '@/lib/date-format';
 import { useEffect, useRef, useState } from 'react';
 import { ANNUAL_NOTICE_DAYS, leavePeriod, LEAVE_LABELS, LEAVE_STATUS_LABELS } from '@/lib/leave';
 
@@ -59,7 +60,7 @@ function withoutReplaced(groups: LeaveGroup[]): LeaveGroup[] {
 }
 
 function displayDate(value: string) {
-  return new Intl.DateTimeFormat('en-AU', { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(`${value}T00:00:00Z`));
+  return formatDMY(value);
 }
 
 function plusDays(isoDate: string, days: number) {

@@ -88,12 +88,11 @@ export async function POST(req: Request) {
           if (!reason) throw new ReviewError('Enter a reason for reopening this approval.');
           periods = row.periods;
         } else {
-          if (row.status === 'APPROVED' && action === 'APPROVE' && version === row.version) {
-            // Already approved with same version, skip re-approving
+          if (row.status === 'APPROVED' && action === 'APPROVE' &&
+              samePeriods(periods, row.periods) && breakMinutes === row.breakMinutes &&
+              attendanceStatus === (row.attendanceStatus ?? 'UNCLASSIFIED')) {
+            // Unchanged approved row: keep the original approver and timestamp
             continue;
-          }
-          if (row.status === 'APPROVED') {
-            throw new ReviewError(`Reopen the approved timesheet for ${row.staffName} before changing it.`, 409);
           }
           try {
             validatePayable(periods, breakMinutes, row.workDate);

@@ -1,5 +1,6 @@
 'use client';
 
+import { formatDMY } from '@/lib/date-format';
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import PayrollBreakStatus from '@/components/PayrollBreakStatus';
@@ -287,46 +288,6 @@ export default function TimesheetReview({ userId }: { userId: string }) {
     }
   };
 
-  // Reopen approval for a staff member
-  const handleReopenStaff = async (targetUserId: string) => {
-    setError('');
-    setMessage('');
-    setSavingBatch(true);
-
-    try {
-      const targetRows = filtered.filter((row) => row.userId === targetUserId && row.status === 'APPROVED');
-      if (!targetRows.length) throw new Error('No approved timesheets found to reopen.');
-
-      const batchItems = targetRows.map((row) => ({
-        sourceKey: row.sourceKey,
-        weekStart,
-        version: row.version,
-        snapshot: row.snapshot,
-        action: 'REOPEN' as const,
-        breakMinutes: row.breakMinutes,
-        periods: row.periods,
-        reason: 'Reopened by manager during weekly review',
-      }));
-
-      const res = await fetch('/api/admin/reports/timesheets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ batch: batchItems }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to reopen timesheets.');
-
-      setMessage('Timesheets reopened for editing.');
-      if (await refreshReport()) clearDrafts(batchItems.map((item) => item.sourceKey));
-    } catch (err) {
-      console.error('Reopen failed:', err);
-      setError(err instanceof Error ? err.message : 'Error reopening timesheets.');
-    } finally {
-      setSavingBatch(false);
-    }
-  };
-
   const download = () => {
     // Leave export is hidden until leave payroll calculations are verified.
     // const leave = (report?.leaveRows || []).filter((row) => (!venue || row.site === venue) && (!staff || row.userId === staff));
@@ -546,6 +507,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
                     // Check if all shifts are approved
                     const staffShifts = rowsByUser.get(staffItem.userId) ?? [];
                     const isAllApproved = staffShifts.length > 0 && staffShifts.every((s) => s.status === 'APPROVED');
+                    const approvedByName = staffShifts.find((s) => s.approvedBy)?.approvedBy;
                     const hasInProgress = staffShifts.some((row) => isLiveAttendance(row));
 
                     return (
@@ -597,7 +559,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
                                 <select
                                   aria-label={`Attendance for ${row.staffName} on ${row.workDate}`}
                                   value={row.attendanceStatus || 'UNCLASSIFIED'}
-                                  disabled={row.status === 'APPROVED' || writesBlocked || liveAttendance}
+                                  disabled={writesBlocked || liveAttendance}
                                   onChange={(event) => void saveAttendance(row, event.target.value)}
                                   className="mb-1 w-full rounded border border-stone-300 bg-white p-1 text-[10px] disabled:bg-stone-100"
                                 >
@@ -637,7 +599,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
                                     min="0"
                                     max="24"
                                     aria-label={`Adjusted hours for ${row.staffName} on ${row.workDate}`}
-                                    disabled={row.status === 'APPROVED' || liveAttendance || writesBlocked}
+                                    disabled={liveAttendance || writesBlocked}
                                     value={Number.isFinite(adjVal) ? adjVal : ''}
                                     onChange={(e) =>
                                       handleAdjustmentChange(row.sourceKey, parseFloat(e.target.value) || 0)
@@ -688,29 +650,18 @@ export default function TimesheetReview({ userId }: { userId: string }) {
 
                         {/* Single Save & Approved Action Button per Staff */}
                         <td data-label="Actions" className="p-3 text-center align-middle border-l border-stone-200/60">
-                          {isAllApproved ? (
-                            <div className="flex flex-col items-center gap-1.5">
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">
-                                <span>✓</span> Approved
-                              </span>
-                              <button
-                                onClick={() => handleReopenStaff(staffItem.userId)}
-                                disabled={writesBlocked}
-                                className="w-full rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold px-2 py-1 text-xs shadow-xs transition-colors flex items-center justify-center gap-1"
-                                title="Unlock to modify hours or breaks"
-                              >
-                                <span>✏️</span> Modify / Unlock
-                              </button>
-                            </div>
-                          ) : (
+                          {isAllApproved && (
+                            <span className="mb-1.5 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">
+                              <span>✓</span> Approved{approvedByName ? ` by ${approvedByName}` : ''}
+                            </span>
+                          )}
                             <button
                               onClick={() => handleSaveAndApprove(staffItem.userId)}
                               disabled={writesBlocked || hasInProgress}
                               className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-2 text-xs shadow-sm disabled:opacity-40 transition-all"
                             >
-                              Save and Approved
+                              {isAllApproved ? 'Update' : 'Save and Approved'}
                             </button>
-                          )}
                         </td>
                       </tr>
                     );
@@ -771,7 +722,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
               <tbody>{(report.leaveRows || []).filter((row) => (!venue || row.site === venue) && (!staff || row.userId === staff)).map((row) => (
                 <tr key={row.id} className="border-t border-stone-100">
                   <td className="p-3">{row.staffName}<span className="block text-xs text-stone-500">{employmentLabel(row.employmentType)}</span></td>
-                  <td className="p-3">{row.date}</td><td className="p-3">{row.type}</td><td className="p-3">{row.hours.toFixed(2)}</td>
+                  <td className="p-3">{formatDMY(row.date)}</td><td className="p-3">{row.type}</td><td className="p-3">{row.hours.toFixed(2)}</td>
                 </tr>
               ))}</tbody>
             </table>
@@ -794,13 +745,12 @@ function ReviewEditor({ row, weekStart, onClose, onSaved }: {
   const [periods, setPeriods] = useState(row.periods);
   const [breakMinutes, setBreakMinutes] = useState(row.breakMinutes);
   const [reason, setReason] = useState(row.reason);
-  const [reopenReason, setReopenReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const dialog = useRef<HTMLDialogElement>(null);
   const locked = row.status === 'APPROVED';
   const dirty = JSON.stringify(periods) !== JSON.stringify(row.periods) ||
-    breakMinutes !== row.breakMinutes || reason !== row.reason || Boolean(reopenReason);
+    breakMinutes !== row.breakMinutes || reason !== row.reason;
   useEffect(() => {
     // A native modal traps focus and makes the filters/table inert while editing,
     // preventing keyboard navigation from discarding an unsaved review.
@@ -824,19 +774,15 @@ function ReviewEditor({ row, weekStart, onClose, onSaved }: {
       i === index ? editPeriodTime(period, field, value, row.workDate) : period));
   const hours = paidHours(periods, breakMinutes);
   const blocked = approvalError(row, periods);
-  const submit = async (action: 'SAVE' | 'APPROVE' | 'REOPEN') => {
+  const submit = async (action: 'SAVE' | 'APPROVE') => {
     setError('');
     try {
       const isOnlyBreakChange = samePeriods(periods, actualPeriods(row.actual)) &&
         row.actual.length > 0 && !row.ambiguous && !row.inProgress;
-      if (action !== 'REOPEN') {
-        validatePayable(periods, breakMinutes, row.workDate);
-        if (action === 'APPROVE' && blocked) throw new Error(blocked);
-      }
+      validatePayable(periods, breakMinutes, row.workDate);
+      if (action === 'APPROVE' && blocked) throw new Error(blocked);
       setBusy(true);
-      const effectiveReason = action === 'REOPEN'
-        ? (reopenReason.trim() || 'Reopened by manager for modification')
-        : (reason.trim() || (isOnlyBreakChange ? 'Break adjusted' : 'Hours adjusted by admin'));
+      const effectiveReason = reason.trim() || (isOnlyBreakChange ? 'Break adjusted' : 'Hours adjusted by admin');
 
       const res = await fetch('/api/admin/reports/timesheets', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -862,7 +808,7 @@ function ReviewEditor({ row, weekStart, onClose, onSaved }: {
   return <dialog ref={dialog} aria-labelledby="review-title" onCancel={(event) => { event.preventDefault(); close(); }}
       className="admin-responsive-form m-auto max-h-[90dvh] w-[calc(100%_-_2rem)] max-w-3xl overflow-y-auto rounded-2xl bg-white p-4 sm:p-6 text-stone-900 shadow-xl backdrop:bg-black/40">
       <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0 break-words"><h2 id="review-title" className="text-xl font-semibold">{row.staffName}: {row.workDate}</h2>
+        <div className="min-w-0 break-words"><h2 id="review-title" className="text-xl font-semibold">{row.staffName}: {formatDMY(row.workDate)}</h2>
           <p className="text-sm text-stone-500">{row.site} · {status(row)}{dirty ? ' · Unsaved changes' : ''}</p></div>
         <button autoFocus onClick={close} disabled={busy} className={buttonClass}>Close</button>
       </div>
@@ -878,28 +824,11 @@ function ReviewEditor({ row, weekStart, onClose, onSaved }: {
           <p key={exception} className="mt-1 text-amber-800">{exception}</p>)}
       </div>
       {locked && (
-        <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div>
-              <p className="font-bold text-emerald-900">✓ Timesheet is Approved</p>
-              <p className="text-xs text-emerald-700 mt-0.5">
-                {row.approvedBy ? `Approved by ${row.approvedBy} · ` : ''}
-                {row.approvedAt ? `${perthDate(row.approvedAt)} ${time(row.approvedAt)} · ` : ''}
-                Click Unlock to modify hours or breaks.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => submit('REOPEN')}
-              disabled={busy}
-              className="rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold px-4 py-2 text-xs shadow-xs transition-colors self-start sm:self-auto"
-            >
-              {busy ? 'Unlocking...' : '✏️ Unlock to Modify'}
-            </button>
-          </div>
-        </div>
+        <p className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
+          ✓ Approved{row.approvedBy ? ` by ${row.approvedBy}` : ''}{row.approvedAt ? ` · ${formatDMY(perthDate(row.approvedAt))} ${time(row.approvedAt)}` : ''}. You can still edit and save again.
+        </p>
       )}
-      <fieldset disabled={busy || locked} className="mt-5 space-y-3">
+      <fieldset disabled={busy} className="mt-5 space-y-3">
         <legend className="font-semibold">Payable hours</legend>
         {periods.map((period, index) => <div key={index} className="grid min-w-0 items-end gap-3 sm:grid-cols-[1fr_1fr_auto]">
           <label className="grid gap-1 text-sm">Start{dayHint(period.start, row.workDate)}
@@ -914,7 +843,7 @@ function ReviewEditor({ row, weekStart, onClose, onSaved }: {
         </div>)}
         <div className="flex flex-wrap gap-2">
           <button onClick={() => setPeriods((values) => [...values, { start: '', end: '' }])}
-            disabled={periods.length >= 20 || busy || locked} className={buttonClass}>Add period</button>
+            disabled={periods.length >= 20 || busy} className={buttonClass}>Add period</button>
           {row.actual.length > 0 && <button onClick={() => {
             const actual = actualPeriods(row.actual);
             setPeriods(actual);
@@ -935,36 +864,21 @@ function ReviewEditor({ row, weekStart, onClose, onSaved }: {
             className={inputClass} />
         </label>}
       </fieldset>
-      {locked && <label className="mt-4 grid gap-1 text-sm">
-        Reason for reopening (optional)
-        <input value={reopenReason} maxLength={2000} disabled={busy}
-          onChange={(event) => setReopenReason(event.target.value)} className={inputClass} />
-      </label>}
       <p className="mt-4 font-semibold">Total: {Number.isFinite(hours) && hours >= 0 ? hours.toFixed(2) : '--'} hours</p>
-      {!locked && blocked && <p className="mt-2 text-sm text-amber-800">{blocked}</p>}
+      {blocked && <p className="mt-2 text-sm text-amber-800">{blocked}</p>}
       {error && <p role="alert" className="mt-3 rounded-lg bg-rose-50 p-3 text-rose-800">{error}</p>}
       <div className="mt-4 flex flex-wrap gap-3">
-        {locked ? (
-          <button
-            onClick={() => submit('REOPEN')}
-            disabled={busy}
-            className="rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 px-4 py-2 text-sm font-bold text-amber-900 transition-colors"
-          >
-            {busy ? 'Unlocking...' : '✏️ Unlock to Modify Timesheet'}
-          </button>
-        ) : (
           <>
             <button onClick={() => submit('SAVE')} disabled={busy} className={buttonClass}>Save changes</button>
             <button onClick={() => submit('APPROVE')} disabled={busy || Boolean(blocked)}
               className={`${buttonClass} bg-emerald-700 text-white`}>Save &amp; approve</button>
           </>
-        )}
         {busy && <span role="status" className="self-center text-sm">Saving...</span>}
       </div>
       {row.history.length > 0 && <details className="mt-6 border-t border-stone-200 pt-3">
         <summary className="cursor-pointer font-semibold">Review history ({row.history.length})</summary>
         {row.history.map((entry, index) => <div key={index} className="mt-3 rounded-lg bg-stone-50 p-3 text-sm">
-          <p>{entry.action} by {entry.actor} · {perthDate(entry.at)} {time(entry.at)}</p>
+          <p>{entry.action} by {entry.actor} · {formatDMY(perthDate(entry.at))} {time(entry.at)}</p>
           <pre className="mt-2 overflow-auto whitespace-pre-wrap text-xs">{JSON.stringify(entry.values, null, 2)}</pre>
         </div>)}
       </details>}
