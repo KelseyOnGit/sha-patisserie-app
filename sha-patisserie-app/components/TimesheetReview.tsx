@@ -4,6 +4,7 @@ import { formatDMY } from '@/lib/date-format';
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import PayrollBreakStatus from '@/components/PayrollBreakStatus';
+import AddWorkedShiftDialog from '@/components/AddWorkedShiftDialog';
 import {
   actualPeriods, approvalError, csvCell, currentWeek, editPeriodTime, perthDate, timeInput,
   isLiveAttendance, paidHours, samePeriods, validatePayable,
@@ -94,6 +95,10 @@ export default function TimesheetReview({ userId }: { userId: string }) {
   const [savingBatch, setSavingBatch] = useState(false);
   const [reviewReasons, setReviewReasons] = useState<Record<string, string>>({});
   const [filtersOpen, setFiltersOpen] = useState(false);
+   const [addOpen, setAddOpen] = useState(false);
+  const [addTarget, setAddTarget] = useState<{ userId: string; date: string; venue: 'SHA' | 'ZB' } | null>(null);
+   const [prefill, setPrefill] = useState<{ sourceKey: string; periods: PayablePeriod[]; breakMinutes: number; reason: string } | null>(null);
+
 
   const reportQuery = useQuery<Report>({
     queryKey: ['timesheet-report', userId, weekStart],
@@ -130,7 +135,18 @@ export default function TimesheetReview({ userId }: { userId: string }) {
     setAdjustments((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !keys.includes(key))));
     setReviewReasons((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !keys.includes(key))));
   };
-
+     const handleWorkedShiftCreated = async (created: { sourceKey: string; start: string; end: string; breakMinutes: number; reason: string }) => {
+     setAddOpen(false);
+     setError('');
+     const result = await reportQuery.refetch();
+     const row = result.data?.shifts.find((item) => item.sourceKey === created.sourceKey);
+     if (!row) {
+       setMessage('Shift added. Find it in the table and open Details to enter the hours.');
+       return;
+     }
+     setPrefill({ sourceKey: row.sourceKey, periods: [{ start: created.start, end: created.end }], breakMinutes: created.breakMinutes, reason: created.reason });
+     setSelected(row);
+   };
   const shifts = report?.shifts ?? [];
   const weekDays = getWeekDays(weekStart);
 
@@ -245,7 +261,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
 
         let periods: PayablePeriod[] = [];
         if (adjustedVal > 0) {
-          const start = row.actual[0]?.clockIn || row.periods[0]?.start || `${row.workDate}T09:00:00+08:00`;
+          const start = row.actual[0]?.clockIn || row.periods[0]?.start || row.scheduledStart || `${row.workDate}T09:00:00+08:00`;
           const breakMinutes = row.breakMinutes;
           const totalMins = Math.round(adjustedVal * 60 + breakMinutes);
           const newEnd = new Date(new Date(start).getTime() + totalMins * 60000).toISOString();
@@ -315,14 +331,26 @@ export default function TimesheetReview({ userId }: { userId: string }) {
           </p>
         </div>
 
-        {tab === 'confirm' && consolidatedStaffList.length > 0 && (
-          <button
-            onClick={() => handleSaveAndApprove()}
-            disabled={writesBlocked || loading}
-            className="self-start sm:self-auto rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50 transition-all flex items-center gap-2"
-          >
-            {savingBatch ? 'Processing...' : 'Save and Approved All'}
-          </button>
+        {tab === 'confirm' && (
+          <div className="flex flex-wrap gap-2 self-start sm:self-auto">
+            <button
+              type="button"
+              onClick={() => { setAddTarget(null); setAddOpen(true); }}
+              disabled={writesBlocked || loading}
+              className="rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm font-bold text-stone-800 shadow-sm hover:bg-stone-50 disabled:opacity-50 transition-all"
+            >
+              Add worked shift
+            </button>
+            {consolidatedStaffList.length > 0 && (
+              <button
+                onClick={() => handleSaveAndApprove()}
+                disabled={writesBlocked || loading}
+                className="rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50 transition-all flex items-center gap-2"
+              >
+                {savingBatch ? 'Processing...' : 'Save and Approved All'}
+              </button>
+            )}
+          </div>
         )}
       </header>
 
@@ -464,30 +492,28 @@ export default function TimesheetReview({ userId }: { userId: string }) {
             <p className="font-mono text-stone-400">Times in Perth AWST (UTC+08)</p>
           </div>
 
-          <p className="text-xs text-stone-500 xl:hidden">Swipe dates sideways. Staff names stay fixed; scroll down for more staff.</p>
+          <p className="text-xs text-stone-500 lg:hidden">Swipe dates sideways. Staff names stay fixed; scroll down for more staff.</p>
           <div role="region" aria-label="Scrollable weekly worked hours" tabIndex={0} className="admin-calendar-scroll overflow-x-auto rounded-2xl border border-stone-200 bg-white shadow-sm">
             <table role="table" aria-label="Weekly worked hours" className="admin-calendar-table admin-payroll-calendar w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-stone-50 border-b border-stone-200 text-stone-600 uppercase tracking-wider text-[11px]">
-                  <th className="p-3 font-bold min-w-[140px]">Staff Member</th>
+                  <th className="p-3 font-bold w-[15%]">Staff Member</th>
                   {weekDays.map((d) => (
-                    <th key={d.dateStr} className="p-3 text-center min-w-[125px] border-l border-stone-200/60">
+                    <th key={d.dateStr} className="p-2 text-center border-l border-stone-200/60">
                       <div className="font-extrabold text-sm text-stone-800">{d.dayLetter}</div>
                       <div className="text-[10px] text-stone-500 font-normal">{d.displayDate}</div>
                     </th>
                   ))}
-                  <th className="p-3 text-right min-w-[130px] border-l border-stone-200/60 font-bold">
+                  <th className="p-3 text-right w-[11%] border-l border-stone-200/60 font-bold">
                     Final Total (Hours)
                   </th>
-                  <th className="p-3 text-center min-w-[130px] border-l border-stone-200/60 font-bold">
-                    Action
-                  </th>
+
                 </tr>
               </thead>
               <tbody>
                 {consolidatedStaffList.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="p-12 text-center text-stone-500 text-sm">
+                    <td colSpan={9} className="p-12 text-center text-stone-500 text-sm">
                       No actual clock records found for this week.
                     </td>
                   </tr>
@@ -508,7 +534,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
                     const staffShifts = rowsByUser.get(staffItem.userId) ?? [];
                     const isAllApproved = staffShifts.length > 0 && staffShifts.every((s) => s.status === 'APPROVED');
                     const approvedByName = staffShifts.find((s) => s.approvedBy)?.approvedBy;
-                    const hasInProgress = staffShifts.some((row) => isLiveAttendance(row));
+                    
 
                     return (
                       <tr key={staffItem.userId} className="border-b border-stone-200 hover:bg-stone-50/50">
@@ -532,7 +558,13 @@ export default function TimesheetReview({ userId }: { userId: string }) {
                                 key={d.dateStr}
                                 className="admin-empty-day p-3 text-center align-middle border-l border-stone-200/60 bg-stone-50/30 text-stone-300 select-none"
                               >
-                                —
+                                {d.dateStr <= perthDate(new Date()) ? (
+                                  <button type="button" disabled={writesBlocked}
+                                    onClick={() => { setAddTarget({ userId: staffItem.userId, date: d.dateStr, venue: staffItem.site === 'Zushi Bento' ? 'ZB' : 'SHA' }); setAddOpen(true); }}
+                                    aria-label={`Add worked shift for ${staffItem.staffName} on ${formatDMY(d.dateStr)}`}
+                                    title="Add a worked shift"
+                                    className="mx-auto flex h-8 w-8 items-center justify-center rounded-full border border-dashed border-stone-300 text-lg font-bold leading-none text-stone-400 hover:border-emerald-500 hover:bg-emerald-50 hover:text-emerald-700 disabled:opacity-40">+</button>
+                                ) : '—'}
                               </td>
                             );
                           }
@@ -646,23 +678,14 @@ export default function TimesheetReview({ userId }: { userId: string }) {
                             {finalStaffTotal.toFixed(2)}
                           </p>
                           <p className="text-[10px] font-semibold uppercase text-stone-500">hrs</p>
-                        </td>
-
-                        {/* Single Save & Approved Action Button per Staff */}
-                        <td data-label="Actions" className="p-3 text-center align-middle border-l border-stone-200/60">
                           {isAllApproved && (
-                            <span className="mb-1.5 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">
-                              <span>✓</span> Approved{approvedByName ? ` by ${approvedByName}` : ''}
+                            <span className="mt-1.5 inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+                              ✓ Approved{approvedByName ? ` by ${approvedByName}` : ''}
                             </span>
                           )}
-                            <button
-                              onClick={() => handleSaveAndApprove(staffItem.userId)}
-                              disabled={writesBlocked || hasInProgress}
-                              className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-2 text-xs shadow-sm disabled:opacity-40 transition-all"
-                            >
-                              {isAllApproved ? 'Update' : 'Save and Approved'}
-                            </button>
                         </td>
+
+
                       </tr>
                     );
                   })
@@ -674,7 +697,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
       ) : report && (
         <div className="space-y-3">
 
-          <p className="text-xs text-stone-500 xl:hidden">Swipe to see payroll columns. Staff names stay fixed.</p>
+          <p className="text-xs text-stone-500 lg:hidden">Swipe to see payroll columns. Staff names stay fixed.</p>
           <div role="region" aria-label="Scrollable approved payroll summary" tabIndex={0} className="admin-calendar-scroll overflow-x-auto rounded-xl border border-stone-200 bg-white shadow-sm">
             <table role="table" aria-label="Approved payroll summary" className="admin-calendar-table admin-payroll-summary w-full text-left text-sm">
               <thead className="bg-stone-50 text-xs font-bold uppercase text-stone-500">
@@ -730,21 +753,34 @@ export default function TimesheetReview({ userId }: { userId: string }) {
           */}
         </div>
       )}
-      {selected && <ReviewEditor key={`${selected.sourceKey}:${selected.version}`} row={selected} weekStart={weekStart}
-        onClose={() => setSelected(null)} onSaved={async (text) => {
-          setMessage(text); setSelected(null);
-          if (await refreshReport()) clearDrafts([selected.sourceKey]);
-        }} />}
+   {addOpen && (
+     <AddWorkedShiftDialog
+       weekDays={weekDays.map((day) => day.dateStr)}
+       today={perthDate(new Date())}
+       defaultVenue={addTarget?.venue ?? (venue === 'Zushi Bento' ? 'ZB' : 'SHA')}
+       initialUserId={addTarget?.userId}
+       initialDate={addTarget?.date}
+       onClose={() => setAddOpen(false)}
+       onCreated={handleWorkedShiftCreated}
+     />
+   )}
+   {selected && <ReviewEditor key={`${selected.sourceKey}:${selected.version}`} row={selected} weekStart={weekStart} prefill={prefill?.sourceKey === selected.sourceKey ? prefill : null}
+ 
+     onClose={() => { setSelected(null); setPrefill(null); }} onSaved={async (text) => {
+       setMessage(text); setSelected(null); setPrefill(null);
+       if (await refreshReport()) clearDrafts([selected.sourceKey]);
+     }} />}
     </div>
   );
 }
 
-function ReviewEditor({ row, weekStart, onClose, onSaved }: {
-  row: ReviewRow; weekStart: string; onClose: () => void; onSaved: (message: string) => void;
+function ReviewEditor({ row, weekStart, prefill, onClose, onSaved }: {
+  row: ReviewRow; weekStart: string; prefill: { sourceKey: string; periods: PayablePeriod[]; breakMinutes: number; reason: string } | null;
+  onClose: () => void; onSaved: (message: string) => void;
 }) {
-  const [periods, setPeriods] = useState(row.periods);
-  const [breakMinutes, setBreakMinutes] = useState(row.breakMinutes);
-  const [reason, setReason] = useState(row.reason);
+  const [periods, setPeriods] = useState(prefill?.periods || row.periods);
+  const [breakMinutes, setBreakMinutes] = useState(prefill?.breakMinutes ?? row.breakMinutes);
+  const [reason, setReason] = useState(prefill?.reason || row.reason);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const dialog = useRef<HTMLDialogElement>(null);
@@ -814,6 +850,7 @@ function ReviewEditor({ row, weekStart, onClose, onSaved }: {
       </div>
       <div className="mt-4 rounded-lg bg-stone-50 p-3 text-sm">
         <h3 className="font-semibold">Actual hours</h3>
+        
         {row.actual.length ? row.actual.map((log) => <p key={log.id} className="mt-1">
           {time(log.clockIn)}{dayHint(log.clockIn, row.workDate)} – {log.clockOut ?
             `${time(log.clockOut)}${dayHint(log.clockOut, row.workDate)}` : 'Still clocked in'}

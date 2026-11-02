@@ -25,7 +25,7 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-@media (width < 80rem) {
+@media (width < 64rem) {
   .admin-calendar-scroll {
     max-width: 100%;
     max-height: 70dvh;
@@ -40,8 +40,8 @@ body {
   }
 
   .admin-payroll-calendar {
-    width: 1492px;
-    min-width: 1492px;
+    width: 1248px;
+    min-width: 1248px;
   }
 
   .admin-roster-calendar {
@@ -93,14 +93,9 @@ body {
     min-width: 164px;
   }
 
-  .admin-payroll-calendar > thead > tr > th:nth-last-child(2) {
+  .admin-payroll-calendar > thead > tr > th:last-child {
     width: 100px;
     min-width: 100px;
-  }
-
-  .admin-payroll-calendar > thead > tr > th:last-child {
-    width: 144px;
-    min-width: 144px;
   }
 
   .admin-calendar-table :is(input, select, textarea) {
