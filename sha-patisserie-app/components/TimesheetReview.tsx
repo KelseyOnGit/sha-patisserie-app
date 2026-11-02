@@ -590,7 +590,13 @@ export default function TimesheetReview({ userId }: { userId: string }) {
                               <div className="space-y-1 text-[11px]">
                                 <select
                                   aria-label={`Attendance for ${row.staffName} on ${row.workDate}`}
-                                  value={row.attendanceStatus || 'UNCLASSIFIED'}
+                                  value={
+                                    row.attendanceStatus && row.attendanceStatus !== 'UNCLASSIFIED'
+                                      ? row.attendanceStatus
+                                      : row.periods.length > 0 || row.actual.length > 0
+                                        ? 'WORKED'
+                                        : 'UNCLASSIFIED'
+                                  }
                                   disabled={writesBlocked || liveAttendance}
                                   onChange={(event) => void saveAttendance(row, event.target.value)}
                                   className="mb-1 w-full rounded border border-stone-300 bg-white p-1 text-[10px] disabled:bg-stone-100"
