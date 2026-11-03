@@ -50,7 +50,8 @@ function groupedRequests(entries: LeaveEntry[]): LeaveGroup[] {
       current.totalHours += Number(entry.hours);
     } else groups.set(key, { ...entry, ids: [entry.id], startDate: date, endDate: date, days: 1, totalHours: Number(entry.hours) });
   }
-  return [...groups.values()].sort((a, b) => b.startDate.localeCompare(a.startDate));
+  const rank = (status: string) => (status === 'PENDING' ? 1 : status === 'APPROVED' ? 2 : 3);
+  return [...groups.values()].sort((a, b) => rank(a.status) - rank(b.status) || b.startDate.localeCompare(a.startDate));
 }
 
 /** Hides cancelled leave that was replaced by an edit, so it does not look like a real cancellation. */
@@ -91,6 +92,7 @@ export default function LeavePanel({ view = 'employee' }: { view?: 'employee' | 
   const [revision, setRevision] = useState(0);
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [statusFilter, setStatusFilter] = useState('');
+  const [showCancelled, setShowCancelled] = useState(false);
   const manage = view === 'review';
 
   useEffect(() => {
@@ -199,7 +201,10 @@ export default function LeavePanel({ view = 'employee' }: { view?: 'employee' | 
     </div>;
   };
 
-  const visible = groups.filter((entry) => !statusFilter || entry.status === statusFilter);
+  const bucket = (status: string) => status === 'PENDING' || status === 'APPROVED' ? status : 'OTHERS';
+  const matching = groups.filter((entry) => !statusFilter || bucket(entry.status) === statusFilter);
+  const cancelled = matching.filter((entry) => entry.status === 'CANCELLED');
+  const visible = showCancelled ? matching : matching.filter((entry) => entry.status !== 'CANCELLED');
 
   return <div className={`min-w-0 w-full space-y-6 text-left text-stone-900 ${manage ? '' : 'mx-auto max-w-md'}`}>
     <header className="flex items-center justify-between gap-3 border-b border-stone-200 pb-4">
@@ -223,6 +228,9 @@ export default function LeavePanel({ view = 'employee' }: { view?: 'employee' | 
           </tr>)}</tbody>
         </table>
         {!visible.length && <p className="py-6 text-sm text-stone-500">No leave requests for this status.</p>}
+        {cancelled.length > 0 && <button type="button" onClick={() => setShowCancelled((value) => !value)} className="mt-3 w-full rounded-md border border-dashed border-stone-300 bg-stone-50 py-2 text-sm font-medium text-stone-600 hover:bg-stone-100">
+          {showCancelled ? 'Hide' : 'Show'} {cancelled.length} cancelled {cancelled.length === 1 ? 'request' : 'requests'}
+        </button>}
       </div>
     </> : <>
       {selected && <div className="grid grid-cols-2 gap-4 border-b border-stone-200 pb-5">

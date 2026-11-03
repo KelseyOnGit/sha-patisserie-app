@@ -25,7 +25,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'weekStart must be a valid date' }, { status: 400 });
     }
     const endOfWeek = new Date(startOfWeek.getTime() + WEEK_MS);
+    const targetEndOfWeek = new Date(endOfWeek.getTime() + WEEK_MS);
 
+    // 1. Fetch current week's source shifts
     const sourceShifts = await prisma.shift.findMany({
       where: {
         user: { role: { in: ['STAFF', 'MANAGER'] }, status: { not: 'INACTIVE' } },
@@ -41,43 +43,67 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: 'No shifts found for the selected week', count: 0 });
     }
 
-    const duplicatedShifts = sourceShifts.map((shift) => ({
-      userId: shift.userId,
-      startTime: new Date(shift.startTime.getTime() + WEEK_MS),
-      endTime: new Date(shift.endTime.getTime() + WEEK_MS),
-      presetBreakMinutes: shift.presetBreakMinutes,
-      breakMinutes: shift.breakMinutes,
-      locationId: shift.locationId,
-      roleTag: shift.roleTag,
-      notes: shift.notes,
-    }));
-
+    // 2. Process inside a transaction to prevent race conditions
     const result = await prisma.$transaction(async (transaction) => {
-      const existingShift = await transaction.shift.findFirst({
+      // Fetch any existing shifts already scheduled for the next week
+      const existingShifts = await transaction.shift.findMany({
         where: {
-          startTime: { gte: endOfWeek, lt: new Date(endOfWeek.getTime() + WEEK_MS) },
+          startTime: { gte: endOfWeek, lt: targetEndOfWeek },
           location: { code: location },
         },
-        select: { id: true },
+        select: {
+          userId: true,
+          startTime: true,
+        },
       });
-      if (existingShift) return { conflict: true, count: 0 };
+
+      // Create a lookup set (stringifying userId + timestamp) for instant checking
+      const existingShiftSet = new Set(
+        existingShifts.map((s) => `${s.userId}_${s.startTime.getTime()}`)
+      );
+
+      // Filter out target shifts that already exist
+      const nonConflictingShifts = sourceShifts
+        .map((shift) => {
+          const targetStartTime = new Date(shift.startTime.getTime() + WEEK_MS);
+          const targetEndTime = new Date(shift.endTime.getTime() + WEEK_MS);
+          
+          return {
+            userId: shift.userId,
+            startTime: targetStartTime,
+            endTime: targetEndTime,
+            presetBreakMinutes: shift.presetBreakMinutes,
+            breakMinutes: shift.breakMinutes,
+            locationId: shift.locationId,
+            roleTag: shift.roleTag,
+            notes: shift.notes,
+            publishedAt: null,
+          };
+        })
+        .filter((shift) => {
+          const key = `${shift.userId}_${shift.startTime.getTime()}`;
+          return !existingShiftSet.has(key);
+        });
+
+      // If everything was a duplicate, skip creation step safely
+      if (nonConflictingShifts.length === 0) {
+        return { count: 0 };
+      }
 
       const created = await transaction.shift.createMany({
-        data: duplicatedShifts.map((shift) => ({ ...shift, publishedAt: null })),
+        data: nonConflictingShifts,
       });
-      return { conflict: false, count: created.count };
+
+      return { count: created.count };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
-    if (result.conflict) {
-      return NextResponse.json(
-        { error: 'The next week already has shifts for this venue. Nothing was duplicated.' },
-        { status: 409 }
-      );
-    }
-
-    return NextResponse.json({ message: 'Roster duplicated', count: result.count }, { status: 201 });
+    return NextResponse.json(
+      { message: 'Roster filled for missing slots', count: result.count }, 
+      { status: 201 }
+    );
   } catch (error) {
     console.error('Failed to duplicate roster:', error);
     return NextResponse.json({ error: 'Failed to duplicate roster' }, { status: 500 });
   }
 }
+

@@ -820,9 +820,10 @@ function groupedRequests(entries) {
             totalHours: Number(entry.hours)
         });
     }
+    const rank = (status)=>status === 'PENDING' ? 1 : status === 'APPROVED' ? 2 : 3;
     return [
         ...groups.values()
-    ].sort((a, b)=>b.startDate.localeCompare(a.startDate));
+    ].sort((a, b)=>rank(a.status) - rank(b.status) || b.startDate.localeCompare(a.startDate));
 }
 /** Hides cancelled leave that was replaced by an edit, so it does not look like a real cancellation. */ function withoutReplaced(groups) {
     const replaced = new Set(groups.filter((group)=>group.replacesId && group.status !== 'REJECTED' && group.status !== 'CANCELLED').map((group)=>group.replacesId));
@@ -850,7 +851,7 @@ function StatusBadge({ status }) {
         children: __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$leave$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["LEAVE_STATUS_LABELS"][status] || status
     }, void 0, false, {
         fileName: "[project]/components/LeavePanel.tsx",
-        lineNumber: 79,
+        lineNumber: 80,
         columnNumber: 10
     }, this);
 }
@@ -868,6 +869,7 @@ function LeavePanel({ view = 'employee' }) {
     const [revision, setRevision] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(0);
     const [dialog, setDialog] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
     const [statusFilter, setStatusFilter] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])('');
+    const [showCancelled, setShowCancelled] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(false);
     const manage = view === 'review';
     (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
         "LeavePanel.useEffect": ()=>{
@@ -951,7 +953,7 @@ function LeavePanel({ view = 'employee' }) {
             ]
         }, void 0, true, {
             fileName: "[project]/components/LeavePanel.tsx",
-            lineNumber: 144,
+            lineNumber: 146,
             columnNumber: 12
         }, this);
     };
@@ -970,12 +972,12 @@ function LeavePanel({ view = 'employee' }) {
                     children: "Withdraw"
                 }, void 0, false, {
                     fileName: "[project]/components/LeavePanel.tsx",
-                    lineNumber: 149,
+                    lineNumber: 151,
                     columnNumber: 36
                 }, this)
             }, void 0, false, {
                 fileName: "[project]/components/LeavePanel.tsx",
-                lineNumber: 149,
+                lineNumber: 151,
                 columnNumber: 14
             }, this);
         }
@@ -994,7 +996,7 @@ function LeavePanel({ view = 'employee' }) {
                         children: "Change dates"
                     }, void 0, false, {
                         fileName: "[project]/components/LeavePanel.tsx",
-                        lineNumber: 153,
+                        lineNumber: 155,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -1008,13 +1010,13 @@ function LeavePanel({ view = 'employee' }) {
                         children: "Request cancellation"
                     }, void 0, false, {
                         fileName: "[project]/components/LeavePanel.tsx",
-                        lineNumber: 154,
+                        lineNumber: 156,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/LeavePanel.tsx",
-                lineNumber: 152,
+                lineNumber: 154,
                 columnNumber: 14
             }, this);
         }
@@ -1024,7 +1026,7 @@ function LeavePanel({ view = 'employee' }) {
                 children: "Waiting for your manager. This leave stays approved until they agree to cancel it."
             }, void 0, false, {
                 fileName: "[project]/components/LeavePanel.tsx",
-                lineNumber: 158,
+                lineNumber: 160,
                 columnNumber: 14
             }, this);
         }
@@ -1038,7 +1040,7 @@ function LeavePanel({ view = 'employee' }) {
                     children: title
                 }, void 0, false, {
                     fileName: "[project]/components/LeavePanel.tsx",
-                    lineNumber: 165,
+                    lineNumber: 167,
                     columnNumber: 7
                 }, this),
                 !entries.length && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1050,7 +1052,7 @@ function LeavePanel({ view = 'employee' }) {
                     ]
                 }, void 0, true, {
                     fileName: "[project]/components/LeavePanel.tsx",
-                    lineNumber: 166,
+                    lineNumber: 168,
                     columnNumber: 27
                 }, this),
                 entries.map((entry)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("article", {
@@ -1064,20 +1066,20 @@ function LeavePanel({ view = 'employee' }) {
                                         children: __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$leave$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["LEAVE_LABELS"][entry.type]
                                     }, void 0, false, {
                                         fileName: "[project]/components/LeavePanel.tsx",
-                                        lineNumber: 168,
+                                        lineNumber: 170,
                                         columnNumber: 65
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(StatusBadge, {
                                         status: entry.status
                                     }, void 0, false, {
                                         fileName: "[project]/components/LeavePanel.tsx",
-                                        lineNumber: 168,
+                                        lineNumber: 170,
                                         columnNumber: 142
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/LeavePanel.tsx",
-                                lineNumber: 168,
+                                lineNumber: 170,
                                 columnNumber: 9
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1089,7 +1091,7 @@ function LeavePanel({ view = 'employee' }) {
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/LeavePanel.tsx",
-                                lineNumber: 169,
+                                lineNumber: 171,
                                 columnNumber: 9
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1104,7 +1106,7 @@ function LeavePanel({ view = 'employee' }) {
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/LeavePanel.tsx",
-                                lineNumber: 170,
+                                lineNumber: 172,
                                 columnNumber: 9
                             }, this),
                             changeNote(entry),
@@ -1113,7 +1115,7 @@ function LeavePanel({ view = 'employee' }) {
                                 children: entry.note
                             }, void 0, false, {
                                 fileName: "[project]/components/LeavePanel.tsx",
-                                lineNumber: 172,
+                                lineNumber: 174,
                                 columnNumber: 24
                             }, this),
                             entry.reviewNote && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1124,20 +1126,20 @@ function LeavePanel({ view = 'employee' }) {
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/LeavePanel.tsx",
-                                lineNumber: 173,
+                                lineNumber: 175,
                                 columnNumber: 30
                             }, this),
                             staffActions(entry)
                         ]
                     }, entry.id, true, {
                         fileName: "[project]/components/LeavePanel.tsx",
-                        lineNumber: 167,
+                        lineNumber: 169,
                         columnNumber: 31
                     }, this))
             ]
         }, void 0, true, {
             fileName: "[project]/components/LeavePanel.tsx",
-            lineNumber: 164,
+            lineNumber: 166,
             columnNumber: 5
         }, this);
     const adminActions = (entry)=>{
@@ -1148,7 +1150,7 @@ function LeavePanel({ view = 'employee' }) {
                 children: needsReview ? 'Another manager must review' : entry.reviewedAt?.slice(0, 10)
             }, void 0, false, {
                 fileName: "[project]/components/LeavePanel.tsx",
-                lineNumber: 182,
+                lineNumber: 184,
                 columnNumber: 14
             }, this);
         }
@@ -1159,7 +1161,7 @@ function LeavePanel({ view = 'employee' }) {
             children: entry.reviewedAt?.slice(0, 10)
         }, void 0, false, {
             fileName: "[project]/components/LeavePanel.tsx",
-            lineNumber: 186,
+            lineNumber: 188,
             columnNumber: 42
         }, this);
         return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1179,7 +1181,7 @@ function LeavePanel({ view = 'employee' }) {
                             className: input
                         }, void 0, false, {
                             fileName: "[project]/components/LeavePanel.tsx",
-                            lineNumber: 189,
+                            lineNumber: 191,
                             columnNumber: 9
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1192,7 +1194,7 @@ function LeavePanel({ view = 'employee' }) {
                                     children: cancelling ? 'Approve cancellation' : 'Approve'
                                 }, void 0, false, {
                                     fileName: "[project]/components/LeavePanel.tsx",
-                                    lineNumber: 191,
+                                    lineNumber: 193,
                                     columnNumber: 11
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -1202,19 +1204,19 @@ function LeavePanel({ view = 'employee' }) {
                                     children: cancelling ? 'Keep leave' : 'Not approve'
                                 }, void 0, false, {
                                     fileName: "[project]/components/LeavePanel.tsx",
-                                    lineNumber: 192,
+                                    lineNumber: 194,
                                     columnNumber: 11
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/LeavePanel.tsx",
-                            lineNumber: 190,
+                            lineNumber: 192,
                             columnNumber: 9
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/components/LeavePanel.tsx",
-                    lineNumber: 188,
+                    lineNumber: 190,
                     columnNumber: 23
                 }, this),
                 canEdit && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1230,7 +1232,7 @@ function LeavePanel({ view = 'employee' }) {
                             children: "Edit"
                         }, void 0, false, {
                             fileName: "[project]/components/LeavePanel.tsx",
-                            lineNumber: 196,
+                            lineNumber: 198,
                             columnNumber: 9
                         }, this),
                         entry.status === 'APPROVED' && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -1244,23 +1246,26 @@ function LeavePanel({ view = 'employee' }) {
                             children: "Cancel leave"
                         }, void 0, false, {
                             fileName: "[project]/components/LeavePanel.tsx",
-                            lineNumber: 197,
+                            lineNumber: 199,
                             columnNumber: 41
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/components/LeavePanel.tsx",
-                    lineNumber: 195,
+                    lineNumber: 197,
                     columnNumber: 19
                 }, this)
             ]
         }, void 0, true, {
             fileName: "[project]/components/LeavePanel.tsx",
-            lineNumber: 187,
+            lineNumber: 189,
             columnNumber: 12
         }, this);
     };
-    const visible = groups.filter((entry)=>!statusFilter || entry.status === statusFilter);
+    const bucket = (status)=>status === 'PENDING' || status === 'APPROVED' ? status : 'OTHERS';
+    const matching = groups.filter((entry)=>!statusFilter || bucket(entry.status) === statusFilter);
+    const cancelled = matching.filter((entry)=>entry.status === 'CANCELLED');
+    const visible = showCancelled ? matching : matching.filter((entry)=>entry.status !== 'CANCELLED');
     return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
         className: `min-w-0 w-full space-y-6 text-left text-stone-900 ${manage ? '' : 'mx-auto max-w-md'}`,
         children: [
@@ -1272,7 +1277,7 @@ function LeavePanel({ view = 'employee' }) {
                         children: manage ? 'Leave Requests' : 'My Leave'
                     }, void 0, false, {
                         fileName: "[project]/components/LeavePanel.tsx",
-                        lineNumber: 206,
+                        lineNumber: 211,
                         columnNumber: 7
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -1287,13 +1292,13 @@ function LeavePanel({ view = 'employee' }) {
                         children: manage ? 'Create leave' : 'Request leave'
                     }, void 0, false, {
                         fileName: "[project]/components/LeavePanel.tsx",
-                        lineNumber: 207,
+                        lineNumber: 212,
                         columnNumber: 7
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/LeavePanel.tsx",
-                lineNumber: 205,
+                lineNumber: 210,
                 columnNumber: 5
             }, this),
             message && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1302,7 +1307,7 @@ function LeavePanel({ view = 'employee' }) {
                 children: message
             }, void 0, false, {
                 fileName: "[project]/components/LeavePanel.tsx",
-                lineNumber: 209,
+                lineNumber: 214,
                 columnNumber: 17
             }, this),
             error && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1311,7 +1316,7 @@ function LeavePanel({ view = 'employee' }) {
                 children: error
             }, void 0, false, {
                 fileName: "[project]/components/LeavePanel.tsx",
-                lineNumber: 210,
+                lineNumber: 215,
                 columnNumber: 15
             }, this),
             loading ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1319,7 +1324,7 @@ function LeavePanel({ view = 'employee' }) {
                 children: "Loading leave..."
             }, void 0, false, {
                 fileName: "[project]/components/LeavePanel.tsx",
-                lineNumber: 211,
+                lineNumber: 216,
                 columnNumber: 16
             }, this) : manage ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Fragment"], {
                 children: [
@@ -1337,7 +1342,7 @@ function LeavePanel({ view = 'employee' }) {
                                         children: "All statuses"
                                     }, void 0, false, {
                                         fileName: "[project]/components/LeavePanel.tsx",
-                                        lineNumber: 213,
+                                        lineNumber: 218,
                                         columnNumber: 9
                                     }, this),
                                     Object.entries(__TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$leave$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["LEAVE_STATUS_LABELS"]).map(([value, label])=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
@@ -1345,19 +1350,19 @@ function LeavePanel({ view = 'employee' }) {
                                             children: label
                                         }, value, false, {
                                             fileName: "[project]/components/LeavePanel.tsx",
-                                            lineNumber: 213,
+                                            lineNumber: 218,
                                             columnNumber: 108
                                         }, this))
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/LeavePanel.tsx",
-                                lineNumber: 212,
+                                lineNumber: 217,
                                 columnNumber: 67
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/LeavePanel.tsx",
-                        lineNumber: 212,
+                        lineNumber: 217,
                         columnNumber: 7
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1379,17 +1384,17 @@ function LeavePanel({ view = 'employee' }) {
                                                     children: label
                                                 }, label, false, {
                                                     fileName: "[project]/components/LeavePanel.tsx",
-                                                    lineNumber: 217,
+                                                    lineNumber: 222,
                                                     columnNumber: 153
                                                 }, this))
                                         }, void 0, false, {
                                             fileName: "[project]/components/LeavePanel.tsx",
-                                            lineNumber: 217,
+                                            lineNumber: 222,
                                             columnNumber: 68
                                         }, this)
                                     }, void 0, false, {
                                         fileName: "[project]/components/LeavePanel.tsx",
-                                        lineNumber: 217,
+                                        lineNumber: 222,
                                         columnNumber: 11
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("tbody", {
@@ -1409,13 +1414,13 @@ function LeavePanel({ view = 'employee' }) {
                                                                 ]
                                                             }, void 0, true, {
                                                                 fileName: "[project]/components/LeavePanel.tsx",
-                                                                lineNumber: 219,
+                                                                lineNumber: 224,
                                                                 columnNumber: 81
                                                             }, this)
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/components/LeavePanel.tsx",
-                                                        lineNumber: 219,
+                                                        lineNumber: 224,
                                                         columnNumber: 13
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
@@ -1434,13 +1439,13 @@ function LeavePanel({ view = 'employee' }) {
                                                                 ]
                                                             }, void 0, true, {
                                                                 fileName: "[project]/components/LeavePanel.tsx",
-                                                                lineNumber: 220,
+                                                                lineNumber: 225,
                                                                 columnNumber: 59
                                                             }, this)
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/components/LeavePanel.tsx",
-                                                        lineNumber: 220,
+                                                        lineNumber: 225,
                                                         columnNumber: 13
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
@@ -1450,7 +1455,7 @@ function LeavePanel({ view = 'employee' }) {
                                                                 status: entry.status
                                                             }, void 0, false, {
                                                                 fileName: "[project]/components/LeavePanel.tsx",
-                                                                lineNumber: 221,
+                                                                lineNumber: 226,
                                                                 columnNumber: 54
                                                             }, this),
                                                             changeNote(entry),
@@ -1459,14 +1464,14 @@ function LeavePanel({ view = 'employee' }) {
                                                                 children: entry.note
                                                             }, void 0, false, {
                                                                 fileName: "[project]/components/LeavePanel.tsx",
-                                                                lineNumber: 221,
+                                                                lineNumber: 226,
                                                                 columnNumber: 110
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                                                                 children: entry.reviewNote
                                                             }, void 0, false, {
                                                                 fileName: "[project]/components/LeavePanel.tsx",
-                                                                lineNumber: 221,
+                                                                lineNumber: 226,
                                                                 columnNumber: 146
                                                             }, this),
                                                             entry.reviewer && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1477,13 +1482,13 @@ function LeavePanel({ view = 'employee' }) {
                                                                 ]
                                                             }, void 0, true, {
                                                                 fileName: "[project]/components/LeavePanel.tsx",
-                                                                lineNumber: 221,
+                                                                lineNumber: 226,
                                                                 columnNumber: 190
                                                             }, this)
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/components/LeavePanel.tsx",
-                                                        lineNumber: 221,
+                                                        lineNumber: 226,
                                                         columnNumber: 13
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
@@ -1491,24 +1496,24 @@ function LeavePanel({ view = 'employee' }) {
                                                         children: adminActions(entry)
                                                     }, void 0, false, {
                                                         fileName: "[project]/components/LeavePanel.tsx",
-                                                        lineNumber: 222,
+                                                        lineNumber: 227,
                                                         columnNumber: 13
                                                     }, this)
                                                 ]
                                             }, entry.id, true, {
                                                 fileName: "[project]/components/LeavePanel.tsx",
-                                                lineNumber: 218,
+                                                lineNumber: 223,
                                                 columnNumber: 42
                                             }, this))
                                     }, void 0, false, {
                                         fileName: "[project]/components/LeavePanel.tsx",
-                                        lineNumber: 218,
+                                        lineNumber: 223,
                                         columnNumber: 11
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/LeavePanel.tsx",
-                                lineNumber: 216,
+                                lineNumber: 221,
                                 columnNumber: 9
                             }, this),
                             !visible.length && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1516,19 +1521,35 @@ function LeavePanel({ view = 'employee' }) {
                                 children: "No leave requests for this status."
                             }, void 0, false, {
                                 fileName: "[project]/components/LeavePanel.tsx",
-                                lineNumber: 225,
+                                lineNumber: 230,
                                 columnNumber: 29
+                            }, this),
+                            cancelled.length > 0 && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                                type: "button",
+                                onClick: ()=>setShowCancelled((value)=>!value),
+                                className: "mt-3 w-full rounded-md border border-dashed border-stone-300 bg-stone-50 py-2 text-sm font-medium text-stone-600 hover:bg-stone-100",
+                                children: [
+                                    showCancelled ? 'Hide' : 'Show',
+                                    " ",
+                                    cancelled.length,
+                                    " cancelled ",
+                                    cancelled.length === 1 ? 'request' : 'requests'
+                                ]
+                            }, void 0, true, {
+                                fileName: "[project]/components/LeavePanel.tsx",
+                                lineNumber: 231,
+                                columnNumber: 34
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/LeavePanel.tsx",
-                        lineNumber: 215,
+                        lineNumber: 220,
                         columnNumber: 7
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/LeavePanel.tsx",
-                lineNumber: 211,
+                lineNumber: 216,
                 columnNumber: 91
             }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Fragment"], {
                 children: [
@@ -1543,7 +1564,7 @@ function LeavePanel({ view = 'employee' }) {
                                             children: "Annual leave balance"
                                         }, void 0, false, {
                                             fileName: "[project]/components/LeavePanel.tsx",
-                                            lineNumber: 230,
+                                            lineNumber: 238,
                                             columnNumber: 16
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1554,13 +1575,13 @@ function LeavePanel({ view = 'employee' }) {
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/components/LeavePanel.tsx",
-                                            lineNumber: 230,
+                                            lineNumber: 238,
                                             columnNumber: 78
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/components/LeavePanel.tsx",
-                                    lineNumber: 230,
+                                    lineNumber: 238,
                                     columnNumber: 11
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1570,7 +1591,7 @@ function LeavePanel({ view = 'employee' }) {
                                             children: "Personal leave balance"
                                         }, void 0, false, {
                                             fileName: "[project]/components/LeavePanel.tsx",
-                                            lineNumber: 231,
+                                            lineNumber: 239,
                                             columnNumber: 16
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1581,31 +1602,31 @@ function LeavePanel({ view = 'employee' }) {
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/components/LeavePanel.tsx",
-                                            lineNumber: 231,
+                                            lineNumber: 239,
                                             columnNumber: 80
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/components/LeavePanel.tsx",
-                                    lineNumber: 231,
+                                    lineNumber: 239,
                                     columnNumber: 11
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/LeavePanel.tsx",
-                            lineNumber: 229,
+                            lineNumber: 237,
                             columnNumber: 95
                         }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                             className: "col-span-2 text-sm text-stone-500",
                             children: "Paid leave entitlement: None"
                         }, void 0, false, {
                             fileName: "[project]/components/LeavePanel.tsx",
-                            lineNumber: 232,
+                            lineNumber: 240,
                             columnNumber: 15
                         }, this)
                     }, void 0, false, {
                         fileName: "[project]/components/LeavePanel.tsx",
-                        lineNumber: 228,
+                        lineNumber: 236,
                         columnNumber: 20
                     }, this),
                     section('My requests', groups.filter((entry)=>entry.status === 'PENDING')),
@@ -1614,7 +1635,7 @@ function LeavePanel({ view = 'employee' }) {
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/LeavePanel.tsx",
-                lineNumber: 227,
+                lineNumber: 235,
                 columnNumber: 11
             }, this),
             dialog && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(LeaveDialog, {
@@ -1630,17 +1651,17 @@ function LeavePanel({ view = 'employee' }) {
                 }
             }, `${dialog.mode}-${'entry' in dialog ? dialog.entry.id : ''}`, false, {
                 fileName: "[project]/components/LeavePanel.tsx",
-                lineNumber: 238,
+                lineNumber: 246,
                 columnNumber: 16
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/components/LeavePanel.tsx",
-        lineNumber: 204,
+        lineNumber: 209,
         columnNumber: 10
     }, this);
 }
-_s(LeavePanel, "vxqLX+ts2cmfipuBj1RTuguIoWc=");
+_s(LeavePanel, "awdX+DuYEShYdsb2UEbIQTvCEew=");
 _c1 = LeavePanel;
 const DIALOG_TEXT = {
     request: {
@@ -1751,7 +1772,7 @@ function LeaveDialog({ state, staff, currentUserId, today, onClose, onSubmitted 
                             children: text.title
                         }, void 0, false, {
                             fileName: "[project]/components/LeavePanel.tsx",
-                            lineNumber: 298,
+                            lineNumber: 306,
                             columnNumber: 103
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -1762,13 +1783,13 @@ function LeaveDialog({ state, staff, currentUserId, today, onClose, onSubmitted 
                             children: "Close"
                         }, void 0, false, {
                             fileName: "[project]/components/LeavePanel.tsx",
-                            lineNumber: 298,
+                            lineNumber: 306,
                             columnNumber: 182
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/components/LeavePanel.tsx",
-                    lineNumber: 298,
+                    lineNumber: 306,
                     columnNumber: 7
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1779,7 +1800,7 @@ function LeaveDialog({ state, staff, currentUserId, today, onClose, onSubmitted 
                             children: text.help
                         }, void 0, false, {
                             fileName: "[project]/components/LeavePanel.tsx",
-                            lineNumber: 300,
+                            lineNumber: 308,
                             columnNumber: 23
                         }, this),
                         state.mode === 'create' && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
@@ -1798,7 +1819,7 @@ function LeaveDialog({ state, staff, currentUserId, today, onClose, onSubmitted 
                                             children: "Choose staff"
                                         }, void 0, false, {
                                             fileName: "[project]/components/LeavePanel.tsx",
-                                            lineNumber: 302,
+                                            lineNumber: 310,
                                             columnNumber: 11
                                         }, this),
                                         staff.filter((item)=>item.id !== currentUserId).map((item)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
@@ -1806,19 +1827,19 @@ function LeaveDialog({ state, staff, currentUserId, today, onClose, onSubmitted 
                                                 children: item.name || 'Unnamed staff'
                                             }, item.id, false, {
                                                 fileName: "[project]/components/LeavePanel.tsx",
-                                                lineNumber: 303,
+                                                lineNumber: 311,
                                                 columnNumber: 76
                                             }, this))
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/components/LeavePanel.tsx",
-                                    lineNumber: 301,
+                                    lineNumber: 309,
                                     columnNumber: 94
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/LeavePanel.tsx",
-                            lineNumber: 301,
+                            lineNumber: 309,
                             columnNumber: 37
                         }, this),
                         entry && state.mode === 'edit' && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1826,7 +1847,7 @@ function LeaveDialog({ state, staff, currentUserId, today, onClose, onSubmitted 
                             children: entry.user.name || 'Unnamed staff'
                         }, void 0, false, {
                             fileName: "[project]/components/LeavePanel.tsx",
-                            lineNumber: 305,
+                            lineNumber: 313,
                             columnNumber: 44
                         }, this),
                         !staffMode && person && (entitled ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1840,14 +1861,14 @@ function LeaveDialog({ state, staff, currentUserId, today, onClose, onSubmitted 
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/LeavePanel.tsx",
-                            lineNumber: 307,
+                            lineNumber: 315,
                             columnNumber: 13
                         }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                             className: "text-xs text-stone-500",
                             children: "No paid leave entitlement, so unpaid leave only."
                         }, void 0, false, {
                             fileName: "[project]/components/LeavePanel.tsx",
-                            lineNumber: 308,
+                            lineNumber: 316,
                             columnNumber: 13
                         }, this)),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
@@ -1867,7 +1888,7 @@ function LeaveDialog({ state, staff, currentUserId, today, onClose, onSubmitted 
                                                     children: "Annual leave"
                                                 }, void 0, false, {
                                                     fileName: "[project]/components/LeavePanel.tsx",
-                                                    lineNumber: 310,
+                                                    lineNumber: 318,
                                                     columnNumber: 26
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
@@ -1875,13 +1896,13 @@ function LeaveDialog({ state, staff, currentUserId, today, onClose, onSubmitted 
                                                     children: "Personal leave"
                                                 }, void 0, false, {
                                                     fileName: "[project]/components/LeavePanel.tsx",
-                                                    lineNumber: 310,
+                                                    lineNumber: 318,
                                                     columnNumber: 70
                                                 }, this)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/components/LeavePanel.tsx",
-                                            lineNumber: 310,
+                                            lineNumber: 318,
                                             columnNumber: 24
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("option", {
@@ -1889,19 +1910,19 @@ function LeaveDialog({ state, staff, currentUserId, today, onClose, onSubmitted 
                                             children: "Unpaid leave"
                                         }, void 0, false, {
                                             fileName: "[project]/components/LeavePanel.tsx",
-                                            lineNumber: 310,
+                                            lineNumber: 318,
                                             columnNumber: 122
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/components/LeavePanel.tsx",
-                                    lineNumber: 309,
+                                    lineNumber: 317,
                                     columnNumber: 64
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/LeavePanel.tsx",
-                            lineNumber: 309,
+                            lineNumber: 317,
                             columnNumber: 9
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1925,13 +1946,13 @@ function LeaveDialog({ state, staff, currentUserId, today, onClose, onSubmitted 
                                             className: `${input} mt-1 min-w-0`
                                         }, void 0, false, {
                                             fileName: "[project]/components/LeavePanel.tsx",
-                                            lineNumber: 313,
+                                            lineNumber: 321,
                                             columnNumber: 68
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/components/LeavePanel.tsx",
-                                    lineNumber: 313,
+                                    lineNumber: 321,
                                     columnNumber: 11
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
@@ -1948,19 +1969,19 @@ function LeaveDialog({ state, staff, currentUserId, today, onClose, onSubmitted 
                                             className: `${input} mt-1 min-w-0`
                                         }, void 0, false, {
                                             fileName: "[project]/components/LeavePanel.tsx",
-                                            lineNumber: 314,
+                                            lineNumber: 322,
                                             columnNumber: 66
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/components/LeavePanel.tsx",
-                                    lineNumber: 314,
+                                    lineNumber: 322,
                                     columnNumber: 11
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/LeavePanel.tsx",
-                            lineNumber: 312,
+                            lineNumber: 320,
                             columnNumber: 9
                         }, this),
                         minStart && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1974,7 +1995,7 @@ function LeaveDialog({ state, staff, currentUserId, today, onClose, onSubmitted 
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/LeavePanel.tsx",
-                            lineNumber: 316,
+                            lineNumber: 324,
                             columnNumber: 22
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
@@ -1993,13 +2014,13 @@ function LeaveDialog({ state, staff, currentUserId, today, onClose, onSubmitted 
                                     className: `${input} mt-1`
                                 }, void 0, false, {
                                     fileName: "[project]/components/LeavePanel.tsx",
-                                    lineNumber: 317,
+                                    lineNumber: 325,
                                     columnNumber: 67
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/LeavePanel.tsx",
-                            lineNumber: 317,
+                            lineNumber: 325,
                             columnNumber: 9
                         }, this),
                         days > 0 && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -2014,7 +2035,7 @@ function LeaveDialog({ state, staff, currentUserId, today, onClose, onSubmitted 
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/LeavePanel.tsx",
-                            lineNumber: 318,
+                            lineNumber: 326,
                             columnNumber: 22
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
@@ -2030,13 +2051,13 @@ function LeaveDialog({ state, staff, currentUserId, today, onClose, onSubmitted 
                                     className: `${input} mt-1 resize-y`
                                 }, void 0, false, {
                                     fileName: "[project]/components/LeavePanel.tsx",
-                                    lineNumber: 319,
+                                    lineNumber: 327,
                                     columnNumber: 58
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/LeavePanel.tsx",
-                            lineNumber: 319,
+                            lineNumber: 327,
                             columnNumber: 9
                         }, this),
                         error && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -2045,13 +2066,13 @@ function LeaveDialog({ state, staff, currentUserId, today, onClose, onSubmitted 
                             children: error
                         }, void 0, false, {
                             fileName: "[project]/components/LeavePanel.tsx",
-                            lineNumber: 320,
+                            lineNumber: 328,
                             columnNumber: 19
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/components/LeavePanel.tsx",
-                    lineNumber: 299,
+                    lineNumber: 307,
                     columnNumber: 7
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -2060,18 +2081,18 @@ function LeaveDialog({ state, staff, currentUserId, today, onClose, onSubmitted 
                     children: busy ? 'Saving...' : text.send
                 }, void 0, false, {
                     fileName: "[project]/components/LeavePanel.tsx",
-                    lineNumber: 322,
+                    lineNumber: 330,
                     columnNumber: 7
                 }, this)
             ]
         }, void 0, true, {
             fileName: "[project]/components/LeavePanel.tsx",
-            lineNumber: 297,
+            lineNumber: 305,
             columnNumber: 5
         }, this)
     }, void 0, false, {
         fileName: "[project]/components/LeavePanel.tsx",
-        lineNumber: 296,
+        lineNumber: 304,
         columnNumber: 10
     }, this);
 }
@@ -4127,9 +4148,7 @@ const LEAVE_LABELS = {
 const LEAVE_STATUS_LABELS = {
     PENDING: 'Pending',
     APPROVED: 'Approved',
-    REJECTED: 'Not approved',
-    CANCEL_REQUESTED: 'Cancellation requested',
-    CANCELLED: 'Cancelled'
+    OTHERS: 'Not approved / Cancelled / Cancellation requested'
 };
 if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
     __turbopack_context__.k.registerExports(__turbopack_context__.m, globalThis.$RefreshHelpers$);

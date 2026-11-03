@@ -22,11 +22,18 @@ export default function StaffListPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ACTIVE');
   const query = search.trim().toLowerCase();
+  const [sortOrder, setSortOrder] = useState<'AZ' | 'ZA'>('AZ');
+  const direction = sortOrder === 'ZA' ? -1 : 1;
+
+  //alphabetically (ignoring upper/lower case)
   const filteredStaff = staffList.filter((staff) =>
     (statusFilter === 'ALL' || staff.status === statusFilter) &&
     (staff.name || 'Unnamed Staff').toLowerCase().includes(query)
-  ).sort((a, b) => Number(a.status === 'INACTIVE') - Number(b.status === 'INACTIVE'));
-
+  ).sort((a, b) =>
+    Number(a.status === 'INACTIVE') - Number(b.status === 'INACTIVE') ||
+    direction * (a.name || 'Unnamed Staff').localeCompare(b.name || 'Unnamed Staff', 'en', { sensitivity: 'base' })
+  );
+  
   useEffect(() => {
     async function fetchStaff() {
       try {

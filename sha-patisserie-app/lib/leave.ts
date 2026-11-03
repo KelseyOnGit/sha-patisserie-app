@@ -34,7 +34,5 @@ export const LEAVE_LABELS: Record<string, string> = { ANNUAL: 'Annual leave', PE
 export const LEAVE_STATUS_LABELS: Record<string, string> = {
   PENDING: 'Pending',
   APPROVED: 'Approved',
-  REJECTED: 'Not approved',
-  CANCEL_REQUESTED: 'Cancellation requested',
-  CANCELLED: 'Cancelled',
+  OTHERS: 'Not approved / Cancelled / Cancellation requested',
 };
