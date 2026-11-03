@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   DEFAULT_WORKING_HOURS,
   type DayOfWeek,
@@ -78,6 +79,7 @@ export default function StaffProfileForm({ id }: StaffProfileFormProps) {
   });
 
   const [saving, setSaving] = useState(false);
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [savedFormData, setSavedFormData] = useState<StaffProfileData | null>(null);
@@ -239,9 +241,22 @@ export default function StaffProfileForm({ id }: StaffProfileFormProps) {
       `End the profile for ${formData.fullName || 'this staff member'}? Save changes to deactivate access and remove them from current/future rosters. Past shifts and payroll history will be retained.`
     );
 
-    if (confirmEnd) {
-      setFormData((prev) => ({ ...prev, accountStatus: 'Inactive (Left Company)' }));
-      setMessage('Profile marked as Inactive. Don\'t forget to save changes.');
+    if (!confirmEnd) return;
+    setSaving(true);
+    setMessage('');
+    try {
+      const res = await fetch('/api/admin/staff/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...formData, accountStatus: 'Inactive (Left Company)', userId: id }),
+      });
+      const data = await readApiResponse<{ error?: string }>(res);
+      if (!res.ok) throw new Error(data.error || 'Failed to end profile');
+      router.push('/admin/staff');
+      router.refresh();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Failed to end profile.');
+      setSaving(false);
     }
   };
 
@@ -699,23 +714,25 @@ export default function StaffProfileForm({ id }: StaffProfileFormProps) {
               )}
             </section>
 
-            {/* SECTION 4: Offboarding */}
-            <section className="rounded-2xl border border-rose-200 bg-rose-50/40 p-6 shadow-xs flex items-center justify-between">
+          </fieldset>
+
+          {/* SECTION 4: Offboarding */}
+            <section className="mt-8 rounded-2xl border border-rose-200 bg-rose-50/40 p-6 shadow-xs flex items-center justify-between">
               <div>
                 <h2 className="text-base font-semibold text-rose-900">4. Offboarding</h2>
                 <p className="text-xs text-rose-700 mt-0.5">
-                  Deactivate staff access and mark account status as Inactive.
+                  Ends the profile straight away: blocks access, removes upcoming shifts and keeps past shifts and payroll history.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={handleOffboard}
+                disabled={saving || loading}
                 className="rounded-lg border border-rose-300 bg-white px-4 py-2 text-xs font-bold text-rose-700 shadow-xs hover:bg-rose-100 transition"
               >
                 End Profile
               </button>
             </section>
-          </fieldset>
 
           {/* Action Buttons */}
           {isEditing && (

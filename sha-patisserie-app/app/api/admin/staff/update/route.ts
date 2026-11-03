@@ -122,7 +122,8 @@ export async function POST(request: Request) {
     )) {
       return NextResponse.json({ error: 'Choose an employment type and non-negative leave hours (up to two decimal places).' }, { status: 400 });
     }
-    const updatedUser = await prisma.user.update({
+    const updatedUser = await prisma.$transaction(async (tx) => {
+    const result = await tx.user.update({
       where: { id: userId },
       data: {
         ...(isPrivilegedRole(session.role) ? {
@@ -157,6 +158,12 @@ export async function POST(request: Request) {
         },
       },
       select: profileSelect,
+    });
+    if (accountStatus === 'Inactive (Left Company)') {
+      // Past shifts and anything with a timesheet stay for payroll history.
+      await tx.shift.deleteMany({ where: { userId, startTime: { gt: new Date() }, timesheet: null } });
+    }
+    return result;
     });
 
     return NextResponse.json({ user: updatedUser });
