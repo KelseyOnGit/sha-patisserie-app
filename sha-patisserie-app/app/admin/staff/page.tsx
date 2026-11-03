@@ -13,6 +13,12 @@ interface StaffMember {
   isApproved: boolean;
 }
 
+// Sha Patisserie first, then Zushi Bento, then anyone without a venue.
+const LOCATION_RANK: Record<string, number> = { SHA: 0, ZB: 1 };
+const LOCATION_NAME: Record<string, string> = { SHA: 'Sha Patisserie', ZB: 'Zushi Bento' };
+const locationRank = (staff: StaffMember) => LOCATION_RANK[staff.location?.code ?? ''] ?? 2;
+const locationName = (staff: StaffMember) => LOCATION_NAME[staff.location?.code ?? ''] ?? 'Unassigned';
+
 export default function StaffListPage() {
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -21,19 +27,35 @@ export default function StaffListPage() {
   const [canManageRoles, setCanManageRoles] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ACTIVE');
-  const query = search.trim().toLowerCase();
   const [sortOrder, setSortOrder] = useState<'AZ' | 'ZA'>('AZ');
+  const [groupBy, setGroupBy] = useState<'LOCATION' | 'NONE'>('LOCATION');
+  const query = search.trim().toLowerCase();
   const direction = sortOrder === 'ZA' ? -1 : 1;
 
-  //alphabetically (ignoring upper/lower case)
+  // Order: active staff first, inactive staff last. When grouping by location,
+  // Sha Patisserie comes first, then Zushi Bento, then unassigned. Within each
+  // group, names are alphabetical (ignoring upper/lower case).
   const filteredStaff = staffList.filter((staff) =>
     (statusFilter === 'ALL' || staff.status === statusFilter) &&
     (staff.name || 'Unnamed Staff').toLowerCase().includes(query)
   ).sort((a, b) =>
     Number(a.status === 'INACTIVE') - Number(b.status === 'INACTIVE') ||
+    (groupBy === 'LOCATION' ? locationRank(a) - locationRank(b) : 0) ||
     direction * (a.name || 'Unnamed Staff').localeCompare(b.name || 'Unnamed Staff', 'en', { sensitivity: 'base' })
   );
-  
+
+  // The heading shown above each group of rows (empty means no heading).
+  const groupLabel = (staff: StaffMember) => {
+    const inactive = staff.status === 'INACTIVE';
+    if (groupBy === 'LOCATION') return `${inactive ? 'Inactive · ' : ''}${locationName(staff)}`;
+    return inactive ? 'Inactive staff' : '';
+  };
+  const groupCounts = new Map<string, number>();
+  for (const staff of filteredStaff) {
+    const label = groupLabel(staff);
+    groupCounts.set(label, (groupCounts.get(label) ?? 0) + 1);
+  }
+
   useEffect(() => {
     async function fetchStaff() {
       try {
@@ -100,15 +122,26 @@ export default function StaffListPage() {
             placeholder="Search by name..."
             className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm" />
         </label>
-        <label className="grid gap-1 text-sm font-medium text-stone-700">
-          Staff status
-          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}
-            className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm">
-            <option value="ACTIVE">Show Active</option>
-            <option value="INACTIVE">Show Inactive</option>
-            <option value="ALL">Show All</option>
-          </select>
-        </label>
+        <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-end">
+
+          <label className="grid gap-1 text-sm font-medium text-stone-700">
+            Sort by
+            <select value={sortOrder} onChange={(event) => setSortOrder(event.target.value === 'ZA' ? 'ZA' : 'AZ')}
+              className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm">
+              <option value="AZ">Name A to Z</option>
+              <option value="ZA">Name Z to A</option>
+            </select>
+          </label>
+          <label className="grid gap-1 text-sm font-medium text-stone-700">
+            Staff status
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}
+              className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm">
+              <option value="ACTIVE">Show Active</option>
+              <option value="INACTIVE">Show Inactive</option>
+              <option value="ALL">Show All</option>
+            </select>
+          </label>
+        </div>
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-xs">
@@ -130,13 +163,20 @@ export default function StaffListPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-100">
-              {filteredStaff.map((staff, index) => (
+              {filteredStaff.map((staff, index) => {
+                const label = groupLabel(staff);
+                const showHeader = label !== '' && (index === 0 || groupLabel(filteredStaff[index - 1]) !== label);
+                const inactive = staff.status === 'INACTIVE';
+                return (
                 <Fragment key={staff.id}>
-                {statusFilter === 'ALL' && staff.status === 'INACTIVE' &&
-                  (index === 0 || filteredStaff[index - 1].status !== 'INACTIVE') && (
-                  <tr><td colSpan={5} className="bg-rose-50 px-6 py-2 text-xs font-bold uppercase tracking-wide text-rose-700">Inactive staff</td></tr>
+                {showHeader && (
+                  <tr>
+                    <td colSpan={5} className={`px-6 py-2 text-xs font-bold uppercase tracking-wide ${inactive ? 'bg-rose-50 text-rose-700' : 'bg-stone-100 text-stone-600'}`}>
+                      {label} ({groupCounts.get(label)})
+                    </td>
+                  </tr>
                 )}
-                <tr className={staff.status === 'INACTIVE' ? 'bg-rose-50 hover:bg-rose-100 transition' : 'hover:bg-stone-50/80 transition'}>
+                <tr className={inactive ? 'bg-rose-50 hover:bg-rose-100 transition' : 'hover:bg-stone-50/80 transition'}>
                   <td data-label="Name" className="px-6 py-4 font-semibold text-stone-900">
                     {staff.name || 'Unnamed Staff'}
                   </td>
@@ -155,7 +195,7 @@ export default function StaffListPage() {
                     </select>
                   </td>
                   <td data-label="Status" className="px-6 py-4">
-                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold border ${staff.status === 'INACTIVE' ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
+                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold border ${inactive ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
                       {staff.status}
                     </span>
                   </td>
@@ -177,7 +217,8 @@ export default function StaffListPage() {
                   </td>
                 </tr>
                 </Fragment>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         )}
