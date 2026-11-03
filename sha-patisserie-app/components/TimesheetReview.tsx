@@ -147,6 +147,31 @@ export default function TimesheetReview({ userId }: { userId: string }) {
      setPrefill({ sourceKey: row.sourceKey, periods: [{ start: created.start, end: created.end }], breakMinutes: created.breakMinutes, reason: created.reason });
      setSelected(row);
    };
+  const handleAdminClockOut = async (row: ReviewRow) => {
+    const openLog = row.actual.find((log) => log.clockOut === null);
+    if (!openLog) return;
+    const suggested = row.scheduledEnd && new Date(row.scheduledEnd).getTime() < Date.now()
+      ? timeShort(row.scheduledEnd).replace('.', ':') : '';
+    const input = window.prompt(`Clock out ${row.staffName} at what time? (24h HH:MM)`, suggested);
+    if (!input) return;
+    const match = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(input.trim());
+    if (!match) { setError('Enter the time as HH:MM, e.g. 14:30.'); return; }
+    let out = new Date(`${row.workDate}T${match[1].padStart(2, '0')}:${match[2]}:00+08:00`);
+    if (out <= new Date(openLog.clockIn)) out = new Date(out.getTime() + 86400000);
+    setError(''); setSavingBatch(true);
+    try {
+      const response = await fetch('/api/admin/reports/clock-out', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: row.userId, timeLogId: openLog.id, clockOut: out.toISOString() }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Unable to clock out.');
+      await refreshReport();
+      setMessage(`${row.staffName} clocked out.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to clock out.');
+    } finally { setSavingBatch(false); }
+  };
   const shifts = report?.shifts ?? [];
   const weekDays = getWeekDays(weekStart);
 
@@ -466,9 +491,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
       {report && (
         <div data-testid="payroll-summary-cards" className="hidden gap-3 md:grid md:grid-cols-3">
           {[
-            ['Staff with shifts thisweek', consolidatedStaffList.length],
             ['Awaiting approval / pending', shifts.filter((row) => row.status !== 'APPROVED').length],
-            ['Approved hours (selected venue/staff)', `${totalHours.toFixed(2)} h`],
           ].map(([label, value]) => (
             <div key={label} className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-wider text-stone-500">{label}</p>
@@ -617,6 +640,16 @@ export default function TimesheetReview({ userId }: { userId: string }) {
                                     </span>
                                   )}
                                 </div>
+                                {row.inProgress && row.actual.some((log) => log.clockOut === null) && (
+                                  <button
+                                    type="button"
+                                    disabled={writesBlocked}
+                                    onClick={() => void handleAdminClockOut(row)}
+                                    className="w-full rounded border border-amber-400 bg-amber-50 px-1 py-0.5 text-[10px] font-bold text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                                  >
+                                    Clock out
+                                  </button>
+                                )}
                                 <div className="flex justify-between">
                                   <span className="font-semibold text-stone-500">Break:</span>
                                   <PayrollBreakStatus row={row} />

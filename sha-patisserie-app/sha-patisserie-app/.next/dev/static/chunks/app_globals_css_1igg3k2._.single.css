@@ -1578,6 +1578,10 @@
     }
   }
 
+  .bg-amber-500 {
+    background-color: var(--color-amber-500);
+  }
+
   .bg-amber-600 {
     background-color: var(--color-amber-600);
   }
@@ -2625,6 +2629,10 @@
 
     .hover\:bg-\[\#B77D96\]:hover {
       background-color: #b77d96;
+    }
+
+    .hover\:bg-amber-100:hover {
+      background-color: var(--color-amber-100);
     }
 
     .hover\:bg-amber-200:hover {

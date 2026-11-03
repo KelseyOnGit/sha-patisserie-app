@@ -110,18 +110,6 @@ export async function POST(req: Request) {
           }
         }
 
-        if (action === 'APPROVE' && periods.length) {
-          const others = await tx.timesheet.findMany({
-            where: { userId: row.userId, status: 'APPROVED', sourceKey: { not: sourceKey } },
-            select: { payablePeriods: true },
-          });
-          const overlaps = others.some((other) => readPeriods(other.payablePeriods).some((existing) =>
-            periods.some((period) => new Date(period.start) < new Date(existing.end) &&
-              new Date(period.end) > new Date(existing.start))));
-          if (overlaps) {
-            throw new ReviewError(`Payable periods for ${row.staffName} overlap another approved timesheet. Reopen or correct the other entry first.`);
-          }
-        }
 
         const approved = action === 'APPROVE';
         const data = {
