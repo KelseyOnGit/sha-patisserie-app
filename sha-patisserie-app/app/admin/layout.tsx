@@ -21,17 +21,22 @@ export default async function AdminLayout({
 
   // Query pending user count directly on the server
   let pendingCount = 0;
+  let pendingLeavesCount = 0;
   try {
-    pendingCount = await prisma.user.count({
-      where: { isApproved: false },
-    });
+    const [users, leaves] = await Promise.all([
+      prisma.user.count({ where: { isApproved: false } }),
+      prisma.leaveRequest.findMany({ where: { status: 'PENDING' }, select: { id: true, requestGroupId: true } }),
+    ]);
+    pendingCount = users;
+    // One request spans many daily rows; count each request once.
+    pendingLeavesCount = new Set(leaves.map((leave) => leave.requestGroupId ?? leave.id)).size;
   } catch (error) {
-    console.error('Failed to fetch pending user count:', error);
+    console.error('Failed to fetch pending counts:', error);
   }
 
   return (
     <div className="flex min-h-screen flex-col bg-stone-100 md:flex-row">
-      <AdminNav role={session.role} pendingCount={pendingCount}>
+      <AdminNav role={session.role} pendingUsersCount={pendingCount} pendingLeavesCount={pendingLeavesCount}>
         <LogoutButton>Log out</LogoutButton>
       </AdminNav>
 

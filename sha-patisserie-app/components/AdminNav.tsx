@@ -5,11 +5,13 @@ import Link from 'next/link';
 
 export default function AdminNav({
   role,
-  pendingCount,
+  pendingUsersCount,
+  pendingLeavesCount,
   children,
 }: {
   role?: string;
-  pendingCount: number;
+  pendingUsersCount: number;
+  pendingLeavesCount: number;
   children: React.ReactNode; // the logout button, passed in from the server layout
 }) {
   const [open, setOpen] = useState(false);
@@ -29,8 +31,8 @@ export default function AdminNav({
           className="relative rounded-md border border-stone-600 px-3 py-2 text-sm font-semibold md:hidden"
         >
           {open ? 'Close' : 'Menu'}
-          {!open && pendingCount > 0 && (
-            <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-rose-600" aria-label={`${pendingCount} pending users`} />
+          {!open && pendingUsersCount + pendingLeavesCount > 0 && (
+            <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-rose-600" aria-label={`${pendingUsersCount} pending users, ${pendingLeavesCount} pending leave requests`} />
           )}
         </button>
       </div>
@@ -48,12 +50,19 @@ export default function AdminNav({
             <Link href="/admin/admin-users" onClick={close} className={link}>Admin Users</Link>
           )}
           <Link href="/admin/reports" onClick={close} className={link}>Payroll Reports</Link>
-          <Link href="/admin/leave" onClick={close} className={link}>Leave Requests</Link>
+          <Link href="/admin/leave" onClick={close} className={`${link} flex items-center justify-between`}>
+            <span>Leave Requests</span>
+            {pendingLeavesCount > 0 && (
+              <span className="ml-auto inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-rose-600 px-1.5 text-[11px] font-bold text-white shadow-xs">
+                {pendingLeavesCount > 99 ? '99+' : pendingLeavesCount}
+              </span>
+            )}
+            </Link>
           <Link href="/admin/users" onClick={close} className={`${link} flex items-center justify-between`}>
             <span>Pending Users</span>
-            {pendingCount > 0 && (
+            {pendingUsersCount > 0 && (
               <span className="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-rose-600 px-1.5 text-[11px] font-bold text-white shadow-xs">
-                {pendingCount > 99 ? '99+' : pendingCount}
+                {pendingUsersCount > 99 ? '99+' : pendingUsersCount}
               </span>
             )}
           </Link>
