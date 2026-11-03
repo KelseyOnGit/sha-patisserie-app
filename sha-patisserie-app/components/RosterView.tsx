@@ -6,12 +6,73 @@ interface ShiftItem { id: string; date: string; day: string; venue: string; star
 interface LeaveItem { id: string; date: string; day: string; type: string; status: string; statusLabel: string; hours: number }
 interface HolidayItem { date: string; day: string; name: string }
 
+// Consecutive days of the same leave type and status are shown as one card.
+interface LeaveRange {
+  key: string;
+  startDate: string;
+  endDate: string;
+  days: number;
+  firstDayLabel: string;
+  type: string;
+  status: string;
+  statusLabel: string;
+}
+
 type Entry =
   | { kind: 'holiday'; key: string; date: string; data: HolidayItem }
-  | { kind: 'leave'; key: string; date: string; data: LeaveItem }
+  | { kind: 'leave'; key: string; date: string; data: LeaveRange }
   | { kind: 'shift'; key: string; date: string; data: ShiftItem };
 
 const ORDER = { holiday: 0, leave: 1, shift: 2 } as const;
+
+const dayKey = (value: string) => value.slice(0, 10);
+
+function nextDay(value: string) {
+  return new Date(Date.parse(`${value}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
+}
+
+function shortDate(value: string, withYear: boolean) {
+  return new Intl.DateTimeFormat('en-AU', {
+    timeZone: 'UTC',
+    day: 'numeric',
+    month: 'short',
+    ...(withYear ? { year: 'numeric' } : {}),
+  }).format(new Date(`${value}T00:00:00Z`));
+}
+
+function rangeLabel(range: LeaveRange) {
+  if (range.days === 1) return range.firstDayLabel;
+  const differentYears = range.startDate.slice(0, 4) !== range.endDate.slice(0, 4);
+  return `${shortDate(range.startDate, differentYears)} – ${shortDate(range.endDate, differentYears)}`;
+}
+
+function groupLeave(items: LeaveItem[]): LeaveRange[] {
+  const sorted = [...items].sort((a, b) => dayKey(a.date).localeCompare(dayKey(b.date)));
+  const ranges: LeaveRange[] = [];
+
+  for (const item of sorted) {
+    const date = dayKey(item.date);
+    const last = ranges[ranges.length - 1];
+    if (last && last.type === item.type && last.status === item.status && date === nextDay(last.endDate)) {
+      last.endDate = date;
+      last.days += 1;
+    } else if (last && last.type === item.type && last.status === item.status && date === last.endDate) {
+      continue; // the same day listed twice
+    } else {
+      ranges.push({
+        key: `l-${item.id}`,
+        startDate: date,
+        endDate: date,
+        days: 1,
+        firstDayLabel: item.day,
+        type: item.type,
+        status: item.status,
+        statusLabel: item.statusLabel,
+      });
+    }
+  }
+  return ranges;
+}
 
 export default function RosterView() {
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -31,13 +92,13 @@ export default function RosterView() {
 
         const merged: Entry[] = [
           ...holidays.map((h): Entry => ({ kind: 'holiday', key: `h-${h.date}`, date: h.date, data: h })),
-          ...leave.map((l): Entry => ({ kind: 'leave', key: `l-${l.id}`, date: l.date, data: l })),
+          ...groupLeave(leave).map((range): Entry => ({ kind: 'leave', key: range.key, date: range.startDate, data: range })),
           ...shifts.map((s): Entry => ({ kind: 'shift', key: `s-${s.id}`, date: s.date, data: s })),
         ].sort((a, b) => a.date.localeCompare(b.date) || ORDER[a.kind] - ORDER[b.kind]);
 
         setEntries(merged);
-      } catch (err: any) {
-        setError(err.message || 'Error loading roster');
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Error loading roster');
       } finally {
         setLoading(false);
       }
@@ -76,20 +137,23 @@ export default function RosterView() {
             }
 
             if (entry.kind === 'leave') {
-              const confirmed = entry.data.status === 'APPROVED';
+              const leave = entry.data;
+              const confirmed = leave.status === 'APPROVED';
               return (
                 <div
                   key={entry.key}
-                  className={`p-3.5 bg-emerald-50 rounded-2xl border flex justify-between items-center ${
+                  className={`p-3.5 bg-emerald-50 rounded-2xl border flex justify-between items-center gap-3 ${
                     confirmed ? 'border-emerald-200' : 'border-dashed border-emerald-300'
                   }`}
                 >
-                  <div>
-                    <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider">{entry.data.day}</p>
-                    <p className="text-sm font-semibold text-emerald-900">{entry.data.type}</p>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider">
+                      {rangeLabel(leave)}{leave.days > 1 ? ` · ${leave.days} days` : ''}
+                    </p>
+                    <p className="text-sm font-semibold text-emerald-900">{leave.type}</p>
                   </div>
-                  <span className="text-xs font-bold bg-emerald-100 text-emerald-800 px-3 py-1.5 rounded-full">
-                    {confirmed ? 'On leave' : entry.data.statusLabel}
+                  <span className="shrink-0 text-xs font-bold bg-emerald-100 text-emerald-800 px-3 py-1.5 rounded-full">
+                    {confirmed ? 'On leave' : leave.statusLabel}
                   </span>
                 </div>
               );

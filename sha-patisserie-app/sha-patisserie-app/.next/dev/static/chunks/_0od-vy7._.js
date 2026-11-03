@@ -2190,6 +2190,53 @@ const ORDER = {
     leave: 1,
     shift: 2
 };
+const dayKey = (value)=>value.slice(0, 10);
+function nextDay(value) {
+    return new Date(Date.parse(`${value}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
+}
+function shortDate(value, withYear) {
+    return new Intl.DateTimeFormat('en-AU', {
+        timeZone: 'UTC',
+        day: 'numeric',
+        month: 'short',
+        ...withYear ? {
+            year: 'numeric'
+        } : {}
+    }).format(new Date(`${value}T00:00:00Z`));
+}
+function rangeLabel(range) {
+    if (range.days === 1) return range.firstDayLabel;
+    const differentYears = range.startDate.slice(0, 4) !== range.endDate.slice(0, 4);
+    return `${shortDate(range.startDate, differentYears)} – ${shortDate(range.endDate, differentYears)}`;
+}
+function groupLeave(items) {
+    const sorted = [
+        ...items
+    ].sort((a, b)=>dayKey(a.date).localeCompare(dayKey(b.date)));
+    const ranges = [];
+    for (const item of sorted){
+        const date = dayKey(item.date);
+        const last = ranges[ranges.length - 1];
+        if (last && last.type === item.type && last.status === item.status && date === nextDay(last.endDate)) {
+            last.endDate = date;
+            last.days += 1;
+        } else if (last && last.type === item.type && last.status === item.status && date === last.endDate) {
+            continue; // the same day listed twice
+        } else {
+            ranges.push({
+                key: `l-${item.id}`,
+                startDate: date,
+                endDate: date,
+                days: 1,
+                firstDayLabel: item.day,
+                type: item.type,
+                status: item.status,
+                statusLabel: item.statusLabel
+            });
+        }
+    }
+    return ranges;
+}
 function RosterView() {
     _s();
     const [entries, setEntries] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])([]);
@@ -2214,12 +2261,12 @@ function RosterView() {
                                     data: h
                                 })
                         }["RosterView.useEffect.fetchRoster.merged"]),
-                        ...leave.map({
-                            "RosterView.useEffect.fetchRoster.merged": (l)=>({
+                        ...groupLeave(leave).map({
+                            "RosterView.useEffect.fetchRoster.merged": (range)=>({
                                     kind: 'leave',
-                                    key: `l-${l.id}`,
-                                    date: l.date,
-                                    data: l
+                                    key: range.key,
+                                    date: range.startDate,
+                                    data: range
                                 })
                         }["RosterView.useEffect.fetchRoster.merged"]),
                         ...shifts.map({
@@ -2235,7 +2282,7 @@ function RosterView() {
                     }["RosterView.useEffect.fetchRoster.merged"]);
                     setEntries(merged);
                 } catch (err) {
-                    setError(err.message || 'Error loading roster');
+                    setError(err instanceof Error ? err.message : 'Error loading roster');
                 } finally{
                     setLoading(false);
                 }
@@ -2251,7 +2298,7 @@ function RosterView() {
                 children: "Upcoming Roster"
             }, void 0, false, {
                 fileName: "[project]/components/RosterView.tsx",
-                lineNumber: 50,
+                lineNumber: 111,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -2259,7 +2306,7 @@ function RosterView() {
                 children: "Your shifts, leave and WA public holidays"
             }, void 0, false, {
                 fileName: "[project]/components/RosterView.tsx",
-                lineNumber: 51,
+                lineNumber: 112,
                 columnNumber: 7
             }, this),
             loading && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -2267,7 +2314,7 @@ function RosterView() {
                 children: "Loading shifts..."
             }, void 0, false, {
                 fileName: "[project]/components/RosterView.tsx",
-                lineNumber: 53,
+                lineNumber: 114,
                 columnNumber: 19
             }, this),
             error && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -2275,7 +2322,7 @@ function RosterView() {
                 children: error
             }, void 0, false, {
                 fileName: "[project]/components/RosterView.tsx",
-                lineNumber: 54,
+                lineNumber: 115,
                 columnNumber: 17
             }, this),
             !loading && !error && entries.length === 0 && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -2286,7 +2333,7 @@ function RosterView() {
                         children: "No shifts scheduled"
                     }, void 0, false, {
                         fileName: "[project]/components/RosterView.tsx",
-                        lineNumber: 58,
+                        lineNumber: 119,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -2294,13 +2341,13 @@ function RosterView() {
                         children: "Check back later for updates"
                     }, void 0, false, {
                         fileName: "[project]/components/RosterView.tsx",
-                        lineNumber: 59,
+                        lineNumber: 120,
                         columnNumber: 11
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/RosterView.tsx",
-                lineNumber: 57,
+                lineNumber: 118,
                 columnNumber: 9
             }, this),
             !loading && !error && entries.length > 0 && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -2317,7 +2364,7 @@ function RosterView() {
                                             children: entry.data.day
                                         }, void 0, false, {
                                             fileName: "[project]/components/RosterView.tsx",
-                                            lineNumber: 70,
+                                            lineNumber: 131,
                                             columnNumber: 21
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -2325,13 +2372,13 @@ function RosterView() {
                                             children: entry.data.name
                                         }, void 0, false, {
                                             fileName: "[project]/components/RosterView.tsx",
-                                            lineNumber: 71,
+                                            lineNumber: 132,
                                             columnNumber: 21
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/components/RosterView.tsx",
-                                    lineNumber: 69,
+                                    lineNumber: 130,
                                     columnNumber: 19
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -2339,57 +2386,62 @@ function RosterView() {
                                     children: "Public holiday"
                                 }, void 0, false, {
                                     fileName: "[project]/components/RosterView.tsx",
-                                    lineNumber: 73,
+                                    lineNumber: 134,
                                     columnNumber: 19
                                 }, this)
                             ]
                         }, entry.key, true, {
                             fileName: "[project]/components/RosterView.tsx",
-                            lineNumber: 68,
+                            lineNumber: 129,
                             columnNumber: 17
                         }, this);
                     }
                     if (entry.kind === 'leave') {
-                        const confirmed = entry.data.status === 'APPROVED';
+                        const leave = entry.data;
+                        const confirmed = leave.status === 'APPROVED';
                         return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                            className: `p-3.5 bg-emerald-50 rounded-2xl border flex justify-between items-center ${confirmed ? 'border-emerald-200' : 'border-dashed border-emerald-300'}`,
+                            className: `p-3.5 bg-emerald-50 rounded-2xl border flex justify-between items-center gap-3 ${confirmed ? 'border-emerald-200' : 'border-dashed border-emerald-300'}`,
                             children: [
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                    className: "min-w-0",
                                     children: [
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                                             className: "text-[10px] font-bold text-emerald-500 uppercase tracking-wider",
-                                            children: entry.data.day
-                                        }, void 0, false, {
+                                            children: [
+                                                rangeLabel(leave),
+                                                leave.days > 1 ? ` · ${leave.days} days` : ''
+                                            ]
+                                        }, void 0, true, {
                                             fileName: "[project]/components/RosterView.tsx",
-                                            lineNumber: 88,
+                                            lineNumber: 150,
                                             columnNumber: 21
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                                             className: "text-sm font-semibold text-emerald-900",
-                                            children: entry.data.type
+                                            children: leave.type
                                         }, void 0, false, {
                                             fileName: "[project]/components/RosterView.tsx",
-                                            lineNumber: 89,
+                                            lineNumber: 153,
                                             columnNumber: 21
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/components/RosterView.tsx",
-                                    lineNumber: 87,
+                                    lineNumber: 149,
                                     columnNumber: 19
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
-                                    className: "text-xs font-bold bg-emerald-100 text-emerald-800 px-3 py-1.5 rounded-full",
-                                    children: confirmed ? 'On leave' : entry.data.statusLabel
+                                    className: "shrink-0 text-xs font-bold bg-emerald-100 text-emerald-800 px-3 py-1.5 rounded-full",
+                                    children: confirmed ? 'On leave' : leave.statusLabel
                                 }, void 0, false, {
                                     fileName: "[project]/components/RosterView.tsx",
-                                    lineNumber: 91,
+                                    lineNumber: 155,
                                     columnNumber: 19
                                 }, this)
                             ]
                         }, entry.key, true, {
                             fileName: "[project]/components/RosterView.tsx",
-                            lineNumber: 81,
+                            lineNumber: 143,
                             columnNumber: 17
                         }, this);
                     }
@@ -2403,7 +2455,7 @@ function RosterView() {
                                         children: entry.data.day
                                     }, void 0, false, {
                                         fileName: "[project]/components/RosterView.tsx",
-                                        lineNumber: 101,
+                                        lineNumber: 165,
                                         columnNumber: 19
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -2411,13 +2463,13 @@ function RosterView() {
                                         children: entry.data.venue
                                     }, void 0, false, {
                                         fileName: "[project]/components/RosterView.tsx",
-                                        lineNumber: 102,
+                                        lineNumber: 166,
                                         columnNumber: 19
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/RosterView.tsx",
-                                lineNumber: 100,
+                                lineNumber: 164,
                                 columnNumber: 17
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -2429,25 +2481,25 @@ function RosterView() {
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/RosterView.tsx",
-                                lineNumber: 104,
+                                lineNumber: 168,
                                 columnNumber: 17
                             }, this)
                         ]
                     }, entry.key, true, {
                         fileName: "[project]/components/RosterView.tsx",
-                        lineNumber: 99,
+                        lineNumber: 163,
                         columnNumber: 15
                     }, this);
                 })
             }, void 0, false, {
                 fileName: "[project]/components/RosterView.tsx",
-                lineNumber: 64,
+                lineNumber: 125,
                 columnNumber: 9
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/components/RosterView.tsx",
-        lineNumber: 49,
+        lineNumber: 110,
         columnNumber: 5
     }, this);
 }
