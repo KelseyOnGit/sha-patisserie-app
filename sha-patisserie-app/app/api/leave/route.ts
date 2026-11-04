@@ -17,7 +17,7 @@ type Body = Record<string, unknown>;
 const SERIALIZABLE = { isolationLevel: Prisma.TransactionIsolationLevel.Serializable };
 const OPEN: LeaveStatus[] = ['PENDING', 'APPROVED', 'CANCEL_REQUESTED'];
 const staffSelect = { id: true, name: true, employmentType: true, annualLeaveHours: true, personalLeaveHours: true } as const;
-const EMAIL_WARNING = ' Your leave was saved, but the notification email could not be sent. Please contact your manager; do not submit again.';
+const EMAIL_WARNING = ' Your leave was saved, but the notification email could not be sent. ';
 
 function dateValue(value: unknown) {
   try { return leaveDate(value); }
