@@ -35,18 +35,29 @@ use the Network URL printed by Next.js, on the same local network.
 ### Worked hours versus paid leave
 
 Timesheet entries classified as Annual leave or Personal leave are excluded
-from weekly worked-hour totals and approved worked payroll/gross. Leave hours
-are shown separately in the weekly totals, leave table and CSV. Approved leave
+from weekly worked-hour totals. Payroll table and CSV use matching columns:
+Staff Member, Employment Status, Site, Rate, Worked Hours, Leave Hours, Total,
+Total Gross, Leave Type and Leave Date (dd-mm-yyyy). There is no separate leave
+table. Total is worked plus paid leave hours; Total Gross is Total times rate.
+Unpaid leave can appear in the type/date columns but adds no paid hours.
+Approved leave
 records are used for leave hours; a matching staff/date/type timesheet entry
 does not add the same leave a second time. Without a matching leave record,
-the classified timesheet's net hours are displayed as leave hours.
+the approved, current classified timesheet's net hours are used for payroll
+leave hours. Pending classified entries remain visible in weekly review only.
 
 Approved leave does not automatically subtract actual work. If worked hours
 and approved leave occur on the same day, the weekly row shows a warning for
 manager review. Classify a leave-only entry correctly rather than deleting
 genuine attendance. Four 8-hour worked days plus an 8-hour Annual leave entry
 therefore show 32 worked hours and 8 Annual leave hours, not 40 worked hours.
-Leave pay is not calculated in the worked-gross figure.
+For example, 32 worked hours plus 7.5 Annual leave hours at $35.45 gives 39.5
+total paid hours and $1,400.28 displayed gross. Leave is assigned once per
+staff/site/rate, including leave-only staff. Approved leave uses the current
+profile rate and profile site; classified-only approved leave uses its approved
+timesheet rate/site. Different rates stay on separate lines. A missing rate is
+flagged and gross is left blank rather than treated as zero. Leave awaiting a
+cancellation decision remains payable until cancellation is approved.
 
 ### Clock-in venue locations
 

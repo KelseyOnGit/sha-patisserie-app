@@ -22,6 +22,46 @@ Module._resolveFilename = function (request, ...args) {
 const rules = require('../lib/timesheets.ts');
 const { candidateShifts } = require('../lib/attendance-matching.ts');
 const { leavePeriod } = require('../lib/leave.ts');
+const { combinePayroll, payrollCsv, PAYROLL_COLUMNS } = require('../lib/payroll-summary.ts');
+
+test('combined payroll matches Michelle example and exports ten aligned columns', () => {
+  const worked = { key: 'michelle', userId: 'm', staffName: 'Michelle', employmentType: 'FULL_TIME',
+    site: 'Sha', rate: 35.45, totalHours: 32, gross: 1134.4 };
+  const annual = { id: 'leave', userId: 'm', staffName: 'Michelle', site: 'Sha',
+    rate: 35.45, date: '2026-10-30', type: 'ANNUAL', hours: 7.5 };
+  const rows = combinePayroll([worked], [annual]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].totalHours, 32);
+  assert.equal(rows[0].leaveHours, 7.5);
+  assert.equal(rows[0].combinedHours, 39.5);
+  assert.ok(Math.abs(rows[0].gross - 1400.275) < 0.000001);
+  const lines = payrollCsv(rows).split('\r\n').map((line) => line.split(',').map((cell) => JSON.parse(cell)));
+  assert.equal(PAYROLL_COLUMNS.length, 10);
+  assert.equal(lines[0].length, 10);
+  assert.equal(lines[1].length, 10);
+  assert.deepEqual(lines[1].slice(4), ['32.00', '7.50', '39.50', '1400.28', 'ANNUAL', '30-10-2026']);
+});
+
+test('leave attaches only once across shops and rates, and leave-only staff remain visible', () => {
+  const worked = [
+    { key: 'one', userId: 's', staffName: 'Staff', site: 'Sha', rate: 30, totalHours: 8, gross: 240 },
+    { key: 'two', userId: 's', staffName: 'Staff', site: 'Zushi', rate: 30, totalHours: 8, gross: 240 },
+    { key: 'three', userId: 's', staffName: 'Staff', site: 'Sha', rate: 32, totalHours: 8, gross: 256 },
+  ];
+  const leave = [
+    { id: 'one', userId: 's', staffName: 'Staff', site: 'Sha', rate: 32, date: '2026-10-30', type: 'PERSONAL', hours: 7.5 },
+    { id: 'two', userId: 'leave-only', staffName: 'Leave only', site: 'Sha', rate: 35, date: '2026-10-30', type: 'ANNUAL', hours: 8 },
+    { id: 'three', userId: 'unpaid', staffName: 'Unpaid', site: 'Sha', rate: 30, date: '2026-10-30', type: 'UNPAID', hours: 8 },
+    { id: 'four', userId: 'missing-rate', staffName: 'Missing rate', site: 'Sha', rate: null, date: '2026-10-30', type: 'ANNUAL', hours: 8 },
+  ];
+  const rows = combinePayroll(worked, leave);
+  assert.equal(rows.filter((row) => row.userId === 's').reduce((sum, row) => sum + row.leaveHours, 0), 7.5);
+  assert.equal(rows.find((row) => row.key === 'three').leaveHours, 7.5);
+  assert.equal(rows.find((row) => row.userId === 'leave-only').gross, 280);
+  assert.equal(rows.find((row) => row.userId === 'unpaid').combinedHours, 0);
+  assert.equal(rows.find((row) => row.userId === 'unpaid').gross, 0);
+  assert.equal(rows.find((row) => row.userId === 'missing-rate').gross, null);
+});
 
 test('leave periods include both endpoints and validate reversed, invalid and overlong ranges', () => {
   assert.equal(leavePeriod('2026-10-19', '2026-10-19').length, 1);

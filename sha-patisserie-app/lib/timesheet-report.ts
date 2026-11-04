@@ -1,8 +1,9 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { candidateShifts } from '@/lib/attendance-matching';
+import { combinePayroll, type PayrollLeave } from '@/lib/payroll-summary';
 import {
-  actualPeriods, approvalError, workedHours, paidLeaveType, perthDate, readPeriods, recordedBreakMinutes, weekBounds,
+  actualPeriods, approvalError, paidHours, workedHours, paidLeaveType, perthDate, readPeriods, recordedBreakMinutes, weekBounds,
   type PayrollRow, type ReviewRow,
 } from '@/lib/timesheets';
 
@@ -30,8 +31,8 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
   const now = new Date();
   const [approvedLeave, saved, logs, allLocations] = await Promise.all([
     db.leaveRequest.findMany({
-      where: { status: 'APPROVED', workDate: { gte: dateStart, lt: dateEnd } },
-      include: { user: { select: { name: true, employmentType: true, location: { select: { name: true } } } } },
+      where: { status: { in: ['APPROVED', 'CANCEL_REQUESTED'] }, workDate: { gte: dateStart, lt: dateEnd } },
+      include: { user: { select: { name: true, employmentType: true, hourlyPayRate: true, location: { select: { name: true } } } } },
       orderBy: { workDate: 'asc' },
     }),
     db.timesheet.findMany({
@@ -215,10 +216,15 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
   rows.sort((a, b) => a.workDate.localeCompare(b.workDate) || a.staffName.localeCompare(b.staffName));
 
   const summary = new Map<string, PayrollRow>();
+  const payrollLeave: PayrollLeave[] = approvedLeave.map((entry) => ({
+    id: entry.id, userId: entry.userId, staffName: entry.user.name || 'Unnamed staff',
+    employmentType: entry.user.employmentType, site: entry.user.location?.name || 'Unassigned',
+    date: entry.workDate.toISOString().slice(0, 10), type: entry.type, hours: entry.hours.toNumber(),
+    rate: entry.user.hourlyPayRate?.toNumber() ?? null,
+  }));
   let excludedCount = 0;
   for (const row of rows) {
     const sheet = savedByKey.get(row.sourceKey);
-    if (paidLeaveType(row.attendanceStatus)) continue;
     // Use the same eligibility rules as approval, retaining the approved rate.
     if (!sheet || sheet.status !== 'APPROVED' || row.sourceChanged ||
         sheet.rateAtApproval === null ||
@@ -227,6 +233,17 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
       continue;
     }
     const rate = sheet.rateAtApproval.toNumber();
+    const leaveType = paidLeaveType(row.attendanceStatus);
+    if (leaveType) {
+      if (!payrollLeave.some((entry) => entry.userId === row.userId && entry.date === row.workDate && entry.type === leaveType)) {
+        payrollLeave.push({
+          id: row.sourceKey, userId: row.userId, staffName: row.staffName,
+          employmentType: row.employmentType, site: row.site, date: row.workDate, type: leaveType,
+          hours: paidHours(row.periods, row.breakMinutes), rate,
+        });
+      }
+      continue;
+    }
     const key = JSON.stringify([row.userId, sheet.site, rate]);
     const payroll = summary.get(key) ?? {
       key, userId: row.userId, staffName: row.staffName, site: sheet.site,
@@ -245,7 +262,7 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
   ])).sort();
 
   return {
-    shifts: rows, rows: Array.from(summary.values()), excludedCount,
+    shifts: rows, rows: combinePayroll(Array.from(summary.values()), payrollLeave), excludedCount,
     approvedCount: rows.length - excludedCount,
     leaveRows: approvedLeave.map((entry) => ({
       id: entry.id, userId: entry.userId, staffName: entry.user.name || 'Unnamed staff',

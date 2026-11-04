@@ -1,21 +1,22 @@
 'use client';
 
 import { formatDMY } from '@/lib/date-format';
+import { PAYROLL_COLUMNS, payrollCsv, type PayrollSummaryRow } from '@/lib/payroll-summary';
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import PayrollBreakStatus from '@/components/PayrollBreakStatus';
 import AddWorkedShiftDialog from '@/components/AddWorkedShiftDialog';
 import {
-  actualPeriods, approvalError, csvCell, currentWeek, editPeriodTime, perthDate, timeInput,
+  actualPeriods, approvalError, currentWeek, editPeriodTime, perthDate, timeInput,
   isLiveAttendance, paidHours, paidLeaveType, workedHours, samePeriods, validatePayable,
-  type PayablePeriod, type PayrollRow, type ReviewRow,
+  type PayablePeriod, type ReviewRow,
   ATTENDANCE_OPTIONS, employmentLabel,
 } from '@/lib/timesheets';
 
 interface Report {
   leaveRows?: { id: string; userId: string; staffName: string; employmentType: string | null; site: string; date: string; type: string; hours: number }[];
   shifts: ReviewRow[];
-  rows: PayrollRow[];
+  rows: PayrollSummaryRow[];
   excludedCount: number;
   approvedCount: number;
   venues?: string[];
@@ -213,7 +214,10 @@ export default function TimesheetReview({ userId }: { userId: string }) {
   ]).entries()]
     .sort((a, b) => a[1].localeCompare(b[1]));
   const totalHours = payroll.reduce((sum, row) => sum + row.totalHours, 0);
-  const totalGross = payroll.reduce((sum, row) => sum + row.gross, 0);
+  const totalLeaveHours = payroll.reduce((sum, row) => sum + row.leaveHours, 0);
+  const totalPaidHours = payroll.reduce((sum, row) => sum + row.combinedHours, 0);
+  const totalGross = payroll.reduce((sum, row) => sum + (row.gross ?? 0), 0);
+  const missingPayrollRate = payroll.some((row) => row.rate === null);
 
   // Group shifts by staff member to produce 1 consolidated row per staff member
   const consolidatedStaffList = (() => {
@@ -341,11 +345,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
   };
 
   const download = () => {
-    const lines = [
-      ['Staff Member', 'Employment Status', 'Site', 'Rate ($/hr)', 'Worked Hours', 'Worked Gross ($)', 'Leave Hours', 'Leave Type', 'Leave Date'],
-      ...payroll.map((row) => [row.staffName, employmentLabel(row.employmentType), row.site, row.rate.toFixed(2), row.totalHours.toFixed(2), row.gross.toFixed(2), '', '', '']),
-      ...leave.map((row) => [row.staffName, employmentLabel(row.employmentType), row.site, '', '', '', row.hours.toFixed(2), row.type, formatDMY(row.date)]),
-    ].map((line) => line.map(csvCell).join(',')).join('\r\n');
+    const lines = payrollCsv(payroll);
     const url = URL.createObjectURL(new Blob([lines], { type: 'text/csv;charset=utf-8;' }));
     const link = document.createElement('a');
     link.href = url;
@@ -756,7 +756,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
             <table role="table" aria-label="Approved payroll summary" className="admin-calendar-table admin-payroll-summary w-full text-left text-sm">
               <thead className="bg-stone-50 text-xs font-bold uppercase text-stone-500">
                 <tr>
-                  {['Staff', 'Venue', 'Approved rate', 'Worked hours', 'Worked gross'].map((label) => (
+                  {PAYROLL_COLUMNS.map((label) => (
                     <th key={label} className="p-4">
                       {label}
                     </th>
@@ -766,43 +766,40 @@ export default function TimesheetReview({ userId }: { userId: string }) {
               <tbody>
                 {!payroll.length ? (
                   <tr>
-                    <td colSpan={5} className="p-6 text-center text-stone-500">
+                    <td colSpan={10} className="p-6 text-center text-stone-500">
                       No approved payable hours for this selection.
                     </td>
                   </tr>
                 ) : (
                   payroll.map((row) => (
                     <tr key={row.key} className="border-t border-stone-100">
-                      <td data-label="Staff" className="p-4 font-semibold">{row.staffName}{inactiveIds.has(row.userId) && <InactiveBadge />}<span className="block text-xs font-normal text-stone-500">{employmentLabel(row.employmentType)}</span></td>
+                      <td data-label="Staff Member" className="p-4 font-semibold">{row.staffName}{inactiveIds.has(row.userId) && <InactiveBadge />}</td>
+                      <td data-label="Employment Status" className="p-4 text-stone-600">{employmentLabel(row.employmentType)}</td>
                       <td data-label="Venue" className="p-4 text-stone-600">{row.site}</td>
-                      <td data-label="Approved rate" className="p-4 font-mono">${row.rate.toFixed(2)}</td>
+                      <td data-label="Rate ($/hr)" className="p-4 font-mono">{row.rate === null ? 'Rate not set' : `$${row.rate.toFixed(2)}`}</td>
                       <td data-label="Worked hours" className="p-4 font-mono font-bold">{row.totalHours.toFixed(2)} h</td>
-                      <td data-label="Worked gross" className="p-4 font-mono font-bold text-emerald-800">${row.gross.toFixed(2)}</td>
+                      <td data-label="Leave hours" className="p-4 font-mono font-bold">{row.leaveHours.toFixed(2)} h</td>
+                      <td data-label="Total" className="p-4 font-mono font-bold">{row.combinedHours.toFixed(2)} h</td>
+                      <td data-label="Total Gross ($)" className="p-4 font-mono font-bold text-emerald-800">{row.gross === null ? 'Rate not set' : `$${row.gross.toFixed(2)}`}</td>
+                      <td data-label="Leave Type" className="p-4 text-xs">{row.leaveTypes.join(', ') || '—'}</td>
+                      <td data-label="Leave Date" className="p-4 text-xs">{row.leaveDates.map(formatDMY).join(', ') || '—'}</td>
                     </tr>
                   ))
                 )}
               </tbody>
               <tfoot className="border-t bg-stone-50 font-semibold">
                 <tr>
-                  <td colSpan={3} className="p-4">Total</td>
+                  <td colSpan={4} className="p-4">Total</td>
                   <td data-label="Total worked hours" className="p-4 font-mono font-extrabold">{totalHours.toFixed(2)} h</td>
-                  <td data-label="Total worked gross" className="p-4 font-mono font-extrabold text-emerald-900">${totalGross.toFixed(2)}</td>
+                  <td data-label="Total leave hours" className="p-4 font-mono font-extrabold">{totalLeaveHours.toFixed(2)} h</td>
+                  <td data-label="Total paid hours" className="p-4 font-mono font-extrabold">{totalPaidHours.toFixed(2)} h</td>
+                  <td data-label="Total gross" className="p-4 font-mono font-extrabold text-emerald-900">${totalGross.toFixed(2)}{missingPayrollRate ? ' (incomplete)' : ''}</td>
+                  <td colSpan={2} />
                 </tr>
               </tfoot>
             </table>
           </div>
-          <h2 className="pt-4 text-lg font-semibold">Leave hours </h2>
-          <div className="overflow-x-auto border-t border-stone-200">
-            <table className="w-full text-left text-sm">
-              <thead><tr>{['Staff / employment', 'Date', 'Leave type', 'Leave hours'].map((label) => <th key={label} className="p-3">{label}</th>)}</tr></thead>
-              <tbody>{leave.map((row) => (
-                <tr key={row.id} className="border-t border-stone-100">
-                  <td className="p-3">{row.staffName}<span className="block text-xs text-stone-500">{employmentLabel(row.employmentType)}</span></td>
-                  <td className="p-3">{formatDMY(row.date)}</td><td className="p-3">{row.type}</td><td className="p-3">{row.hours.toFixed(2)}</td>
-                </tr>
-              ))}</tbody>
-            </table>
-          </div>
+          {missingPayrollRate && <p role="alert" className="text-sm text-amber-800">Some leave has no pay rate. Set the staff profile rate before using this payroll total; those gross amounts are blank in the CSV.</p>}
         </div>
       )}
    {addOpen && (
