@@ -791,8 +791,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
               </tfoot>
             </table>
           </div>
-          <h2 className="pt-4 text-lg font-semibold">Leave hours (separate from worked hours)</h2>
-          <p className="text-xs text-stone-500">Approved leave and timesheet-classified leave. Leave pay is not included in worked gross.</p>
+          <h2 className="pt-4 text-lg font-semibold">Leave hours </h2>
           <div className="overflow-x-auto border-t border-stone-200">
             <table className="w-full text-left text-sm">
               <thead><tr>{['Staff / employment', 'Date', 'Leave type', 'Leave hours'].map((label) => <th key={label} className="p-3">{label}</th>)}</tr></thead>

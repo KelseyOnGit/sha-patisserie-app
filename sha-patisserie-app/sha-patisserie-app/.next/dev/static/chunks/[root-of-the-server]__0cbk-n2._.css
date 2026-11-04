@@ -1719,10 +1719,6 @@
     }
   }
 
-  .bg-amber-500 {
-    background-color: var(--color-amber-500);
-  }
-
   .bg-amber-600 {
     background-color: var(--color-amber-600);
   }
