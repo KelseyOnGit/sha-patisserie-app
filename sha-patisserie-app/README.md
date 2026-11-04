@@ -32,6 +32,22 @@ use the Network URL printed by Next.js, on the same local network.
 
 ## Authentication deployment checklist
 
+### Worked hours versus paid leave
+
+Timesheet entries classified as Annual leave or Personal leave are excluded
+from weekly worked-hour totals and approved worked payroll/gross. Leave hours
+are shown separately in the weekly totals, leave table and CSV. Approved leave
+records are used for leave hours; a matching staff/date/type timesheet entry
+does not add the same leave a second time. Without a matching leave record,
+the classified timesheet's net hours are displayed as leave hours.
+
+Approved leave does not automatically subtract actual work. If worked hours
+and approved leave occur on the same day, the weekly row shows a warning for
+manager review. Classify a leave-only entry correctly rather than deleting
+genuine attendance. Four 8-hour worked days plus an 8-hour Annual leave entry
+therefore show 32 worked hours and 8 Annual leave hours, not 40 worked hours.
+Leave pay is not calculated in the worked-gross figure.
+
 ### Clock-in venue locations
 
 Clock-in/out checks live GPS against the selected venue, independently of login.
@@ -77,6 +93,53 @@ Check: `node --test tests/geo.test.cjs`.
   launch security assessment.
 
 Focused checks: `node --test tests/auth-security.test.cjs`.
+
+### Leave-request email notifications
+
+After verifying `shagroup.com.au` in Resend, configure the following in the
+application environment and hosting dashboard, then restart/redeploy:
+
+```dotenv
+RESEND_API_KEY=<your sending API key>
+FROM_EMAIL=Sha Staff <notifications@shagroup.com.au>
+ADMIN_NOTIFY_EMAILS=tricia@shagroup.com.au
+NEXT_PUBLIC_APP_URL=https://<your actual staff app hostname>
+```
+
+Do not commit API keys. `EMAIL_FROM` is supported as a legacy sender setting;
+`FROM_EMAIL` takes precedence. Use the actual app URL, not the Resend dashboard
+or just the email domain. Production links require HTTPS. Additional recipients
+can be added as comma-separated addresses; each receives a separate email.
+
+Staff leave submissions, proposed changes and cancellation requests send one
+notification per request to these recipients, after the database transaction
+commits. A multi-day request does not send an email per day. Emails include the
+staff name, leave type, dates in dd-mm-yyyy, total hours, staff note and a link
+to the admin Leave Requests page. Manager-created, immediately approved leave
+and review/withdrawal actions do not send these review notifications.
+
+Delivery/configuration failures are logged and the staff response explicitly
+says the leave was saved but the email failed. Do not resubmit the leave to
+retry email. There is no automatic delivery retry or historical backfill.
+Resend acceptance does not guarantee inbox delivery; check the Resend dashboard
+for delivery/bounce status. Registration verification remains independently
+controlled by the flag below.
+
+New staff registrations also notify the same `ADMIN_NOTIFY_EMAILS` recipients
+after the account is saved, with name, email, Perth registration date/time and
+a link to `/admin/users`. No PINs or verification tokens are included.
+Notifications are sent at registration, even when email verification is enabled;
+the email explains that verification must finish before approval in that mode.
+Duplicate/invalid registrations do not notify again. Admin-mail failure leaves
+the account intact and adds an explicit warning to the registration response.
+There is no automatic notification retry. The Resend sample `/api/send` route
+is not used or required; notification flows call the shared server mail helper.
+
+Validate without sending live mail:
+`node --test tests/leave-notifications.test.cjs`.
+For a real smoke test, temporarily set the recipient to an authorised test
+mailbox and submit one multi-day request; verify one email, correct dates and
+the admin link, then restore Tricia's recipient address.
 
 ### Email verification and approval
 

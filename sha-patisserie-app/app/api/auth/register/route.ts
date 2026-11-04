@@ -4,6 +4,7 @@ import { hashPin } from '@/lib/pins';
 import { verificationConfig, verificationToken, sendVerificationEmail } from '@/lib/email-verification';
 import { Prisma } from '@prisma/client';
 import { emailVerificationRequired } from '@/lib/auth-config';
+import { notifyPendingRegistration } from '@/lib/admin-notifications';
 
 export async function POST(request: Request) {
   try {
@@ -89,7 +90,11 @@ export async function POST(request: Request) {
         ...token,
       },
     });
-
+    const notification = await notifyPendingRegistration({
+      userId: user.id, name: user.name, email: user.email, registeredAt: user.createdAt,
+    });
+    const notificationWarning = notification.sent ? ''
+      : ' Your account was saved, but the admin notification email could not be sent. Please contact your manager; do not register again.';
     if (origin && token.verificationToken &&
         !await sendVerificationEmail(normalizedEmail, token.verificationToken, origin)) {
       return NextResponse.json(
@@ -100,9 +105,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json(
       {
-        message: requiresVerification
+        message: (requiresVerification
           ? 'Registration successful! Please check your email inbox to verify your address.'
-          : 'Registration successful! Your account is awaiting admin approval. Contact your manager before signing in.',
+          : 'Registration successful! Your account is awaiting admin approval. Contact your manager before signing in.') + notificationWarning,
         user: { id: user.id, email: user.email }
       },
       { status: 201 }

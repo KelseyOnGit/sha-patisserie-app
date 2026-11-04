@@ -33,6 +33,20 @@ test('leave periods include both endpoints and validate reversed, invalid and ov
 });
 const period = (start, end) => ({ start: `2026-10-05T${start}:00+08:00`, end: `2026-10-05T${end}:00+08:00` });
 
+test('worked totals exclude classified paid leave without subtracting genuine work', () => {
+  const day = { periods: [period('08:00', '16:00')], breakMinutes: 0 };
+  const week = ['WORKED', 'WORKED', 'WORKED', 'WORKED', 'ANNUAL_LEAVE']
+    .map((attendanceStatus) => ({ ...day, attendanceStatus }));
+  assert.equal(week.reduce((sum, row) => sum + rules.workedHours(row), 0), 32);
+  assert.equal(rules.paidHours(week[4].periods, week[4].breakMinutes), 8);
+  assert.equal(rules.workedHours({ ...day, attendanceStatus: 'PERSONAL_LEAVE' }), 0);
+  assert.equal(rules.workedHours({ ...day, attendanceStatus: 'WORKED', breakMinutes: 30 }), 7.5);
+  assert.equal(rules.workedHours({ ...day, attendanceStatus: 'UNCLASSIFIED' }), 8);
+  assert.equal(rules.paidLeaveType('ANNUAL_LEAVE'), 'ANNUAL');
+  assert.equal(rules.paidLeaveType('PERSONAL_LEAVE'), 'PERSONAL');
+  assert.equal(rules.paidLeaveType('WORKED'), null);
+});
+
 test('leave workflow enforces eligibility, balances, review permissions and one-time deductions', async () => {
   const { Prisma } = require('@prisma/client');
   let session = { userId: 'staff', role: 'STAFF' };

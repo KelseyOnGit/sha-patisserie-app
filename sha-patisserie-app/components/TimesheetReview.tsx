@@ -7,7 +7,7 @@ import PayrollBreakStatus from '@/components/PayrollBreakStatus';
 import AddWorkedShiftDialog from '@/components/AddWorkedShiftDialog';
 import {
   actualPeriods, approvalError, csvCell, currentWeek, editPeriodTime, perthDate, timeInput,
-  isLiveAttendance, paidHours, samePeriods, validatePayable,
+  isLiveAttendance, paidHours, paidLeaveType, workedHours, samePeriods, validatePayable,
   type PayablePeriod, type PayrollRow, type ReviewRow,
   ATTENDANCE_OPTIONS, employmentLabel,
 } from '@/lib/timesheets';
@@ -191,6 +191,17 @@ export default function TimesheetReview({ userId }: { userId: string }) {
   }
   const payroll = (report?.rows ?? []).filter((row) =>
     (!venue || row.site === venue) && (!staff || row.userId === staff));
+  const leave = [
+    ...(report?.leaveRows ?? []),
+    ...shifts.filter((row) => paidLeaveType(row.attendanceStatus) &&
+      !(report?.leaveRows ?? []).some((entry) => entry.userId === row.userId &&
+        entry.date === row.workDate && entry.type === paidLeaveType(row.attendanceStatus)))
+      .map((row) => ({
+        id: row.sourceKey, userId: row.userId, staffName: row.staffName,
+        employmentType: row.employmentType ?? null, site: row.site, date: row.workDate,
+        type: paidLeaveType(row.attendanceStatus)!, hours: paidHours(row.periods, row.breakMinutes),
+      })),
+  ].filter((entry) => (!venue || entry.site === venue) && (!staff || entry.userId === staff));
   const sites = Array.from(new Set([
     ...(report?.venues ?? []),
     ...shifts.map((row) => row.site),
@@ -330,12 +341,10 @@ export default function TimesheetReview({ userId }: { userId: string }) {
   };
 
   const download = () => {
-    // Leave export is hidden until leave payroll calculations are verified.
-    // const leave = (report?.leaveRows || []).filter((row) => (!venue || row.site === venue) && (!staff || row.userId === staff));
     const lines = [
-      ['Staff Member', 'Employment Status', 'Site', 'Rate ($/hr)', 'Approved Hours', 'Gross ($)'],
-      ...payroll.map((row) => [row.staffName, employmentLabel(row.employmentType), row.site, row.rate.toFixed(2), row.totalHours.toFixed(2), row.gross.toFixed(2)]),
-      // ...leave.map((row) => [row.staffName, employmentLabel(row.employmentType), row.site, '', '0.00', row.hours.toFixed(2), row.type, row.date, '0.00']),
+      ['Staff Member', 'Employment Status', 'Site', 'Rate ($/hr)', 'Worked Hours', 'Worked Gross ($)', 'Leave Hours', 'Leave Type', 'Leave Date'],
+      ...payroll.map((row) => [row.staffName, employmentLabel(row.employmentType), row.site, row.rate.toFixed(2), row.totalHours.toFixed(2), row.gross.toFixed(2), '', '', '']),
+      ...leave.map((row) => [row.staffName, employmentLabel(row.employmentType), row.site, '', '', '', row.hours.toFixed(2), row.type, formatDMY(row.date)]),
     ].map((line) => line.map(csvCell).join(',')).join('\r\n');
     const url = URL.createObjectURL(new Blob([lines], { type: 'text/csv;charset=utf-8;' }));
     const link = document.createElement('a');
@@ -546,6 +555,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
                     const finalStaffTotal = weekDays.reduce((acc, d) => {
                       return acc + (rowsByUserDay.get(staffItem.userId)?.get(d.dateStr) ?? [])
                         .reduce((total, row) => {
+                          if (paidLeaveType(row.attendanceStatus)) return total;
                           const val = adjustments[row.sourceKey] !== undefined
                             ? adjustments[row.sourceKey]
                             : paidHours(row.periods, row.breakMinutes);
@@ -655,7 +665,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
                                   <PayrollBreakStatus row={row} />
                                 </div>
                                 <div className="flex justify-between">
-                                  <span className="font-semibold text-stone-500">Total:</span>
+                                  <span className="font-semibold text-stone-500">{paidLeaveType(row.attendanceStatus) ? 'Leave hours:' : 'Total:'}</span>
                                   <span className="font-semibold text-stone-900">
                                     {liveAttendance ? 'In prog.' : `${rawComputedHours.toFixed(2)}h`}
                                   </span>
@@ -710,6 +720,18 @@ export default function TimesheetReview({ userId }: { userId: string }) {
                             {finalStaffTotal.toFixed(2)}
                           </p>
                           <p className="text-[10px] font-semibold uppercase text-stone-500">hrs</p>
+                          <p className="text-[10px] text-stone-500">Worked hours</p>
+                          {['ANNUAL', 'PERSONAL'].map((type) => {
+                            const hours = leave.filter((entry) => entry.userId === staffItem.userId && entry.type === type)
+                              .reduce((sum, entry) => sum + entry.hours, 0);
+                            return hours > 0 ? <p key={type} className="mt-1 text-[10px] text-emerald-800">
+                              {type === 'ANNUAL' ? 'Annual leave' : 'Other paid leave'}: {hours.toFixed(2)} h
+                            </p> : null;
+                          })}
+                          {staffShifts.some((row) => workedHours(row) > 0 && (report?.leaveRows ?? [])
+                            .some((entry) => entry.userId === row.userId && entry.date === row.workDate)) && (
+                            <p role="status" className="mt-1 text-[10px] text-amber-800">Worked hours overlap approved leave. Review the day&apos;s attendance classification.</p>
+                          )}
                           {isAllApproved && (
                             <span className="mt-1.5 inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
                               ✓ Approved{approvedByName ? ` by ${approvedByName}` : ''}
@@ -734,7 +756,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
             <table role="table" aria-label="Approved payroll summary" className="admin-calendar-table admin-payroll-summary w-full text-left text-sm">
               <thead className="bg-stone-50 text-xs font-bold uppercase text-stone-500">
                 <tr>
-                  {['Staff', 'Venue', 'Approved rate', 'Approved hours', 'Gross'].map((label) => (
+                  {['Staff', 'Venue', 'Approved rate', 'Worked hours', 'Worked gross'].map((label) => (
                     <th key={label} className="p-4">
                       {label}
                     </th>
@@ -754,8 +776,8 @@ export default function TimesheetReview({ userId }: { userId: string }) {
                       <td data-label="Staff" className="p-4 font-semibold">{row.staffName}{inactiveIds.has(row.userId) && <InactiveBadge />}<span className="block text-xs font-normal text-stone-500">{employmentLabel(row.employmentType)}</span></td>
                       <td data-label="Venue" className="p-4 text-stone-600">{row.site}</td>
                       <td data-label="Approved rate" className="p-4 font-mono">${row.rate.toFixed(2)}</td>
-                      <td data-label="Approved hours" className="p-4 font-mono font-bold">{row.totalHours.toFixed(2)} h</td>
-                      <td data-label="Gross" className="p-4 font-mono font-bold text-emerald-800">${row.gross.toFixed(2)}</td>
+                      <td data-label="Worked hours" className="p-4 font-mono font-bold">{row.totalHours.toFixed(2)} h</td>
+                      <td data-label="Worked gross" className="p-4 font-mono font-bold text-emerald-800">${row.gross.toFixed(2)}</td>
                     </tr>
                   ))
                 )}
@@ -763,18 +785,18 @@ export default function TimesheetReview({ userId }: { userId: string }) {
               <tfoot className="border-t bg-stone-50 font-semibold">
                 <tr>
                   <td colSpan={3} className="p-4">Total</td>
-                  <td data-label="Total approved hours" className="p-4 font-mono font-extrabold">{totalHours.toFixed(2)} h</td>
-                  <td data-label="Total gross" className="p-4 font-mono font-extrabold text-emerald-900">${totalGross.toFixed(2)}</td>
+                  <td data-label="Total worked hours" className="p-4 font-mono font-extrabold">{totalHours.toFixed(2)} h</td>
+                  <td data-label="Total worked gross" className="p-4 font-mono font-extrabold text-emerald-900">${totalGross.toFixed(2)}</td>
                 </tr>
               </tfoot>
             </table>
           </div>
-          {/* Hidden until leave payroll calculations are verified.
-          <h2 className="pt-4 text-lg font-semibold">Approved Leave</h2>
+          <h2 className="pt-4 text-lg font-semibold">Leave hours (separate from worked hours)</h2>
+          <p className="text-xs text-stone-500">Approved leave and timesheet-classified leave. Leave pay is not included in worked gross.</p>
           <div className="overflow-x-auto border-t border-stone-200">
             <table className="w-full text-left text-sm">
               <thead><tr>{['Staff / employment', 'Date', 'Leave type', 'Leave hours'].map((label) => <th key={label} className="p-3">{label}</th>)}</tr></thead>
-              <tbody>{(report.leaveRows || []).filter((row) => (!venue || row.site === venue) && (!staff || row.userId === staff)).map((row) => (
+              <tbody>{leave.map((row) => (
                 <tr key={row.id} className="border-t border-stone-100">
                   <td className="p-3">{row.staffName}<span className="block text-xs text-stone-500">{employmentLabel(row.employmentType)}</span></td>
                   <td className="p-3">{formatDMY(row.date)}</td><td className="p-3">{row.type}</td><td className="p-3">{row.hours.toFixed(2)}</td>
@@ -782,7 +804,6 @@ export default function TimesheetReview({ userId }: { userId: string }) {
               ))}</tbody>
             </table>
           </div>
-          */}
         </div>
       )}
    {addOpen && (

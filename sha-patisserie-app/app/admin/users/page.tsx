@@ -30,6 +30,7 @@ export default async function AdminUserPage() {
 
     // Pass the formatted plain objets into your Client Component
     return (
+        
         <div className="min-w-0 max-w-4xl mx-auto">
             <h1 className="text-xl front-medium mb-4">Pending Approvals</h1>
             <p className="mb-4 text-sm text-stone-600">{emailVerificationRequired()

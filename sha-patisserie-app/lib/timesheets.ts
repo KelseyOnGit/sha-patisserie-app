@@ -59,6 +59,14 @@ export interface PayrollRow {
   gross: number;
 }
 
+export function paidLeaveType(status: string | undefined): 'ANNUAL' | 'PERSONAL' | null {
+  return status === 'ANNUAL_LEAVE' ? 'ANNUAL' : status === 'PERSONAL_LEAVE' ? 'PERSONAL' : null;
+}
+
+export function workedHours(row: Pick<ReviewRow, 'attendanceStatus' | 'periods' | 'breakMinutes'>): number {
+  return paidLeaveType(row.attendanceStatus) ? 0 : paidHours(row.periods, row.breakMinutes);
+}
+
 export const ATTENDANCE_OPTIONS = [
   ['UNCLASSIFIED', 'Not classified'],
   ['WORKED', 'Worked'],

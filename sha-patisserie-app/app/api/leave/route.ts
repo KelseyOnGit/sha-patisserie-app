@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { getSession, isPrivilegedRole } from '@/lib/session';
 import { randomUUID } from 'node:crypto';
 import { annualNoticeError, leaveDate, leavePeriod, perthToday } from '@/lib/leave';
+import { notifyLeaveReview, type LeaveNotification } from '@/lib/admin-notifications';
 
 class LeaveError extends Error {
   constructor(message: string, public status = 400) { super(message); }
@@ -16,6 +17,7 @@ type Body = Record<string, unknown>;
 const SERIALIZABLE = { isolationLevel: Prisma.TransactionIsolationLevel.Serializable };
 const OPEN: LeaveStatus[] = ['PENDING', 'APPROVED', 'CANCEL_REQUESTED'];
 const staffSelect = { id: true, name: true, employmentType: true, annualLeaveHours: true, personalLeaveHours: true } as const;
+const EMAIL_WARNING = ' Your leave was saved, but the notification email could not be sent. Please contact your manager; do not submit again.';
 
 function dateValue(value: unknown) {
   try { return leaveDate(value); }
@@ -162,7 +164,7 @@ export async function POST(request: Request) {
     const groupId = randomUUID();
     const total = new Prisma.Decimal(hours).times(dates.length);
 
-    await prisma.$transaction(async (tx) => {
+    const staffName = await prisma.$transaction(async (tx) => {
       const user = await tx.user.findUnique({ where: { id: targetId }, select: staffSelect });
       if (!user) throw new LeaveError('Staff member not found.', 404);
       assertEligible(user.employmentType, type);
@@ -183,14 +185,22 @@ export async function POST(request: Request) {
       await tx.leaveRequest.createMany({
         data: dates.map((workDate) => ({ userId: targetId, workDate, type, hours, note, requestGroupId: groupId, replacesId, ...approved })),
       });
+      return user.name;
     }, SERIALIZABLE);
 
+    const notification = onBehalf ? null : await notifyLeaveReview({
+      event: replacesId ? 'changed' : 'requested', requestId: groupId, staffName, type,
+      dates: dates.map((date) => date.toISOString().slice(0, 10)), totalHours: total.toFixed(2), note,
+    });
     const message = onBehalf
       ? 'Leave created and approved; balance updated.'
       : replacesId
         ? 'Change submitted. Your current leave stays approved until a manager reviews it.'
         : 'Leave request submitted. Awaiting approval.';
-    return NextResponse.json({ message, days: dates.length }, { status: 201 });
+    return NextResponse.json({
+      message: message + (notification && !notification.sent ? EMAIL_WARNING : ''),
+      days: dates.length,
+    }, { status: 201 });
   } catch (error) { return failure(error); }
 }
 
@@ -293,7 +303,14 @@ async function requestCancel(tx: Tx, userId: string, id: string) {
   const waiting = await tx.leaveRequest.findFirst({ where: { replacesId: { in: entries.map((entry) => entry.id) }, status: 'PENDING' } });
   if (waiting) throw new LeaveError('Withdraw your pending change before asking to cancel.', 409);
   await setStatus(tx, entries, 'APPROVED', { status: 'CANCEL_REQUESTED' });
-  return 'Cancellation requested. Your leave stays approved until a manager reviews it.';
+  return {
+    message: 'Cancellation requested. Your leave stays approved until a manager reviews it.',
+    notification: {
+      event: 'cancellation', requestId: leave.requestGroupId ?? leave.id, staffName: leave.user.name,
+      type: leave.type, dates: entries.map((entry) => entry.workDate.toISOString().slice(0, 10)),
+      totalHours: sumHours(entries).toFixed(2), note: leave.note,
+    } satisfies LeaveNotification,
+  };
 }
 
 /** Staff: withdraw a request (or a change) that has not been reviewed. Nothing was deducted. */
@@ -325,7 +342,7 @@ export async function PATCH(request: Request) {
     const reviewNote = typeof body.reviewNote === 'string' ? body.reviewNote.trim() : '';
     if (reviewNote.length > 2000) throw new LeaveError('Review note is too long.');
 
-    const message = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       switch (action) {
         case 'review':
           if (body.status !== 'APPROVED' && body.status !== 'REJECTED') throw new LeaveError('Choose a request and review action.');
@@ -337,6 +354,8 @@ export async function PATCH(request: Request) {
         default: throw new LeaveError('Unknown leave action.');
       }
     }, SERIALIZABLE);
-    return NextResponse.json({ message });
+    if (typeof result === 'string') return NextResponse.json({ message: result });
+    const notification = await notifyLeaveReview(result.notification);
+    return NextResponse.json({ message: result.message + (notification.sent ? '' : EMAIL_WARNING) });
   } catch (error) { return failure(error); }
 }

@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { candidateShifts } from '@/lib/attendance-matching';
 import {
-  actualPeriods, approvalError, paidHours, perthDate, readPeriods, recordedBreakMinutes, weekBounds,
+  actualPeriods, approvalError, workedHours, paidLeaveType, perthDate, readPeriods, recordedBreakMinutes, weekBounds,
   type PayrollRow, type ReviewRow,
 } from '@/lib/timesheets';
 
@@ -218,6 +218,7 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
   let excludedCount = 0;
   for (const row of rows) {
     const sheet = savedByKey.get(row.sourceKey);
+    if (paidLeaveType(row.attendanceStatus)) continue;
     // Use the same eligibility rules as approval, retaining the approved rate.
     if (!sheet || sheet.status !== 'APPROVED' || row.sourceChanged ||
         sheet.rateAtApproval === null ||
@@ -232,7 +233,7 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
       employmentType: row.employmentType,
       rate, totalHours: 0, gross: 0,
     };
-    payroll.totalHours += paidHours(row.periods, row.breakMinutes);
+    payroll.totalHours += workedHours(row);
     payroll.gross = payroll.totalHours * rate;
     summary.set(key, payroll);
   }

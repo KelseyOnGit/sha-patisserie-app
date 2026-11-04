@@ -116,6 +116,7 @@ test('production ignores GPS test mode while development may use it', (t) => {
 test('registration stores a hash and does not return credentials', async () => {
   let saved;
   const route = loadFile('app/api/auth/register/route.ts', {
+    '@/lib/admin-notifications': { notifyPendingRegistration: async () => ({ sent: true }) },
     '@/lib/prisma': { prisma: { user: {
       findFirst: async () => null,
       create: async ({ data }) => { saved = data; return { id: 'new', ...data }; },

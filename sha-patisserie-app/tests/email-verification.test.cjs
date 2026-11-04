@@ -48,7 +48,7 @@ const request = (data) => new Request('https://staff.example.invalid/api/test', 
 
 function fixture(t) {
   environment(t);
-  const state = { user: null, delivery: true, emails: [], sessions: 0, conflict: false };
+  const state = { user: null, delivery: true, emails: [], sessions: 0, conflict: false, adminEmails: [], adminDelivery: true };
   const helpers = loadFile('lib/email-verification.ts', {
     '@/lib/notify': { sendEmail: async (...args) => {
       state.emails.push(args);
@@ -60,7 +60,7 @@ function fixture(t) {
     findUnique: async ({ where }) => where.id === 'actor'
       ? { role: 'ADMIN', status: 'ACTIVE', isApproved: true } : state.user && { ...state.user },
     create: async ({ data }) => {
-      state.user = { id: 'staff', role: 'STAFF', status: 'PENDING', ...data };
+      state.user = { id: 'staff', role: 'STAFF', status: 'PENDING', createdAt: new Date(), ...data };
       return { ...state.user };
     },
     updateMany: async ({ where, data }) => {
@@ -80,6 +80,11 @@ function fixture(t) {
   };
   const prisma = { user: users, $transaction: async (callback) => callback({ user: users }) };
   const mocks = {
+    '@/lib/admin-notifications': { notifyPendingRegistration: async (notification) => {
+      assert.ok(state.user, 'Account must be saved before notifying admins');
+      state.adminEmails.push(notification);
+      return { sent: state.adminDelivery };
+    } },
     '@/lib/prisma': { prisma }, '@/lib/email-verification': helpers,
     '@/lib/session': {
       getSession: async () => ({ userId: 'actor', role: 'ADMIN' }),
@@ -99,6 +104,36 @@ function fixture(t) {
 const registration = { name: '<img src=x>', email: '  Staff@Example.invalid ', pinCode: '5837' };
 const credentials = { email: 'STAFF@example.invalid', pinCode: '5837' };
 const verifyRequest = (token) => new Request(`https://staff.example.invalid/api/auth/verify?token=${token}`);
+
+test('registration notifies admins once after saving, with and without verification', async (t) => {
+  for (const enabled of ['true', 'false']) {
+    const f = fixture(t);
+    process.env.NEXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = enabled;
+    assert.equal((await f.register(request(registration))).status, 201);
+    assert.equal(f.state.adminEmails.length, 1);
+    assert.equal(f.state.adminEmails[0].email, 'staff@example.invalid');
+    assert.equal(f.state.adminEmails[0].userId, f.state.user.id);
+    assert.ok(f.state.adminEmails[0].registeredAt instanceof Date);
+    assert.equal((await f.register(request(registration))).status, 400);
+    assert.equal(f.state.adminEmails.length, 1);
+  }
+});
+
+test('admin mail failure preserves registration and warns without asking to register again', async (t) => {
+  const f = fixture(t);
+  process.env.NEXT_PUBLIC_EMAIL_VERIFICATION_ENABLED = 'false';
+  f.state.adminDelivery = false;
+  const response = await f.register(request(registration));
+  assert.equal(response.status, 201);
+  assert.ok(f.state.user);
+  assert.match((await response.json()).message, /account was saved.*notification email could not be sent.*do not register again/);
+});
+
+test('invalid registration never notifies admins', async (t) => {
+  const f = fixture(t);
+  assert.equal((await f.register(request({ ...registration, pinCode: '1234' }))).status, 400);
+  assert.equal(f.state.adminEmails.length, 0);
+});
 
 test('complete flow requires verification then admin approval before creating a session', async (t) => {
   const f = fixture(t);
