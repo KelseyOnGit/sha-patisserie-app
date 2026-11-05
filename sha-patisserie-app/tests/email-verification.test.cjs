@@ -266,7 +266,7 @@ test('production configuration fails before account creation without sender or H
 
 test('shared mail helper honors sender config and reports returned and thrown Resend errors', async (t) => {
   environment(t);
-  let result = { error: null };
+  let result = { error: null, data: { id: 'test-provider-email-id' } };
   let sent;
   let throws = false;
   const mail = loadFile('lib/notify.ts', {
@@ -278,7 +278,8 @@ test('shared mail helper honors sender config and reports returned and thrown Re
       } };
     } },
   });
-  assert.equal((await mail.sendEmail('staff@example.invalid', 'Test', '<p>Test</p>')).sent, true);
+  assert.deepEqual(await mail.sendEmail('staff@example.invalid', 'Test', '<p>Test</p>'),
+    { sent: true, id: 'test-provider-email-id' });
   assert.equal(sent.from, process.env.FROM_EMAIL);
   result = { error: { message: 'Sender not verified' } };
   assert.deepEqual(await mail.sendEmail('staff@example.invalid', 'Test', ''), { sent: false, reason: 'Sender not verified' });

@@ -188,6 +188,9 @@ export async function POST(request: Request) {
       return user.name;
     }, SERIALIZABLE);
 
+    console.info('Leave notification trigger:', {
+      requestId: groupId, action: onBehalf ? 'skipped-manager-created-approved-leave' : 'notify-review',
+    });
     const notification = onBehalf ? null : await notifyLeaveReview({
       event: replacesId ? 'changed' : 'requested', requestId: groupId, staffName, type,
       dates: dates.map((date) => date.toISOString().slice(0, 10)), totalHours: total.toFixed(2), note,

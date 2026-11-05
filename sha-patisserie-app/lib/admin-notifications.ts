@@ -38,8 +38,12 @@ function notificationConfig() {
   if (!recipients.length || recipients.some((email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
     throw new Error('ADMIN_NOTIFY_EMAILS must contain valid comma-separated email addresses.');
   }
-  if (!process.env.RESEND_API_KEY?.trim() || !(process.env.FROM_EMAIL?.trim() || process.env.EMAIL_FROM?.trim())) {
-    throw new Error('RESEND_API_KEY and FROM_EMAIL must be configured for admin notifications.');
+  const missing = [
+    ...(!process.env.RESEND_API_KEY?.trim() ? ['RESEND_API_KEY'] : []),
+    ...(!(process.env.FROM_EMAIL?.trim() || process.env.EMAIL_FROM?.trim()) ? ['FROM_EMAIL (or EMAIL_FROM)'] : []),
+  ];
+  if (missing.length) {
+    throw new Error(`Admin notification configuration missing or empty: ${missing.join(', ')}. Check the environment variables attached to this deployment.`);
   }
   const configuredUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
   if (!configuredUrl) throw new Error('NEXT_PUBLIC_APP_URL must be configured for notification links.');
@@ -90,6 +94,9 @@ export async function notifyLeaveReview(notification: LeaveNotification): Promis
   try {
     const { recipients, origin } = notificationConfig();
     const url = new URL('/admin/leave', origin);
+    console.info('Leave notification dispatch:', {
+      requestId: notification.requestId, event: notification.event, recipientCount: recipients.length,
+    });
     const title = notification.event === 'cancellation' ? 'Leave cancellation requested'
       : notification.event === 'changed' ? 'Leave change requested' : 'New leave request';
     const dates = [...notification.dates].sort();
@@ -104,13 +111,23 @@ export async function notifyLeaveReview(notification: LeaveNotification): Promis
       <p><a href="${escapeHtml(url.href)}">Review leave requests</a> (admin sign-in required)</p>
     </div>`;
 
-    const deliveries = await Promise.all(recipients.map((recipient) =>
-      sendEmail(
+    const deliveries = await Promise.all(recipients.map(async (recipient) => {
+      const delivery = await sendEmail(
         recipient,
         `${title} - ${notification.staffName || 'Staff member'}`,
         html
-      )
-    ));
+      );
+      if (delivery.sent) {
+        console.info('Leave notification accepted by Resend:', {
+          requestId: notification.requestId, recipient, emailId: delivery.id ?? null,
+        });
+      } else {
+        console.error('Leave notification recipient failed:', {
+          requestId: notification.requestId, recipient, reason: delivery.reason,
+        });
+      }
+      return delivery;
+    }));
 
     const failures = deliveries.filter((delivery) => !delivery.sent);
     if (failures.length) {

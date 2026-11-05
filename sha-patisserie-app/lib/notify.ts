@@ -81,13 +81,13 @@ export async function sendEmail(
   to: string,
   subject: string,
   htmlMessage: string
-): Promise<{ sent: boolean; reason?: string }> {
+): Promise<{ sent: boolean; reason?: string; id?: string }> {
   if (!process.env.RESEND_API_KEY?.trim()) {
     return { sent: false, reason: 'RESEND_API_KEY is not configured.' };
   }
   try {
     const resend = new Resend(process.env.RESEND_API_KEY);
-    const { error } = await resend.emails.send({
+    const { data, error } = await resend.emails.send({
       from: process.env.FROM_EMAIL?.trim() || process.env.EMAIL_FROM?.trim() || 'onboarding@resend.dev',
       to,
       subject,
@@ -98,7 +98,7 @@ export async function sendEmail(
       return { sent: false, reason: error.message };
     }
 
-    return { sent: true };
+    return { sent: true, ...(data?.id ? { id: data.id } : {}) };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown email dispatch error';
     return { sent: false, reason: message };

@@ -152,6 +152,15 @@ the account intact and adds an explicit warning to the registration response.
 There is no automatic notification retry. The Resend sample `/api/send` route
 is not used or required; notification flows call the shared server mail helper.
 
+For production delivery troubleshooting, inspect runtime logs for the
+successful `POST /api/leave` (HTTP 201). `Leave notification trigger` identifies
+whether sending was requested or intentionally skipped for manager-created,
+immediately approved leave. `Leave notification dispatch` records the recipient
+count. `Leave notification accepted by Resend` records each recipient and
+provider email ID; search that ID in the Resend account associated with the
+deployed API key. Acceptance is not inbox delivery. Configuration or recipient
+failures are logged explicitly. API keys and leave notes are not logged.
+
 Validate without sending live mail:
 `node --test tests/leave-notifications.test.cjs`.
 For a real smoke test, temporarily set the recipient to an authorised test

@@ -52,6 +52,23 @@ const sample = {
   note: '<script>bad</script>\n"Family"',
 };
 
+test('accepted delivery is traceable by request, recipient and Resend ID without logging note or key', async (t) => {
+  environment(t);
+  const previous = console.info;
+  const logs = [];
+  console.info = (...args) => logs.push(args);
+  t.after(() => { console.info = previous; });
+  const { notifyLeaveReview } = loadFile('lib/admin-notifications.ts', {
+    '@/lib/notify': { sendEmail: async () => ({ sent: true, id: 'provider-id' }) },
+  });
+  assert.deepEqual(await notifyLeaveReview(sample), { sent: true });
+  const accepted = logs.find(([label]) => label === 'Leave notification accepted by Resend:');
+  assert.deepEqual(accepted[1], { requestId: 'group', recipient: 'tricia@example.invalid', emailId: 'provider-id' });
+  assert.ok(logs.some(([label]) => label === 'Leave notification dispatch:'));
+  assert.equal(JSON.stringify(logs).includes(sample.note), false);
+  assert.equal(JSON.stringify(logs).includes(process.env.RESEND_API_KEY), false);
+});
+
 test('one escaped email per unique recipient with dd-mm-yyyy dates and the admin link', async (t) => {
   environment(t, { ADMIN_NOTIFY_EMAILS: 'tricia@example.invalid, vanessa@example.invalid, tricia@example.invalid' });
   const emails = [];
@@ -102,6 +119,13 @@ test('configuration problems are explicit failures and never send email', async 
     const previous = process.env[name];
     process.env[name] = bad;
     assert.deepEqual(await notifyLeaveReview(sample), { sent: false });
+    if (name === 'RESEND_API_KEY' || name === 'FROM_EMAIL') {
+      const error = errors.at(-1)[2];
+      assert.match(error.message, new RegExp(name));
+      const other = name === 'RESEND_API_KEY' ? 'FROM_EMAIL' : 'RESEND_API_KEY';
+      assert.equal(error.message.includes(other), false);
+      assert.equal(error.message.includes('test-only'), false);
+    }
     process.env[name] = previous;
   }
   assert.equal(sends, 0);
@@ -151,7 +175,9 @@ test('provider rejection or exception is logged and reported, without throwing',
     const { notifyLeaveReview } = loadFile('lib/admin-notifications.ts', { '@/lib/notify': { sendEmail } });
     assert.deepEqual(await notifyLeaveReview(sample), { sent: false });
   }
-  assert.equal(errors.length, 2);
+  assert.equal(errors.length, 3);
+  assert.ok(errors.some(([label]) => label === 'Leave notification recipient failed:'));
+  assert.ok(errors.some(([label]) => label === 'Leave notification failed:'));
 });
 
 const request = (body, method = 'POST') => new Request('https://staff.example.invalid/api/leave', {
