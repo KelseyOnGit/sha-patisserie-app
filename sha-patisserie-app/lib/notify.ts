@@ -80,7 +80,8 @@ export function buildRosterMessage(
 export async function sendEmail(
   to: string,
   subject: string,
-  htmlMessage: string
+  htmlMessage: string,
+  options?: { idempotencyKey: string },
 ): Promise<{ sent: boolean; reason?: string; id?: string }> {
   if (!process.env.RESEND_API_KEY?.trim()) {
     return { sent: false, reason: 'RESEND_API_KEY is not configured.' };
@@ -92,7 +93,7 @@ export async function sendEmail(
       to,
       subject,
       html: htmlMessage,
-    });
+    }, options);
 
     if (error) {
       return { sent: false, reason: error.message };

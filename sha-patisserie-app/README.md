@@ -114,6 +114,7 @@ application environment and hosting dashboard, then restart/redeploy:
 RESEND_API_KEY=<your sending API key>
 FROM_EMAIL=Sha Staff <notifications@shagroup.com.au>
 ADMIN_NOTIFY_EMAILS=tricia@shagroup.com.au
+APP_URL=https://staff.shagroup.com.au
 NEXT_PUBLIC_APP_URL=https://<your actual staff app hostname>
 ```
 
@@ -121,6 +122,14 @@ Do not commit API keys. `EMAIL_FROM` is supported as a legacy sender setting;
 `FROM_EMAIL` takes precedence. Use the actual app URL, not the Resend dashboard
 or just the email domain. Production links require HTTPS. Additional recipients
 can be added as comma-separated addresses; each receives a separate email.
+
+`APP_URL` is the server-only base URL for admin notification links and takes
+precedence over `NEXT_PUBLIC_APP_URL`. Set it in Vercel **Production** to
+`https://staff.shagroup.com.au`, then deploy again. `NEXT_PUBLIC_APP_URL` remains
+supported for admin notifications and is still required for verification emails;
+public variables must exist when Next.js builds. Local `.env` edits do not
+configure a hosted deployment. A missing URL stops sending before Resend is
+called; changing the email layout cannot fix that configuration error.
 
 Staff leave submissions, proposed changes and cancellation requests send one
 notification per request to these recipients, after the database transaction
@@ -137,6 +146,44 @@ count and hours are unchanged. Styling applies to newly sent emails only.
 Recipient validation and precise configuration errors remain in place, as do
 per-recipient delivery logs and Resend email IDs. Keep all four Production
 settings configured when deploying the restored layout.
+
+### Scheduled missing clock-in / clock-out alerts
+
+Vercel runs `/api/cron/attendance` every minute in Production. This frequency
+requires a Vercel plan that supports minute-level cron jobs. Before enabling:
+
+1. Set a strong random `CRON_SECRET` in Vercel Production, along with the email
+   settings and `APP_URL` above. Vercel supplies it as the Bearer authorization
+   header; unauthenticated requests cannot run the check.
+2. Apply the committed Prisma migration to the intended production database
+   using `npx prisma migrate deploy` through your normal deployment process.
+   The `AttendanceNotification` table must exist before cron runs.
+3. Deploy the code with the application folder as the Vercel Root Directory,
+   so Vercel picks up its `vercel.json`. Check that the deployment is Ready and
+   the attendance cron appears in the project's Cron Jobs.
+
+Only published shifts for active, approved staff are checked. Missing clock-in
+is checked from scheduled start + 15 minutes until the shift ends. Missing
+clock-out is checked from scheduled end + 15 minutes while an overlapping
+attendance session remains open. Attendance matches staff and time regardless
+of Sha/Zushi venue, using the existing payroll matching helper. An ongoing
+subsequent published shift suppresses a premature clock-out alert.
+
+These are reminders for staff who **still have not clocked in/out**, not reports
+of people who already clocked late. Checks run without a browser being open.
+They run every minute, so an alert is eligible at 15 minutes and normally sent
+at the next invocation, not guaranteed at the exact second. Provider delivery
+can take longer. The first run also checks overdue shift ends from the last
+24 hours; it does not scan older history.
+
+Persistent claims prevent concurrent cron jobs from sending the same alert,
+and each recipient is marked sent separately. Failed recipients retry while
+the attendance condition remains overdue; successful recipients are skipped.
+Resend idempotency keys protect retries after interrupted jobs. Changing a
+scheduled start/end creates a new alert identity. Delivery failures are logged
+and the cron responds with an error rather than reporting success.
+
+### Leave and registration delivery failures
 
 Delivery/configuration failures are logged and the staff response explicitly
 says the leave was saved but the email failed. Do not resubmit the leave to

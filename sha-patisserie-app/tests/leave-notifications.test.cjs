@@ -31,7 +31,7 @@ function loadFile(file, mocks) {
 function environment(t, overrides = {}) {
   for (const [name, value] of Object.entries({
     RESEND_API_KEY: 'test-only', FROM_EMAIL: 'notifications@example.invalid', EMAIL_FROM: '',
-    ADMIN_NOTIFY_EMAILS: 'tricia@example.invalid', NEXT_PUBLIC_APP_URL: 'https://staff.example.invalid',
+    ADMIN_NOTIFY_EMAILS: 'tricia@example.invalid', APP_URL: '', NEXT_PUBLIC_APP_URL: 'https://staff.example.invalid',
     NODE_ENV: 'production', ...overrides,
   })) {
     const previous = process.env[name];
@@ -81,7 +81,7 @@ test('one escaped email per unique recipient with dd-mm-yyyy dates and the admin
   const html = emails[0][2];
   assert.match(html, /02-01-2027 to 03-01-2027/);
   assert.match(html, /Sha Patisserie/);
-  assert.match(html, /bgcolor="#166534"/);
+  assert.match(html, /bgcolor="#15803d"/);
   assert.match(html, /Review leave request<\/a>/);
   assert.match(html, /name="viewport"/);
   assert.match(html, /&lt;Staff &amp; Co&gt;/);
@@ -101,8 +101,8 @@ test('all leave email events use the styled layout and preserve review semantics
     const html = emails.at(-1)[2];
     assert.match(html, /Leave period/);
     assert.match(html, /02-01-2027 to 03-01-2027/);
-    assert.match(html, /ACTION REQUIRED/);
-    assert.doesNotMatch(html, /STAFF NOTE/);
+    assert.match(html, /Action Required/i);
+    assert.doesNotMatch(html, /Staff Note/i);
     if (event === 'requested') assert.doesNotMatch(html, /original leave stays approved/);
     else assert.match(html, /original leave stays approved/);
   }
@@ -135,6 +135,201 @@ test('configuration problems are explicit failures and never send email', async 
   }
   assert.equal(sends, 0);
   assert.equal(errors.length, 7);
+});
+
+test('server-only APP_URL works without a build-time public URL and takes precedence', async (t) => {
+  environment(t, { APP_URL: 'https://staff.server.invalid/admin/', NEXT_PUBLIC_APP_URL: '' });
+  const emails = [];
+  const { notifyLeaveReview } = loadFile('lib/admin-notifications.ts', {
+    '@/lib/notify': { sendEmail: async (...args) => { emails.push(args); return { sent: true }; } },
+  });
+  assert.deepEqual(await notifyLeaveReview(sample), { sent: true });
+  assert.match(emails[0][2], /https:\/\/staff.server.invalid\/admin\/leave/);
+  process.env.NEXT_PUBLIC_APP_URL = 'https://old.example.invalid';
+  assert.deepEqual(await notifyLeaveReview(sample), { sent: true });
+  assert.doesNotMatch(emails[1][2], /old.example.invalid/);
+  process.env.APP_URL = 'http://insecure.example.invalid';
+  captureErrors(t);
+  assert.deepEqual(await notifyLeaveReview(sample), { sent: false });
+  assert.equal(emails.length, 2);
+});
+
+test('missed clock-in and clock-out emails use Perth times, admin links and provider idempotency', async (t) => {
+  environment(t);
+  const emails = [];
+  const { notifyMissedClockIn, notifyMissedClockOut } = loadFile('lib/admin-notifications.ts', {
+    '@/lib/notify': { sendEmail: async (...args) => { emails.push(args); return { sent: true, id: 'email-id' }; } },
+  });
+  const delivery = { recipient: 'tricia@example.invalid', idempotencyKey: 'stable-key' };
+  assert.deepEqual(await notifyMissedClockIn({
+    userId: 'staff', name: '<Staff>', scheduledStart: '2026-11-05T01:00:00Z', minutesLate: 15,
+  }, delivery), { sent: true });
+  assert.deepEqual(await notifyMissedClockOut({
+    userId: 'staff', name: '<Staff>', scheduledEnd: '2026-11-05T09:00:00Z',
+  }, delivery), { sent: true });
+  for (const email of emails) {
+    assert.match(email[2], /05-11-2026/);
+    assert.match(email[2], /&lt;Staff&gt;/);
+    assert.match(email[2], /https:\/\/staff.example.invalid\/admin\/timesheets/);
+    assert.deepEqual(email[3], { idempotencyKey: 'stable-key' });
+  }
+  assert.match(emails[0][2], /09:00/);
+  assert.match(emails[1][2], /05:00/);
+});
+
+const attendanceShift = {
+  id: 'shift', userId: 'staff', locationId: 'sha',
+  startTime: new Date('2026-11-05T01:00:00Z'), endTime: new Date('2026-11-05T09:00:00Z'),
+  user: { name: 'Staff' },
+};
+function attendanceModule(mocks = {}) {
+  return loadFile('lib/attendance-notifications.ts', {
+    '@/lib/prisma': { prisma: {} },
+    '@/lib/admin-notifications': {},
+    ...mocks,
+  });
+}
+
+test('attendance alerts activate at exactly 15 minutes, use either venue, and ignore completed attendance', () => {
+  const { overdueAttendance } = attendanceModule();
+  const shift = attendanceShift;
+  const start = (offset) => new Date(shift.startTime.getTime() + offset);
+  const end = (offset) => new Date(shift.endTime.getTime() + offset);
+  const log = { userId: shift.userId, locationId: 'zushi', clockIn: start(0), clockOut: null };
+  assert.equal(overdueAttendance(shift, [shift], [], start(15 * 60000 - 1)).clockIn, false);
+  assert.equal(overdueAttendance(shift, [shift], [], start(15 * 60000)).clockIn, true);
+  assert.equal(overdueAttendance(shift, [shift], [log], start(15 * 60000)).clockIn, false);
+  assert.equal(overdueAttendance(shift, [shift], [log], end(15 * 60000 - 1)).clockOut, false);
+  assert.equal(overdueAttendance(shift, [shift], [log], end(15 * 60000)).clockOut, true);
+  assert.equal(overdueAttendance(shift, [shift], [], end(15 * 60000)).clockOut, false);
+  assert.equal(overdueAttendance(shift, [shift], [{ ...log, clockOut: end(0) }], end(15 * 60000)).clockOut, false);
+  assert.equal(overdueAttendance(shift, [shift], [log], end(24 * 60 * 60000 + 1)).clockOut, false);
+  const next = { ...shift, id: 'next', startTime: end(0), endTime: end(60 * 60000) };
+  assert.equal(overdueAttendance(shift, [shift, next], [log], end(15 * 60000)).clockOut, false);
+});
+
+test('attendance checker sends once per recipient, retries failed recipients and excludes unpublished/inactive shifts', async () => {
+  const records = new Map();
+  const deliveries = [];
+  let failSecond = true;
+  const now = new Date('2026-11-05T01:15:00Z');
+  const prisma = {
+    shift: { findMany: async ({ where }) => {
+      assert.deepEqual(where.user, { status: 'ACTIVE', isApproved: true });
+      assert.deepEqual(where.publishedAt, { not: null });
+      return [attendanceShift];
+    } },
+    timeLog: { findMany: async () => [] },
+    attendanceNotification: {
+      upsert: async ({ where: { id }, create }) => {
+        if (!records.has(id)) records.set(id, { id, createdAt: create.createdAt, sentAt: null, claimUntil: null });
+        return records.get(id);
+      },
+      updateMany: async ({ where, data }) => {
+        const record = records.get(where.id);
+        if (where.claimToken ? record.claimToken !== where.claimToken :
+          record.sentAt || (record.claimUntil && record.claimUntil > now)) return { count: 0 };
+        Object.assign(record, data);
+        return { count: 1 };
+      },
+    },
+  };
+  const { checkAttendanceNotifications } = attendanceModule({
+    '@/lib/prisma': { prisma },
+    '@/lib/admin-notifications': {
+      notificationConfig: () => ({ recipients: ['one@example.invalid', 'two@example.invalid'] }),
+      notifyMissedClockIn: async (notification, delivery) => {
+        deliveries.push(delivery);
+        assert.equal(notification.minutesLate, 15);
+        return { sent: !(failSecond && delivery.recipient === 'two@example.invalid') };
+      },
+    },
+  });
+  assert.deepEqual(await checkAttendanceNotifications(now), { sent: 1, failed: 1 });
+  failSecond = false;
+  assert.deepEqual(await checkAttendanceNotifications(new Date(now.getTime() + 10 * 60000)), { sent: 1, failed: 0 });
+  assert.deepEqual(await checkAttendanceNotifications(now), { sent: 0, failed: 0 });
+  assert.equal(deliveries.length, 3);
+  assert.equal(deliveries[1].idempotencyKey, deliveries[2].idempotencyKey);
+  assert.notEqual(deliveries[0].idempotencyKey, deliveries[1].idempotencyKey);
+});
+
+test('clock-out checker honors active claims, recovers expired claims and sends no clock-in alert', async () => {
+  const now = new Date('2026-11-05T09:15:00Z');
+  let claimUntil = new Date(now.getTime() + 60000);
+  let sentAt = null;
+  let sent = 0;
+  const prisma = {
+    shift: { findMany: async () => [attendanceShift] },
+    timeLog: { findMany: async () => [{
+      userId: 'staff', locationId: 'zushi', clockIn: attendanceShift.startTime, clockOut: null,
+    }] },
+    attendanceNotification: {
+      upsert: async () => ({ createdAt: now }),
+      updateMany: async ({ where, data }) => {
+        if (!where.claimToken && (sentAt || claimUntil > now)) return { count: 0 };
+        claimUntil = data.claimUntil;
+        sentAt = data.sentAt;
+        return { count: 1 };
+      },
+    },
+  };
+  const { checkAttendanceNotifications } = attendanceModule({
+    '@/lib/prisma': { prisma },
+    '@/lib/admin-notifications': {
+      notificationConfig: () => ({ recipients: ['admin@example.invalid'] }),
+      notifyMissedClockIn: async () => { throw new Error('Not a clock-in alert'); },
+      notifyMissedClockOut: async (notification) => {
+        sent++;
+        assert.equal(notification.scheduledEnd, attendanceShift.endTime);
+        return { sent: true };
+      },
+    },
+  });
+  assert.deepEqual(await checkAttendanceNotifications(now), { sent: 0, failed: 0 });
+  claimUntil = new Date(now.getTime() - 1);
+  assert.deepEqual(await checkAttendanceNotifications(now), { sent: 1, failed: 0 });
+  assert.deepEqual(await checkAttendanceNotifications(now), { sent: 0, failed: 0 });
+  assert.equal(sent, 1);
+});
+
+test('attendance cron is scheduled every minute and has a persistent claim migration', () => {
+  const config = JSON.parse(fs.readFileSync(path.join(root, 'vercel.json'), 'utf8'));
+  assert.ok(config.crons.some((cron) => cron.path === '/api/cron/attendance' && cron.schedule === '* * * * *'));
+  const migration = fs.readFileSync(path.join(root, 'prisma/migrations/20261105000000_attendance_notifications/migration.sql'), 'utf8');
+  assert.match(migration, /CREATE TABLE "AttendanceNotification"/);
+  assert.match(migration, /PRIMARY KEY \("id"\)/);
+  assert.match(migration, /"claimUntil" TIMESTAMP/);
+  assert.match(migration, /"sentAt" TIMESTAMP/);
+  assert.doesNotMatch(migration, /DROP|DELETE/);
+});
+
+test('attendance cron rejects missing/incorrect secrets and exposes checker failures', async (t) => {
+  environment(t, { CRON_SECRET: 'cron-test-secret' });
+  captureErrors(t);
+  let calls = 0;
+  let result = { sent: 1, failed: 0 };
+  const { GET } = loadFile('app/api/cron/attendance/route.ts', {
+    'next/server': { NextResponse: { json: (body, options) => Response.json(body, options) } },
+    '@/lib/attendance-notifications': { checkAttendanceNotifications: async () => {
+      calls++;
+      if (result instanceof Error) throw result;
+      return result;
+    } },
+  });
+  const request = (secret) => new Request('https://example.invalid/api/cron/attendance', {
+    headers: secret ? { authorization: `Bearer ${secret}` } : {},
+  });
+  assert.equal((await GET(request())).status, 401);
+  assert.equal((await GET(request('wrong'))).status, 401);
+  assert.equal(calls, 0);
+  assert.equal((await GET(request('cron-test-secret'))).status, 200);
+  result = { sent: 0, failed: 1 };
+  assert.equal((await GET(request('cron-test-secret'))).status, 502);
+  result = new Error('Database unavailable');
+  assert.equal((await GET(request('cron-test-secret'))).status, 500);
+  process.env.CRON_SECRET = '';
+  assert.equal((await GET(request('cron-test-secret'))).status, 503);
 });
 
 test('pending-user notification uses the actual admin page, escaped fields and Perth registration time', async (t) => {

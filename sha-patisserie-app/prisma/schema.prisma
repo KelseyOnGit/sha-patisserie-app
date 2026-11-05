@@ -207,6 +207,14 @@ model TimeLog {
   @@index([userId, clockIn])
 }
 
+model AttendanceNotification {
+  id         String   @id
+  sentAt     DateTime?
+  claimToken String?
+  claimUntil DateTime?
+  createdAt  DateTime @default(now())
+}
+
 // Payable periods are separate from TimeLog: manager corrections never rewrite
 // the original GPS attendance. Multiple periods preserve unpaid clock-out gaps.
 model Timesheet {

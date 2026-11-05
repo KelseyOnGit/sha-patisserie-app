@@ -268,11 +268,13 @@ test('shared mail helper honors sender config and reports returned and thrown Re
   environment(t);
   let result = { error: null, data: { id: 'test-provider-email-id' } };
   let sent;
+  let options;
   let throws = false;
   const mail = loadFile('lib/notify.ts', {
     resend: { Resend: class {
-      emails = { send: async (data) => {
+      emails = { send: async (data, requestOptions) => {
         sent = data;
+        options = requestOptions;
         if (throws) throw new Error('Network failed');
         return result;
       } };
@@ -281,6 +283,9 @@ test('shared mail helper honors sender config and reports returned and thrown Re
   assert.deepEqual(await mail.sendEmail('staff@example.invalid', 'Test', '<p>Test</p>'),
     { sent: true, id: 'test-provider-email-id' });
   assert.equal(sent.from, process.env.FROM_EMAIL);
+  assert.deepEqual(await mail.sendEmail('staff@example.invalid', 'Test', '<p>Test</p>', { idempotencyKey: 'attendance-key' }),
+    { sent: true, id: 'test-provider-email-id' });
+  assert.deepEqual(options, { idempotencyKey: 'attendance-key' });
   result = { error: { message: 'Sender not verified' } };
   assert.deepEqual(await mail.sendEmail('staff@example.invalid', 'Test', ''), { sent: false, reason: 'Sender not verified' });
   throws = true;
