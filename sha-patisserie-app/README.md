@@ -129,13 +129,11 @@ staff name, leave type, dates in dd-mm-yyyy, total hours, staff note and a link
 to the admin Leave Requests page. Manager-created, immediately approved leave
 and review/withdrawal actions do not send these review notifications.
 
-Leave and pending-user emails share a branded, mobile-friendly HTML layout:
-dark Sha Patisserie header, summary card and green review button, with a
-fallback link. Consecutive leave dates are shown as a range (for example
-10-02-2027 to 28-02-2027); nonconsecutive selections remain separate ranges
-so gaps are not presented as leave. Single-day requests show a single date.
-The requested-day count and total hours are unchanged. This design applies
-to newly sent emails only; already delivered emails cannot be restyled.
+Leave and pending-user emails use the original simple HTML layout with a
+review link. Leave dates are listed individually in dd-mm-yyyy. The styled
+template and consecutive-date ranges have been reverted. Recipient validation
+still runs before rendering: an invalid Production `ADMIN_NOTIFY_EMAILS`
+setting prevents sending with either template.
 
 Delivery/configuration failures are logged and the staff response explicitly
 says the leave was saved but the email failed. Do not resubmit the leave to
