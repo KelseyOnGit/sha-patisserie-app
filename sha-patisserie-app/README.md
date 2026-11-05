@@ -129,11 +129,14 @@ staff name, leave type, dates in dd-mm-yyyy, total hours, staff note and a link
 to the admin Leave Requests page. Manager-created, immediately approved leave
 and review/withdrawal actions do not send these review notifications.
 
-Leave and pending-user emails use the original simple HTML layout with a
-review link. Leave dates are listed individually in dd-mm-yyyy. The styled
-template and consecutive-date ranges have been reverted. Recipient validation
-still runs before rendering: an invalid Production `ADMIN_NOTIFY_EMAILS`
-setting prevents sending with either template.
+Leave and pending-user emails share a branded HTML layout with a dark Sha
+Patisserie header, summary card and green review button plus a fallback link.
+Consecutive dates appear as a range (10-02-2027 to 28-02-2027); gaps remain
+separate ranges, and single-day requests show a single date. The requested-day
+count and hours are unchanged. Styling applies to newly sent emails only.
+Recipient validation and precise configuration errors remain in place, as do
+per-recipient delivery logs and Resend email IDs. Keep all four Production
+settings configured when deploying the restored layout.
 
 Delivery/configuration failures are logged and the staff response explicitly
 says the leave was saved but the email failed. Do not resubmit the leave to

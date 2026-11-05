@@ -79,14 +79,18 @@ test('one escaped email per unique recipient with dd-mm-yyyy dates and the admin
   assert.equal(emails.length, 2);
   assert.equal(emails[0][0], 'tricia@example.invalid');
   const html = emails[0][2];
-  assert.match(html, /02-01-2027, 03-01-2027/);
+  assert.match(html, /02-01-2027 to 03-01-2027/);
+  assert.match(html, /Sha Patisserie/);
+  assert.match(html, /bgcolor="#166534"/);
+  assert.match(html, /Review leave request<\/a>/);
+  assert.match(html, /name="viewport"/);
   assert.match(html, /&lt;Staff &amp; Co&gt;/);
   assert.match(html, /&lt;script&gt;bad&lt;\/script&gt;<br>&quot;Family&quot;/);
   assert.match(html, /https:\/\/staff.example.invalid\/admin\/leave/);
   assert.doesNotMatch(html, /<script>/);
 });
 
-test('all leave email events use the original layout and preserve review semantics', async (t) => {
+test('all leave email events use the styled layout and preserve review semantics', async (t) => {
   environment(t);
   const emails = [];
   const { notifyLeaveReview } = loadFile('lib/admin-notifications.ts', {
@@ -95,9 +99,10 @@ test('all leave email events use the original layout and preserve review semanti
   for (const event of ['requested', 'changed', 'cancellation']) {
     assert.deepEqual(await notifyLeaveReview({ ...sample, event, note: '' }), { sent: true });
     const html = emails.at(-1)[2];
-    assert.match(html, /Requested dates:/);
-    assert.match(html, /02-01-2027, 03-01-2027/);
-    assert.doesNotMatch(html, /Staff note:/);
+    assert.match(html, /Leave period/);
+    assert.match(html, /02-01-2027 to 03-01-2027/);
+    assert.match(html, /ACTION REQUIRED/);
+    assert.doesNotMatch(html, /STAFF NOTE/);
     if (event === 'requested') assert.doesNotMatch(html, /original leave stays approved/);
     else assert.match(html, /original leave stays approved/);
   }
@@ -146,8 +151,23 @@ test('pending-user notification uses the actual admin page, escaped fields and P
   assert.match(emails[0][2], /https:\/\/staff.example.invalid\/admin\/users/);
   assert.match(emails[0][2], /&lt;Staff&gt;/);
   assert.match(emails[0][2], /04-11-2026/);
-  assert.match(emails[0][2], /Review pending registrations<\/a>/);
+  assert.match(emails[0][2], /Review pending users<\/a>/);
+  assert.match(emails[0][2], /Sha Patisserie/);
   assert.doesNotMatch(emails[0][2], /pinCode|verificationToken|pending-registrations/);
+});
+
+test('date ranges preserve gaps and handle single days, month and year boundaries', () => {
+  const { leaveDateRanges } = loadFile('lib/admin-notifications.ts', {
+    '@/lib/notify': { sendEmail: async () => { throw new Error('Must not send'); } },
+  });
+  const dates = Array.from({ length: 19 }, (_, index) => `2027-02-${String(index + 10).padStart(2, '0')}`);
+  assert.equal(leaveDateRanges(dates), '10-02-2027 to 28-02-2027');
+  assert.equal(leaveDateRanges(['2027-02-10']), '10-02-2027');
+  assert.equal(leaveDateRanges(['2027-02-14', '2027-02-10', '2027-02-11', '2027-02-10']),
+    '10-02-2027 to 11-02-2027; 14-02-2027');
+  assert.equal(leaveDateRanges(['2026-12-31', '2027-01-01']), '31-12-2026 to 01-01-2027');
+  assert.throws(() => leaveDateRanges([]));
+  assert.throws(() => leaveDateRanges(['2027-02-30']));
 });
 
 test('pending-user mail configuration and delivery failures are logged and reported', async (t) => {
