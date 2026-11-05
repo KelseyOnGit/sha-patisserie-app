@@ -167,7 +167,7 @@ export async function notifyLeaveReview(notification: LeaveNotification): Promis
       requestId: notification.requestId, event: notification.event, recipientCount: recipients.length,
     });
     const title = notification.event === 'cancellation' ? 'Leave cancellation requested'
-      : notification.event === 'changed' ? 'Leave change requested' : 'New leave request';
+      : notification.event === 'changed' ? 'Leave change requested' : 'New Leave Request';
     const dates = leaveDateRanges(notification.dates);
     const html = notificationLayout({
       title,
