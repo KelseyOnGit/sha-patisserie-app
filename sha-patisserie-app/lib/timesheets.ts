@@ -160,6 +160,24 @@ export function paidHours(periods: PayablePeriod[], breakMinutes: number): numbe
     - breakMinutes) / 60;
 }
 
+export function adjustedPayable(
+  row: Pick<ReviewRow, 'periods' | 'breakMinutes' | 'actual' | 'scheduledStart' | 'workDate'>,
+  hours?: number,
+): { periods: PayablePeriod[]; breakMinutes: number } {
+  if (hours === undefined || hours === paidHours(row.periods, row.breakMinutes)) {
+    return { periods: row.periods, breakMinutes: row.breakMinutes };
+  }
+  if (!Number.isFinite(hours) || hours < 0 || hours > 24) {
+    throw new Error('Adjusted hours must be between 0 and 24.');
+  }
+  if (hours === 0) return { periods: [], breakMinutes: 0 };
+  const start = row.periods[0]?.start || row.actual[0]?.clockIn ||
+    row.scheduledStart || `${row.workDate}T09:00:00+08:00`;
+  const end = new Date(new Date(start).getTime() +
+    Math.round(hours * 3600000 + row.breakMinutes * 60000)).toISOString();
+  return { periods: [{ start, end }], breakMinutes: row.breakMinutes };
+}
+
 export function validatePayable(periods: PayablePeriod[], breakMinutes: number, workDate: string) {
   if (!Number.isInteger(breakMinutes) || breakMinutes < 0) {
     throw new Error('Break deduction must be a non-negative whole number of minutes.');

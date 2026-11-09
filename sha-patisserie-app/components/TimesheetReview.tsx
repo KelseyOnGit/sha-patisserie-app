@@ -7,7 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import PayrollBreakStatus from '@/components/PayrollBreakStatus';
 import AddWorkedShiftDialog from '@/components/AddWorkedShiftDialog';
 import {
-  actualPeriods, approvalError, currentWeek, editPeriodTime, perthDate, timeInput,
+  actualPeriods, adjustedPayable, approvalError, currentWeek, editPeriodTime, perthDate, timeInput,
   isLiveAttendance, paidHours, paidLeaveType, workedHours, samePeriods, validatePayable,
   type PayablePeriod, type ReviewRow,
   ATTENDANCE_OPTIONS, employmentLabel,
@@ -299,13 +299,17 @@ export default function TimesheetReview({ userId }: { userId: string }) {
           ? adjustments[row.sourceKey]
           : paidHours(row.periods, row.breakMinutes);
 
-        let periods: PayablePeriod[] = [];
-        if (adjustedVal > 0) {
-          const start = row.actual[0]?.clockIn || row.periods[0]?.start || row.scheduledStart || `${row.workDate}T09:00:00+08:00`;
-          const breakMinutes = row.breakMinutes;
-          const totalMins = Math.round(adjustedVal * 60 + breakMinutes);
-          const newEnd = new Date(new Date(start).getTime() + totalMins * 60000).toISOString();
-          periods = [{ start, end: newEnd }];
+        const { periods, breakMinutes } = adjustedPayable(row, adjustments[row.sourceKey]);
+        try {
+          const unchangedApproval = row.status === 'APPROVED' && !row.sourceChanged &&
+            samePeriods(periods, row.periods) && breakMinutes === row.breakMinutes;
+          if (!unchangedApproval) {
+            validatePayable(periods, breakMinutes, row.workDate);
+            const invalid = approvalError(row, periods);
+            if (invalid) throw new Error(invalid);
+          }
+        } catch (error) {
+          throw new Error(`${row.staffName} (${row.workDate}): ${error instanceof Error ? error.message : 'Invalid payable values.'}`);
         }
 
         const isAdjusted = adjustedVal !== paidHours(row.periods, row.breakMinutes);
@@ -319,7 +323,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
           version: row.version,
           snapshot: row.snapshot,
           action: 'APPROVE' as const,
-          breakMinutes: periods.length ? row.breakMinutes : 0,
+          breakMinutes,
           periods,
           reason,
         };
@@ -331,6 +335,9 @@ export default function TimesheetReview({ userId }: { userId: string }) {
         body: JSON.stringify({ batch: batchItems }),
       });
 
+      if (!res.headers.get('content-type')?.includes('application/json')) {
+        throw new Error(`Timesheet save returned an unexpected response (${res.status}). Refresh and check approval status before retrying.`);
+      }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to approve timesheets.');
 

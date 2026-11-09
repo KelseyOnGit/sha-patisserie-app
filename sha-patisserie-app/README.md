@@ -34,6 +34,16 @@ use the Network URL printed by Next.js, on the same local network.
 
 ### Worked hours versus paid leave
 
+Bulk timesheet approval preserves unchanged payable periods (including seconds
+and split shifts). New timesheets and audit entries use batched database writes
+inside one serializable transaction: a failed save commits no partial approvals.
+Serialization conflicts are retried at most twice against freshly loaded data.
+Stale versions still require a refresh. Database transaction timeouts are shown
+explicitly; retry after refreshing or approve one staff member at a time.
+Validation errors identify the staff member and work date. Server logs retain
+the underlying database error for diagnosis; the generic error alone does not
+establish whether a failure was caused by timeout, connectivity or schema issues.
+
 Timesheet entries classified as Annual leave or Personal leave are excluded
 from weekly worked-hour totals. Payroll table and CSV use matching columns:
 Staff Member, Employment Status, Site, Rate, Worked Hours, Leave Hours, Total,

@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSession, isPrivilegedRole } from '@/lib/session';
@@ -63,15 +64,25 @@ export async function POST(req: Request) {
     });
 
     const targetWeekStart = items[0].weekStart;
+    if (items.some((item) => item.weekStart !== targetWeekStart)) {
+      throw new ReviewError('All timesheets in a batch must belong to the same week.');
+    }
+    if (new Set(items.map((item) => item.sourceKey)).size !== items.length) {
+      throw new ReviewError('A timesheet can only appear once in a batch.');
+    }
 
-    await prisma.$transaction(async (tx) => {
+    const save = () => prisma.$transaction(async (tx) => {
       const report = await loadTimesheetReport(targetWeekStart, tx);
+      const rowsByKey = new Map(report.shifts.map((row) => [row.sourceKey, row]));
+      const newSheets: Prisma.TimesheetCreateManyInput[] = [];
+      const audits: Prisma.TimesheetAuditCreateManyInput[] = [];
+      const allocations: { id: string; logIds: string[] }[] = [];
 
       for (const item of items) {
         const { sourceKey, version, snapshot, action, breakMinutes, reason } = item;
         let periods = item.periods;
 
-        const row = report.shifts.find((candidate) => candidate.sourceKey === sourceKey);
+        const row = rowsByKey.get(sourceKey);
         if (!row) throw new ReviewError(`Timesheet source ${sourceKey} no longer exists in this week.`, 404);
 
         if (row.version !== version || row.snapshot !== snapshot) {
@@ -89,6 +100,7 @@ export async function POST(req: Request) {
           periods = row.periods;
         } else {
           if (row.status === 'APPROVED' && action === 'APPROVE' &&
+              !row.sourceChanged &&
               samePeriods(periods, row.periods) && breakMinutes === row.breakMinutes &&
               attendanceStatus === (row.attendanceStatus ?? 'UNCLASSIFIED')) {
             // Unchanged approved row: keep the original approver and timestamp
@@ -106,7 +118,7 @@ export async function POST(req: Request) {
             }
             if (action === 'APPROVE') validateApproval(row, periods);
           } catch (error) {
-            throw new ReviewError(error instanceof Error ? error.message : 'Invalid payable values.');
+            throw new ReviewError(`${row.staffName} (${row.workDate}): ${error instanceof Error ? error.message : 'Invalid payable values.'}`);
           }
         }
 
@@ -127,55 +139,64 @@ export async function POST(req: Request) {
 
         let id: string;
         if (version === 0) {
-          const sheet = await tx.timesheet.create({
-            data: {
-              ...data,
-              sourceKey,
-              userId: row.userId,
-              shiftId: sourceKey.startsWith('shift:') ? sourceKey.slice(6) : null,
-              workDate: new Date(`${row.workDate}T00:00:00Z`),
-            },
+          id = randomUUID();
+          newSheets.push({
+            id,
+            ...data,
+            sourceKey,
+            userId: row.userId,
+            shiftId: sourceKey.startsWith('shift:') ? sourceKey.slice(6) : null,
+            workDate: new Date(`${row.workDate}T00:00:00Z`),
+          });
+        } else {
+          const sheet = await tx.timesheet.update({
+            where: { sourceKey, version },
+            data: { ...data, version: { increment: 1 } },
+            select: { id: true },
           });
           id = sheet.id;
-        } else {
-          const existing = await tx.timesheet.findUniqueOrThrow({ where: { sourceKey } });
-          const update = await tx.timesheet.updateMany({
-            where: { id: existing.id, version },
-            data: { ...data, version: { increment: 1 } },
-          });
-          if (update.count !== 1) {
-            throw new ReviewError(`Another manager saved timesheet for ${row.staffName}. Refresh before retrying.`, 409);
-          }
-          id = existing.id;
         }
 
         const ids = row.actual.map((log) => log.id);
-        if (ids.length) {
-          const allocated = await tx.timeLog.updateMany({
-            where: { id: { in: ids }, OR: [{ timesheetId: null }, { timesheetId: id }] },
-            data: { timesheetId: id },
-          });
-          if (allocated.count !== ids.length) {
-            throw new ReviewError('Attendance was allocated to another timesheet. Refresh before retrying.', 409);
-          }
-        }
+        if (ids.length) allocations.push({ id, logIds: ids });
 
-        await tx.timesheetAudit.create({
-          data: {
-            timesheetId: id,
-            actorId: session.userId,
-            action: String(action),
-            values: {
-              ...data,
-              approvedAt: data.approvedAt?.toISOString() ?? null,
-              hours: paidHours(periods, data.breakMinutes),
-              actual: row.actual.map((log) => ({ ...log })),
-              sourceSnapshot: row.snapshot,
-            },
+        audits.push({
+          timesheetId: id,
+          actorId: session.userId,
+          action: String(action),
+          values: {
+            ...data,
+            approvedAt: data.approvedAt?.toISOString() ?? null,
+            hours: paidHours(periods, data.breakMinutes),
+            actual: row.actual.map((log) => ({ ...log })),
+            sourceSnapshot: row.snapshot,
           },
         });
       }
+      if (newSheets.length) await tx.timesheet.createMany({ data: newSheets });
+      for (const { id, logIds } of allocations) {
+        const allocated = await tx.timeLog.updateMany({
+          where: { id: { in: logIds }, OR: [{ timesheetId: null }, { timesheetId: id }] },
+          data: { timesheetId: id },
+        });
+        if (allocated.count !== logIds.length) {
+          throw new ReviewError('Attendance was allocated to another timesheet. Refresh before retrying.', 409);
+        }
+      }
+      if (audits.length) await tx.timesheetAudit.createMany({ data: audits });
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 25000 });
+
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await save();
+        break;
+      } catch (error) {
+        // A serialization failure rolls back everything; re-read before retrying.
+        if (!(error instanceof Prisma.PrismaClientKnownRequestError) ||
+            error.code !== 'P2034' || attempt >= 2) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
+      }
+    }
 
     const isSingle = items.length === 1;
     const action = items[0].action;
@@ -188,11 +209,14 @@ export async function POST(req: Request) {
     if (error instanceof ReviewError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
-    if (error instanceof Prisma.PrismaClientKnownRequestError && ['P2002', 'P2034'].includes(error.code)) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && ['P2002', 'P2025', 'P2034'].includes(error.code)) {
+      console.error('Timesheet save conflict:', error);
       return NextResponse.json({ error: 'A concurrent update occurred. Refresh and review before retrying.' }, { status: 409 });
     }
     console.error('Failed to save timesheet review:', error);
+    if (error instanceof Prisma.PrismaClientKnownRequestError && ['P2024', 'P2028'].includes(error.code)) {
+      return NextResponse.json({ error: 'The database could not complete the save transaction. No changes were committed. Refresh and retry, or approve one staff member at a time.' }, { status: 503 });
+    }
     return NextResponse.json({ error: 'Unable to save timesheet. No changes were committed.' }, { status: 500 });
   }
 }
-

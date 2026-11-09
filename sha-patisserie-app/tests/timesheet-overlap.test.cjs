@@ -33,7 +33,6 @@ function fixture() {
   }];
   let sheets = [];
   let audits = [];
-  let sequence = 0;
   const db = {
     leaveRequest: { findMany: async () => [] },
     location: { findMany: async () => [location] },
@@ -67,24 +66,24 @@ function fixture() {
           })),
         }));
       },
-      create: async ({ data }) => {
-        const sheet = { ...data, id: `sheet-${++sequence}`, version: 1,
-          rateAtApproval: data.rateAtApproval === null ? null : new Prisma.Decimal(data.rateAtApproval) };
-        sheets.push(sheet);
-        return sheet;
+      createMany: async ({ data }) => {
+        sheets.push(...data.map((sheet) => ({ ...sheet, version: 1,
+          rateAtApproval: sheet.rateAtApproval === null ? null : new Prisma.Decimal(sheet.rateAtApproval) })));
+        return { count: data.length };
       },
-      findUniqueOrThrow: async ({ where }) => sheets.find((sheet) => sheet.sourceKey === where.sourceKey),
-      updateMany: async ({ where, data }) => {
-        const sheet = sheets.find((entry) => entry.id === where.id && entry.version === where.version);
-        if (!sheet) return { count: 0 };
+      update: async ({ where, data }) => {
+        const sheet = sheets.find((entry) => entry.sourceKey === where.sourceKey && entry.version === where.version);
+        if (!sheet) throw new Prisma.PrismaClientKnownRequestError('Stale version', {
+          code: 'P2025', clientVersion: 'test',
+        });
         Object.assign(sheet, data, {
           version: where.version + 1,
           rateAtApproval: data.rateAtApproval === null ? null : new Prisma.Decimal(data.rateAtApproval),
         });
-        return { count: 1 };
+        return { id: sheet.id };
       },
     },
-    timesheetAudit: { create: async ({ data }) => { audits.push(data); return data; } },
+    timesheetAudit: { createMany: async ({ data }) => { audits.push(...data); return { count: data.length }; } },
     $transaction: async (work, options) => {
       assert.equal(options.isolationLevel, 'Serializable');
       const before = { sheets: sheets.map((sheet) => ({ ...sheet })), logs: [...logs], audits: [...audits] };
@@ -217,7 +216,7 @@ for (const legacy of [false, true]) {
     assert.equal(report.rows[0].site, 'Sha Patisserie');
     assert.equal(report.rows[0].totalHours, 3.55);
     assert.equal(f.logs[0].locationId, 'zb');
-    assert.equal(f.logs[0].timesheetId, 'sheet-1');
+    assert.equal(f.logs[0].timesheetId, f.audits[0].timesheetId);
     setBreak(new Date('2020-10-05T03:00:00Z'), new Date('2020-10-05T03:35:00Z'));
     report = await f.load();
     row = report.shifts[0];
@@ -307,7 +306,7 @@ test('explained overlap approval reaches payroll once, retains rate and audit, a
   assert.equal(report.rows.length, 1);
   assert.equal(report.rows[0].totalHours, 4);
   assert.equal(report.rows[0].gross, 120);
-  assert.equal(f.logs[0].timesheetId, 'sheet-1');
+  assert.equal(f.logs[0].timesheetId, f.audits[0].timesheetId);
   assert.equal(f.audits[0].action, 'APPROVE');
   assert.match(f.audits[0].values.reason, /Duplicate roster/);
   assert.equal(f.logs[0].clockOut.toISOString(), '2020-10-05T05:00:00.000Z');
