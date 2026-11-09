@@ -118,7 +118,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
     staleTime: 60_000,
     gcTime: 10 * 60_000,
     refetchOnWindowFocus: false,
-    refetchInterval: weekStart === currentWeek() && !savingBatch && !selected ? 15_000 : false,
+    refetchInterval: weekStart === currentWeek() && !savingBatch && !selected ? 60_000 : false,
     refetchIntervalInBackground: false,
     retry: false,
   });

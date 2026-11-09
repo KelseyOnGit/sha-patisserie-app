@@ -16,7 +16,8 @@ export function buildRosterMessage(
     return `<p>Hi ${name || 'Team Member'},</p><p>You have no shifts scheduled for this week.</p>`;
   }
 
-  const shiftRows = shifts
+  const shiftRows = [...shifts]
+    .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
     .map((s) => {
       const start = new Date(s.startTime);
       const end = new Date(s.endTime);

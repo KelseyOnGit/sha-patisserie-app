@@ -289,7 +289,7 @@ test('reports retain table/drafts while syncing and reuse account/week cache on 
   assert.equal(options.refetchInterval, false);
   states[1] = require('../lib/timesheets.ts').currentWeek();
   render();
-  assert.equal(options.refetchInterval, 15_000);
+  assert.equal(options.refetchInterval, 60_000);
   assert.equal(options.refetchIntervalInBackground, false);
   states[9] = true;
   render();

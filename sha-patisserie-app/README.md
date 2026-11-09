@@ -32,6 +32,13 @@ use the Network URL printed by Next.js, on the same local network.
 
 ## Authentication deployment checklist
 
+### Roster notification emails
+
+Published roster emails list shifts chronologically by start date and time,
+including multiple shifts on the same day. Dates and times display in Perth
+time. Email formatting sorts a copy, leaving the original shift list unchanged.
+Check: `node --test tests/roster-email.test.cjs`.
+
 ### Worked hours versus paid leave
 
 Bulk timesheet approval preserves unchanged payable periods (including seconds
