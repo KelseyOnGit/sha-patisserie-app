@@ -74,6 +74,7 @@ test('payroll hides leave table and leave export while preserving worked payroll
       return [position < preset.length ? preset[position] : typeof initial === 'function' ? initial() : initial, () => {}];
     },
     useEffect: () => {},
+    useRef: (initial) => ({ current: initial }),
   };
   const filename = path.join(root, 'components/TimesheetReview.tsx');
   const load = Module._load;
@@ -208,6 +209,7 @@ test('reports retain table/drafts while syncing and reuse account/week cache on 
       return [states[index], (value) => { states[index] = typeof value === 'function' ? value(states[index]) : value; }];
     },
     useEffect: () => {},
+    useRef: (initial) => ({ current: initial }),
   };
   const filename = path.join(root, 'components/TimesheetReview.tsx');
   const load = Module._load;
@@ -288,6 +290,9 @@ test('reports retain table/drafts while syncing and reuse account/week cache on 
   assert.equal(options.refetchOnWindowFocus, false);
   assert.equal(options.refetchInterval, false);
   states[1] = require('../lib/timesheets.ts').currentWeek();
+  render();
+  assert.equal(options.refetchInterval, false);
+  states[8] = {};
   render();
   assert.equal(options.refetchInterval, 60_000);
   assert.equal(options.refetchIntervalInBackground, false);
@@ -408,6 +413,7 @@ test('past unfinished attendance is editable with a reason; live and approved ho
       return [states[index], (value) => { states[index] = typeof value === 'function' ? value(states[index]) : value; }];
     },
     useEffect: () => {},
+    useRef: (initial) => ({ current: initial }),
   };
   const filename = path.join(root, 'components/TimesheetReview.tsx');
   const load = Module._load;

@@ -99,7 +99,8 @@ export default function TimesheetReview({ userId }: { userId: string }) {
    const [addOpen, setAddOpen] = useState(false);
   const [addTarget, setAddTarget] = useState<{ userId: string; date: string; venue: 'SHA' | 'ZB' } | null>(null);
    const [prefill, setPrefill] = useState<{ sourceKey: string; periods: PayablePeriod[]; breakMinutes: number; reason: string } | null>(null);
-
+  const [adjustmentSaves, setAdjustmentSaves] = useState<Record<string, 'unsaved' | 'saving' | 'saved' | 'error'>>({});
+  const adjustmentSaveInFlight = useRef(false);
 
   const reportQuery = useQuery<Report>({
     queryKey: ['timesheet-report', userId, weekStart],
@@ -118,7 +119,8 @@ export default function TimesheetReview({ userId }: { userId: string }) {
     staleTime: 60_000,
     gcTime: 10 * 60_000,
     refetchOnWindowFocus: false,
-    refetchInterval: weekStart === currentWeek() && !savingBatch && !selected ? 60_000 : false,
+    refetchInterval: weekStart === currentWeek() && !savingBatch && !selected &&
+      Object.keys(adjustments).length === 0 ? 60_000 : false,
     refetchIntervalInBackground: false,
     retry: false,
   });
@@ -136,6 +138,14 @@ export default function TimesheetReview({ userId }: { userId: string }) {
     setAdjustments((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !keys.includes(key))));
     setReviewReasons((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !keys.includes(key))));
   };
+  useEffect(() => {
+    if (!Object.keys(adjustments).some((key) => adjustmentSaves[key] !== 'saved')) return;
+    const warnUnsaved = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener('beforeunload', warnUnsaved);
+    return () => window.removeEventListener('beforeunload', warnUnsaved);
+  }, [adjustments, adjustmentSaves]);
      const handleWorkedShiftCreated = async (created: { sourceKey: string; start: string; end: string; breakMinutes: number; reason: string }) => {
      setAddOpen(false);
      setError('');
@@ -254,6 +264,52 @@ export default function TimesheetReview({ userId }: { userId: string }) {
       ...prev,
       [sourceKey]: value,
     }));
+    setAdjustmentSaves((current) => ({ ...current, [sourceKey]: 'unsaved' }));
+  };
+
+  const saveAdjustment = async (row: ReviewRow) => {
+    const hours = adjustments[row.sourceKey];
+    if (hours === undefined || adjustmentSaves[row.sourceKey] === 'saved' ||
+        adjustmentSaveInFlight.current || savingBatch) return;
+    adjustmentSaveInFlight.current = true;
+    setSavingBatch(true);
+    setError('');
+    setMessage('');
+    setAdjustmentSaves((current) => ({ ...current, [row.sourceKey]: 'saving' }));
+    try {
+      const { periods, breakMinutes } = adjustedPayable(row, hours);
+      validatePayable(periods, breakMinutes, row.workDate);
+      const invalid = approvalError(row, periods);
+      if (invalid) throw new Error(invalid);
+      const response = await fetch('/api/admin/reports/timesheets', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sourceKey: row.sourceKey, weekStart, version: row.version, snapshot: row.snapshot,
+          action: 'APPROVE', periods, breakMinutes,
+          reason: (reviewReasons[row.sourceKey] ?? row.reason).trim() ||
+            `Adjusted to ${hours.toFixed(2)}h and approved individually`,
+        }),
+      });
+      if (!response.headers.get('content-type')?.includes('application/json')) {
+        throw new Error(`Unexpected save response (${response.status}). Refresh and check approval status before retrying.`);
+      }
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Unable to save adjusted hours.');
+      setAdjustmentSaves((current) => ({ ...current, [row.sourceKey]: 'saved' }));
+      // The write is committed even if refreshing the read model fails.
+      setMessage(`${row.staffName} (${formatDMY(row.workDate)}): hours saved and approved.`);
+      try {
+        if (await refreshReport()) clearDrafts([row.sourceKey]);
+      } catch (error) {
+        setError(`Hours were saved and approved, but refreshing the report failed: ${error instanceof Error ? error.message : 'Unable to refresh.'} Refresh before editing again.`);
+      }
+    } catch (error) {
+      setAdjustmentSaves((current) => ({ ...current, [row.sourceKey]: 'error' }));
+      setError(`${row.staffName} (${formatDMY(row.workDate)}): ${error instanceof Error ? error.message : 'Unable to save adjusted hours.'} Your edit is still shown; it has not been confirmed saved.`);
+    } finally {
+      adjustmentSaveInFlight.current = false;
+      setSavingBatch(false);
+    }
   };
 
   const saveAttendance = async (row: ReviewRow, attendanceStatus: string) => {
@@ -278,6 +334,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
 
   // Bulk Save and Approve for a specific staff member or all staff
   const handleSaveAndApprove = async (targetUserId?: string) => {
+    if (adjustmentSaveInFlight.current) return;
     setError('');
     setMessage('');
     setSavingBatch(true);
@@ -426,6 +483,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
             onChange={(e) => {
               setWeekStart(e.target.value);
               setAdjustments({});
+              setAdjustmentSaves({});
               setReviewReasons({});
               setSelected(null);
               setError('');
@@ -526,7 +584,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-xs text-stone-500 px-1 gap-1">
             <p>
-              💡 <strong>Adjustment rules:</strong> If there is a break recorded, standard 0.5 hr deduction applies. Type directly into the yellow box to standardize hours (e.g. 6.45 → 6.5).
+              💡 <strong>Adjustment rules:</strong> If there is a break recorded, standard 0.5 hr deduction applies. Type directly into the yellow box to standardize hours (e.g. 6.45 → 6.5). Changes save and approve individually when you leave the box.
             </p>
             <p className="font-mono text-stone-400">Times in Perth AWST (UTC+08)</p>
           </div>
@@ -683,18 +741,34 @@ export default function TimesheetReview({ userId }: { userId: string }) {
                                   <span className="text-[10px] font-bold text-stone-600">Adjusted hours:</span>
                                   <input
                                     type="number"
-                                    step="0.1"
+                                    step="0.01"
                                     min="0"
                                     max="24"
                                     aria-label={`Adjusted hours for ${row.staffName} on ${row.workDate}`}
                                     disabled={liveAttendance || writesBlocked}
                                     value={Number.isFinite(adjVal) ? adjVal : ''}
                                     onChange={(e) =>
-                                      handleAdjustmentChange(row.sourceKey, parseFloat(e.target.value) || 0)
+                                      handleAdjustmentChange(row.sourceKey, e.target.value === '' ? NaN : Number(e.target.value))
                                     }
+                                    onBlur={() => saveAdjustment(row)}
                                     className="w-16 rounded border border-amber-400 bg-[#fef08a] px-1.5 py-0.5 text-center font-bold text-stone-900 text-xs shadow-xs focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:opacity-50"
                                   />
                                 </div>
+                                {adjustmentSaves[row.sourceKey] && (
+                                  <div role="status" className={`text-[10px] ${adjustmentSaves[row.sourceKey] === 'error' ? 'text-rose-700' : 'text-stone-600'}`}>
+                                    {adjustmentSaves[row.sourceKey] === 'saving' ? 'Saving...' :
+                                      adjustmentSaves[row.sourceKey] === 'saved' ? 'Saved and approved' :
+                                      adjustmentSaves[row.sourceKey] === 'error' ? 'Save failed - edit retained' : 'Not saved yet'}
+                                    {adjustmentSaves[row.sourceKey] === 'error' && (
+                                      <button type="button" disabled={writesBlocked}
+                                        onClick={() => saveAdjustment(row)}
+                                        className="ml-1 underline"
+                                        aria-label={`Retry saving hours for ${row.staffName} on ${row.workDate}`}>
+                                        Retry save
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
                                 {pastUnfinished && row.status !== 'APPROVED' && <label className="grid gap-1 pt-1">
                                   Explanation (optional)
                                   <textarea maxLength={2000} disabled={writesBlocked}

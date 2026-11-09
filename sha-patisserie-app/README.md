@@ -41,6 +41,16 @@ Check: `node --test tests/roster-email.test.cjs`.
 
 ### Worked hours versus paid leave
 
+Adjusted hours in the yellow weekly-review boxes save and approve that individual
+entry when the admin leaves the box. They persist in PostgreSQL with the existing
+approval audit, not browser local storage. Each entry shows its save status;
+failed edits remain in the editor with a retry button and an explicit error.
+Empty or invalid values are rejected rather than silently saved as zero. A
+successful approval refreshes payroll and weekly totals. If that refresh fails,
+the existing refresh warning applies; the committed save is not undone.
+Background polling pauses while adjustments are unsaved. Leaving/reloading the
+page with unsaved edits triggers the browser's standard warning.
+
 Bulk timesheet approval preserves unchanged payable periods (including seconds
 and split shifts). New timesheets, existing-timesheet corrections, attendance
 allocations and audit entries each use one batched database write inside one
