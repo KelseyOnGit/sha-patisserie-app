@@ -140,6 +140,7 @@ function saveFixture(rows, options = {}) {
   let attempts = 0;
   let reads = 0;
   let writes = 0;
+  const queries = [];
   const knownError = (code) => new Prisma.PrismaClientKnownRequestError('Simulated database failure', {
     code, clientVersion: 'test',
   });
@@ -150,21 +151,27 @@ function saveFixture(rows, options = {}) {
         sheets.push(...data);
         return { count: data.length };
       },
-      update: async ({ where, data }) => {
-        writes++;
-        const sheet = sheets.find((entry) => entry.sourceKey === where.sourceKey && entry.version === where.version);
-        if (!sheet || options.staleUpdate) throw knownError('P2025');
-        Object.assign(sheet, data, { version: sheet.version + 1 });
-        return { id: sheet.id };
-      },
     },
-    timeLog: {
-      updateMany: async ({ where, data }) => {
-        writes++;
-        assert.ok(sheets.some((sheet) => sheet.id === data.timesheetId));
-        allocations.push({ where, data });
-        return { count: options.allocationConflict ? 0 : where.id.in.length };
-      },
+    $queryRaw: async (query) => {
+      writes++;
+      queries.push(query);
+      assert.equal(query.values.length, 1, 'payload must be bound, never interpolated into SQL text');
+      const data = JSON.parse(query.values[0]);
+      if (query.text.includes('UPDATE "Timesheet"')) {
+        return data.flatMap((item) => {
+          const sheet = sheets.find((entry) => entry.sourceKey === item.sourceKey && entry.version === item.expectedVersion);
+          if (!sheet || options.staleUpdate) return [];
+          Object.assign(sheet, item, { version: sheet.version + 1 });
+          return [{ id: sheet.id, sourceKey: sheet.sourceKey }];
+        });
+      }
+      assert.ok(query.text.includes('UPDATE "TimeLog"'));
+      for (const item of data) {
+        assert.ok(sheets.some((sheet) => sheet.id === item.timesheetId));
+        allocations.push(item);
+      }
+      if (options.closedDuringAllocation && writes > 3) throw knownError('P2028');
+      return options.allocationConflict ? [] : data.map((item) => ({ id: item.logId }));
     },
     timesheetAudit: {
       createMany: async ({ data }) => {
@@ -219,7 +226,7 @@ function saveFixture(rows, options = {}) {
     send: (batch = items) => api.POST(new Request('http://localhost/api/admin/reports/timesheets', {
       method: 'POST', body: JSON.stringify({ batch }),
     })),
-    get state() { return { sheets, audits, allocations, attempts, reads, writes }; },
+    get state() { return { sheets, audits, allocations, attempts, reads, writes, queries }; },
   };
 }
 
@@ -248,12 +255,61 @@ test('bulk approval allocates logs only after sheets exist and rolls back alloca
   const f = saveFixture([row]);
   assert.equal((await f.send()).status, 200);
   assert.equal(f.state.allocations.length, 1);
-  assert.equal(f.state.allocations[0].data.timesheetId, f.state.sheets[0].id);
+  assert.equal(f.state.allocations[0].timesheetId, f.state.sheets[0].id);
   const conflict = saveFixture([row], { allocationConflict: true });
   assert.equal((await conflict.send()).status, 409);
   assert.equal(conflict.state.sheets.length, 0);
   assert.equal(conflict.state.audits.length, 0);
   assert.equal(conflict.state.allocations.length, 0);
+});
+
+test('44 corrections to approved timesheets with attendance use three writes, not one per row', async () => {
+  const rows = Array.from({ length: 44 }, (_, index) => ({
+    ...payableRow(index), version: 2, status: 'APPROVED',
+    actual: [{ id: `log-${index}`, clockIn: '2020-10-05T01:00:00Z', clockOut: '2020-10-05T09:00:00Z' }],
+  }));
+  const f = saveFixture(rows, { closedDuringAllocation: true });
+  const items = f.items.map((item, index) => ({
+    ...item, periods: [{ start: item.periods[0].start,
+      end: index % 2 ? '2020-10-05T08:00:00Z' : '2020-10-05T08:30:00Z' }],
+    reason: `Correction ${index}: O'Brien`,
+  }));
+  assert.equal((await f.send(items)).status, 200);
+  assert.equal(f.state.writes, 3);
+  assert.equal(f.state.allocations.length, 44);
+  assert.equal(f.state.audits.length, 44);
+  for (let index = 0; index < rows.length; index++) {
+    const sheet = f.state.sheets[index];
+    assert.equal(sheet.version, 3);
+    assert.equal(sheet.reason, items[index].reason);
+    assert.deepEqual(sheet.payablePeriods, items[index].periods);
+    assert.equal(f.state.allocations[index].timesheetId, sheet.id);
+    assert.equal(f.state.audits[index].timesheetId, sheet.id);
+    assert.equal(f.state.audits[index].values.hours, index % 2 ? 7 : 7.5);
+  }
+});
+
+test('mixed new and existing sheets are batched together and a stale row rolls back valid corrections', async () => {
+  const f = saveFixture([payableRow(), { ...payableRow(1), version: 2 }]);
+  assert.equal((await f.send()).status, 200);
+  assert.equal(f.state.writes, 3);
+  assert.equal(f.state.sheets.length, 2);
+  assert.equal(f.state.audits.length, 2);
+  const stale = saveFixture([payableRow(), { ...payableRow(1), version: 2 }], { staleUpdate: true });
+  assert.equal((await stale.send()).status, 409);
+  assert.equal(stale.state.sheets.length, 1);
+  assert.equal(stale.state.sheets[0].version, 2);
+  assert.equal(stale.state.audits.length, 0);
+});
+
+test('duplicate attendance ownership within a batch is rejected without partial saves', async () => {
+  const f = saveFixture([0, 1].map((index) => ({
+    ...payableRow(index), actual: [{ id: 'same-log', clockIn: '2020-10-05T01:00:00Z', clockOut: '2020-10-05T09:00:00Z' }],
+  })));
+  assert.equal((await f.send()).status, 409);
+  assert.equal(f.state.sheets.length, 0);
+  assert.equal(f.state.allocations.length, 0);
+  assert.equal(f.state.audits.length, 0);
 });
 
 test('unchanged approvals cause no writes, changed sources are reapproved and stale updates conflict', async () => {
@@ -304,4 +360,73 @@ test('invalid batch items identify staff/date and mixed weeks or duplicate sourc
   assert.equal(response.status, 400);
   assert.match((await response.json()).error, /Staff 0 \(2020-10-05\).*Break deduction/);
   assert.equal(f.state.writes, 0);
+});
+
+test('batched correction and allocation SQL runs in PostgreSQL with per-row values and version/ownership guards', {
+  skip: !process.env.TIMESHEET_PGLITE_MODULE,
+}, async () => {
+  const { PGlite } = require(process.env.TIMESHEET_PGLITE_MODULE);
+  const db = new PGlite();
+  try {
+    await db.exec(`
+      CREATE TYPE "TimesheetStatus" AS ENUM ('PENDING', 'APPROVED');
+      CREATE TABLE "Timesheet" (
+        id text PRIMARY KEY, "sourceKey" text UNIQUE, version integer,
+        "attendanceStatus" text, "payablePeriods" jsonb, "breakMinutes" integer,
+        reason text, status "TimesheetStatus", "approvedAt" timestamp(3),
+        "approvedBy" text, "rateAtApproval" numeric(10,2),
+        "sourceSnapshot" text, site text, "updatedAt" timestamp(3)
+      );
+      CREATE TABLE "TimeLog" (
+        id text PRIMARY KEY, "timesheetId" text REFERENCES "Timesheet"(id),
+        "updatedAt" timestamp(3)
+      );
+    `);
+    const rows = Array.from({ length: 44 }, (_, index) => ({
+      ...payableRow(index), version: 2, status: 'APPROVED',
+      actual: [{ id: `log-${index}`, clockIn: '2020-10-05T01:00:00Z', clockOut: '2020-10-05T09:00:00Z' }],
+    }));
+    for (const row of rows) {
+      await db.query('INSERT INTO "Timesheet" (id, "sourceKey", version) VALUES ($1, $2, $3)',
+        [`saved-${row.sourceKey}`, row.sourceKey, row.version]);
+      await db.query('INSERT INTO "TimeLog" (id) VALUES ($1)', [row.actual[0].id]);
+    }
+    const f = saveFixture(rows);
+    const corrections = f.items.map((item, index) => ({
+      ...item, breakMinutes: index % 2 ? 15 : 0, reason: `Verified O'Brien ${index}`,
+      periods: [{ start: '2020-10-05T01:00:00Z', end: '2020-10-05T08:30:00Z' }],
+    }));
+    assert.equal((await f.send(corrections)).status, 200);
+    for (const query of f.state.queries) {
+      assert.equal((await db.query(query.text, query.values)).rows.length, 44);
+    }
+    const saved = (await db.query('SELECT * FROM "Timesheet" ORDER BY "sourceKey"')).rows;
+    for (const sheet of saved) {
+      const index = Number(sheet.sourceKey.split(':')[1]);
+      assert.equal(sheet.version, 3);
+      assert.equal(sheet.reason, corrections[index].reason);
+      assert.equal(sheet.breakMinutes, corrections[index].breakMinutes);
+      assert.equal(sheet.status, 'APPROVED');
+      assert.equal(Number(sheet.rateAtApproval), 30);
+      assert.deepEqual(sheet.payablePeriods, corrections[index].periods);
+      assert.ok(sheet.approvedAt);
+      assert.ok(sheet.updatedAt);
+    }
+    assert.equal((await db.query('SELECT * FROM "TimeLog" WHERE "timesheetId" IS NOT NULL')).rows.length, 44);
+    const stale = f.state.queries[0];
+    assert.equal((await db.query(stale.text, stale.values)).rows.length, 0);
+    const reopen = saveFixture(rows.map((row, index) => ({
+      ...row, version: 3, periods: corrections[index].periods, breakMinutes: corrections[index].breakMinutes,
+    })));
+    assert.equal((await reopen.send(reopen.items.map((item) => ({ ...item, action: 'REOPEN', reason: 'Recheck' })))).status, 200);
+    for (const query of reopen.state.queries) await db.query(query.text, query.values);
+    const reopened = (await db.query('SELECT * FROM "Timesheet"')).rows;
+    assert.ok(reopened.every((sheet) => sheet.version === 4 && sheet.status === 'PENDING' &&
+      sheet.approvedAt === null && sheet.approvedBy === null && sheet.rateAtApproval === null));
+    await db.query('UPDATE "TimeLog" SET "timesheetId" = $1 WHERE id = $2', ['saved-shift:1', 'log-0']);
+    const allocation = f.state.queries[1];
+    assert.equal((await db.query(allocation.text, allocation.values)).rows.length, 43);
+  } finally {
+    await db.close();
+  }
 });

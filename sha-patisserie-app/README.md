@@ -35,8 +35,12 @@ use the Network URL printed by Next.js, on the same local network.
 ### Worked hours versus paid leave
 
 Bulk timesheet approval preserves unchanged payable periods (including seconds
-and split shifts). New timesheets and audit entries use batched database writes
-inside one serializable transaction: a failed save commits no partial approvals.
+and split shifts). New timesheets, existing-timesheet corrections, attendance
+allocations and audit entries each use one batched database write inside one
+serializable transaction, rather than a query per row. Existing corrections
+and allocations use parameterized PostgreSQL updates with per-row version and
+ownership checks; any mismatch rolls back the entire batch. A failed save
+commits no partial approvals.
 Serialization conflicts are retried at most twice against freshly loaded data.
 Stale versions still require a refresh. Database transaction timeouts are shown
 explicitly; retry after refreshing or approve one staff member at a time.

@@ -71,17 +71,30 @@ function fixture() {
           rateAtApproval: sheet.rateAtApproval === null ? null : new Prisma.Decimal(sheet.rateAtApproval) })));
         return { count: data.length };
       },
-      update: async ({ where, data }) => {
-        const sheet = sheets.find((entry) => entry.sourceKey === where.sourceKey && entry.version === where.version);
-        if (!sheet) throw new Prisma.PrismaClientKnownRequestError('Stale version', {
-          code: 'P2025', clientVersion: 'test',
+    },
+    $queryRaw: async (query) => {
+      const data = JSON.parse(query.values[0]);
+      if (query.text.includes('UPDATE "Timesheet"')) {
+        return data.flatMap((item) => {
+          const sheet = sheets.find((entry) => entry.sourceKey === item.sourceKey && entry.version === item.expectedVersion);
+          if (!sheet) return [];
+          Object.assign(sheet, item, {
+            version: sheet.version + 1, approvedAt: item.approvedAt ? new Date(item.approvedAt) : null,
+            rateAtApproval: item.rateAtApproval === null ? null : new Prisma.Decimal(item.rateAtApproval),
+          });
+          return [{ id: sheet.id, sourceKey: sheet.sourceKey }];
         });
-        Object.assign(sheet, data, {
-          version: where.version + 1,
-          rateAtApproval: data.rateAtApproval === null ? null : new Prisma.Decimal(data.rateAtApproval),
-        });
-        return { id: sheet.id };
-      },
+      }
+      assert.ok(query.text.includes('UPDATE "TimeLog"'));
+      const updated = [];
+      logs = logs.map((log) => {
+        const item = data.find((entry) => entry.logId === log.id &&
+          (log.timesheetId === null || log.timesheetId === entry.timesheetId));
+        if (!item) return log;
+        updated.push({ id: log.id });
+        return { ...log, timesheetId: item.timesheetId };
+      });
+      return updated;
     },
     timesheetAudit: { createMany: async ({ data }) => { audits.push(...data); return { count: data.length }; } },
     $transaction: async (work, options) => {

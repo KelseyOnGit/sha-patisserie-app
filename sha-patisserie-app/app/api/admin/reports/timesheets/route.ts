@@ -16,6 +16,9 @@ export async function POST(req: Request) {
   if (!session || !isPrivilegedRole(session.role)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
+  const startedAt = Date.now();
+  let stage = 'validate request';
+  let batchSize = 0;
   try {
     let rawBody: unknown;
     try { rawBody = await req.json(); } catch { throw new ReviewError('Invalid JSON request.'); }
@@ -64,6 +67,7 @@ export async function POST(req: Request) {
     });
 
     const targetWeekStart = items[0].weekStart;
+    batchSize = items.length;
     if (items.some((item) => item.weekStart !== targetWeekStart)) {
       throw new ReviewError('All timesheets in a batch must belong to the same week.');
     }
@@ -72,12 +76,16 @@ export async function POST(req: Request) {
     }
 
     const save = () => prisma.$transaction(async (tx) => {
+      stage = 'load report';
       const report = await loadTimesheetReport(targetWeekStart, tx);
       const rowsByKey = new Map(report.shifts.map((row) => [row.sourceKey, row]));
       const newSheets: Prisma.TimesheetCreateManyInput[] = [];
-      const audits: Prisma.TimesheetAuditCreateManyInput[] = [];
-      const allocations: { id: string; logIds: string[] }[] = [];
+      const updates: (Prisma.TimesheetCreateManyInput & { expectedVersion: number })[] = [];
+      const audits: (Omit<Prisma.TimesheetAuditCreateManyInput, 'timesheetId'> & { sourceKey: string })[] = [];
+      const allocations: { sourceKey: string; logId: string }[] = [];
+      const idsByKey = new Map<string, string>();
 
+      stage = 'validate timesheets';
       for (const item of items) {
         const { sourceKey, version, snapshot, action, breakMinutes, reason } = item;
         let periods = item.periods;
@@ -137,9 +145,9 @@ export async function POST(req: Request) {
           site: row.site,
         };
 
-        let id: string;
         if (version === 0) {
-          id = randomUUID();
+          const id = randomUUID();
+          idsByKey.set(sourceKey, id);
           newSheets.push({
             id,
             ...data,
@@ -149,19 +157,16 @@ export async function POST(req: Request) {
             workDate: new Date(`${row.workDate}T00:00:00Z`),
           });
         } else {
-          const sheet = await tx.timesheet.update({
-            where: { sourceKey, version },
-            data: { ...data, version: { increment: 1 } },
-            select: { id: true },
+          updates.push({
+            ...data, sourceKey, expectedVersion: version,
+            userId: row.userId, workDate: new Date(`${row.workDate}T00:00:00Z`),
           });
-          id = sheet.id;
         }
 
-        const ids = row.actual.map((log) => log.id);
-        if (ids.length) allocations.push({ id, logIds: ids });
+        allocations.push(...row.actual.map((log) => ({ sourceKey, logId: log.id })));
 
         audits.push({
-          timesheetId: id,
+          sourceKey,
           actorId: session.userId,
           action: String(action),
           values: {
@@ -173,17 +178,73 @@ export async function POST(req: Request) {
           },
         });
       }
+      stage = 'create timesheets';
       if (newSheets.length) await tx.timesheet.createMany({ data: newSheets });
-      for (const { id, logIds } of allocations) {
-        const allocated = await tx.timeLog.updateMany({
-          where: { id: { in: logIds }, OR: [{ timesheetId: null }, { timesheetId: id }] },
-          data: { timesheetId: id },
-        });
-        if (allocated.count !== logIds.length) {
+      stage = 'update timesheets';
+      if (updates.length) {
+        // Prisma cannot assign different values per row in updateMany.
+        const updated = await tx.$queryRaw<{ id: string; sourceKey: string }[]>(Prisma.sql`
+          UPDATE "Timesheet" AS sheet
+          SET "attendanceStatus" = item."attendanceStatus",
+              "payablePeriods" = item."payablePeriods",
+              "breakMinutes" = item."breakMinutes",
+              "reason" = item.reason,
+              "status" = item.status::"TimesheetStatus",
+              "approvedAt" = item."approvedAt",
+              "approvedBy" = item."approvedBy",
+              "rateAtApproval" = item."rateAtApproval",
+              "sourceSnapshot" = item."sourceSnapshot",
+              "site" = item.site,
+              "version" = sheet.version + 1,
+              "updatedAt" = CURRENT_TIMESTAMP
+          FROM jsonb_to_recordset(${JSON.stringify(updates)}::jsonb) AS item(
+            "sourceKey" text, "expectedVersion" integer, "attendanceStatus" text,
+            "payablePeriods" jsonb, "breakMinutes" integer, reason text, status text,
+            "approvedAt" timestamp, "approvedBy" text, "rateAtApproval" numeric,
+            "sourceSnapshot" text, site text
+          )
+          WHERE sheet."sourceKey" = item."sourceKey" AND sheet.version = item."expectedVersion"
+          RETURNING sheet.id, sheet."sourceKey"
+        `);
+        if (updated.length !== updates.length) {
+          throw new ReviewError('Another manager changed a timesheet. Refresh and review before retrying.', 409);
+        }
+        for (const sheet of updated) idsByKey.set(sheet.sourceKey, sheet.id);
+      }
+      const logAllocations = allocations.map(({ sourceKey, logId }) => {
+        const timesheetId = idsByKey.get(sourceKey);
+        if (!timesheetId) throw new Error('Saved timesheet ID missing during attendance allocation.');
+        return { logId, timesheetId };
+      });
+      if (new Set(logAllocations.map((entry) => entry.logId)).size !== logAllocations.length) {
+        throw new ReviewError('Attendance appears in more than one timesheet. Refresh and review before retrying.', 409);
+      }
+      if (logAllocations.length) {
+        stage = 'allocate attendance';
+        const allocated = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
+          UPDATE "TimeLog" AS log
+          SET "timesheetId" = item."timesheetId", "updatedAt" = CURRENT_TIMESTAMP
+          FROM jsonb_to_recordset(${JSON.stringify(logAllocations)}::jsonb)
+            AS item("logId" text, "timesheetId" text)
+          WHERE log.id = item."logId"
+            AND (log."timesheetId" IS NULL OR log."timesheetId" = item."timesheetId")
+          RETURNING log.id
+        `);
+        if (allocated.length !== logAllocations.length) {
           throw new ReviewError('Attendance was allocated to another timesheet. Refresh before retrying.', 409);
         }
       }
-      if (audits.length) await tx.timesheetAudit.createMany({ data: audits });
+      if (audits.length) {
+        stage = 'create audit records';
+        await tx.timesheetAudit.createMany({
+          data: audits.map(({ sourceKey, ...audit }) => {
+            const timesheetId = idsByKey.get(sourceKey);
+            if (!timesheetId) throw new Error('Saved timesheet ID missing during audit creation.');
+            return { ...audit, timesheetId };
+          }),
+        });
+      }
+      stage = 'commit transaction';
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 25000 });
 
     for (let attempt = 0; ; attempt++) {
@@ -213,7 +274,9 @@ export async function POST(req: Request) {
       console.error('Timesheet save conflict:', error);
       return NextResponse.json({ error: 'A concurrent update occurred. Refresh and review before retrying.' }, { status: 409 });
     }
-    console.error('Failed to save timesheet review:', error);
+    console.error('Failed to save timesheet review:', {
+      stage, batchSize, elapsedMs: Date.now() - startedAt, error,
+    });
     if (error instanceof Prisma.PrismaClientKnownRequestError && ['P2024', 'P2028'].includes(error.code)) {
       return NextResponse.json({ error: 'The database could not complete the save transaction. No changes were committed. Refresh and retry, or approve one staff member at a time.' }, { status: 503 });
     }
