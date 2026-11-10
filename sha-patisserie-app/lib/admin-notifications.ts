@@ -89,9 +89,13 @@ function notificationLayout(options: {
           <div style="margin-top:24px;">
             ${options.extra}
           </div>
-          <table role="presentation" cellpadding="0" cellspacing="0" style="margin:36px 0 24px;">
-            <tr><td bgcolor="#15803d" style="border-radius:30px;text-align:center;">
-              <a href="${url}" style="display:inline-block;padding:14px 28px;border-radius:30px;color:#ffffff;font-size:15px;font-weight:bold;text-decoration:none;">${escapeHtml(options.button)}</a>
+          <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0">
+            <tr><td style="padding:24px 0;">
+              <table role="presentation" border="0" cellpadding="0" cellspacing="0" style="border-collapse:separate;">
+                <tr><td align="center" valign="middle" bgcolor="#0f172a" style="padding:12px 20px;border:1px solid #0f172a;border-radius:6px;line-height:20px;mso-line-height-rule:exactly;">
+                  <a href="${url}" style="display:block;color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;mso-line-height-rule:exactly;font-weight:bold;text-align:center;text-decoration:none;">${escapeHtml(options.button)}</a>
+                </td></tr>
+              </table>
             </td></tr>
           </table>
           <p style="margin:0;font-size:13px;line-height:1.6;color:#64748b;">Admin sign-in is required. Please review and approve requests directly in the staff portal rather than replying to this email.</p>

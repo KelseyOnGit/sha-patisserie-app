@@ -81,7 +81,7 @@ test('one escaped email per unique recipient with dd-mm-yyyy dates and the admin
   const html = emails[0][2];
   assert.match(html, /02-01-2027 to 03-01-2027/);
   assert.match(html, /Sha Patisserie/);
-  assert.match(html, /bgcolor="#15803d"/);
+  assert.match(html, /bgcolor="#0f172a"/);
   assert.match(html, /Review leave request<\/a>/);
   assert.match(html, /name="viewport"/);
   assert.match(html, /&lt;Staff &amp; Co&gt;/);
@@ -172,6 +172,9 @@ test('missed clock-in and clock-out emails use Perth times, admin links and prov
     assert.match(email[2], /&lt;Staff&gt;/);
     assert.match(email[2], /https:\/\/staff.example.invalid\/admin\/timesheets/);
     assert.deepEqual(email[3], { idempotencyKey: 'stable-key' });
+    assert.match(email[2], /<td align="center" valign="middle" bgcolor="#0f172a" style="padding:12px 20px;[^"]*line-height:20px;mso-line-height-rule:exactly;">/);
+    assert.match(email[2], /<a href="https:\/\/staff.example.invalid\/admin\/timesheets" style="display:block;[^"]*font-size:14px;line-height:20px;[^"]*">Review timesheets<\/a>/);
+    assert.doesNotMatch(email[2], /bgcolor="#15803d"|border-radius:30px|margin:36px/);
   }
   assert.match(emails[0][2], /09:00/);
   assert.match(emails[1][2], /05:00/);

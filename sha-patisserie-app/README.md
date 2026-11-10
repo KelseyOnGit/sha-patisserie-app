@@ -169,8 +169,10 @@ staff name, leave type, dates in dd-mm-yyyy, total hours, staff note and a link
 to the admin Leave Requests page. Manager-created, immediately approved leave
 and review/withdrawal actions do not send these review notifications.
 
-Leave and pending-user emails share a branded HTML layout with a dark Sha
-Patisserie header, summary card and green review button plus a fallback link.
+Leave, attendance and pending-user emails share a branded HTML layout with a dark
+Sha Patisserie header, summary card and compact navy review button plus a fallback
+link. Button padding and surrounding spacing use table cells with explicit line
+heights so Outlook does not collapse the padding or stretch the button vertically.
 Consecutive dates appear as a range (10-02-2027 to 28-02-2027); gaps remain
 separate ranges, and single-day requests show a single date. The requested-day
 count and hours are unchanged. Styling applies to newly sent emails only.

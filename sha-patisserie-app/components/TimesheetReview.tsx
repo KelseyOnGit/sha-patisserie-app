@@ -139,13 +139,13 @@ export default function TimesheetReview({ userId }: { userId: string }) {
     setReviewReasons((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !keys.includes(key))));
   };
   useEffect(() => {
-    if (!Object.keys(adjustments).some((key) => adjustmentSaves[key] !== 'saved')) return;
+    if (Object.keys(adjustments).length === 0) return;
     const warnUnsaved = (event: BeforeUnloadEvent) => {
       event.preventDefault();
     };
     window.addEventListener('beforeunload', warnUnsaved);
     return () => window.removeEventListener('beforeunload', warnUnsaved);
-  }, [adjustments, adjustmentSaves]);
+  }, [adjustments]);
      const handleWorkedShiftCreated = async (created: { sourceKey: string; start: string; end: string; breakMinutes: number; reason: string }) => {
      setAddOpen(false);
      setError('');
@@ -269,8 +269,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
 
   const saveAdjustment = async (row: ReviewRow) => {
     const hours = adjustments[row.sourceKey];
-    if (hours === undefined || adjustmentSaves[row.sourceKey] === 'saved' ||
-        adjustmentSaveInFlight.current || savingBatch) return;
+    if (hours === undefined || adjustmentSaveInFlight.current || savingBatch) return;
     adjustmentSaveInFlight.current = true;
     setSavingBatch(true);
     setError('');
@@ -297,9 +296,10 @@ export default function TimesheetReview({ userId }: { userId: string }) {
       if (!response.ok) throw new Error(data.error || 'Unable to save adjusted hours.');
       setAdjustmentSaves((current) => ({ ...current, [row.sourceKey]: 'saved' }));
       // The write is committed even if refreshing the read model fails.
+      clearDrafts([row.sourceKey]);
       setMessage(`${row.staffName} (${formatDMY(row.workDate)}): hours saved and approved.`);
       try {
-        if (await refreshReport()) clearDrafts([row.sourceKey]);
+        await refreshReport();
       } catch (error) {
         setError(`Hours were saved and approved, but refreshing the report failed: ${error instanceof Error ? error.message : 'Unable to refresh.'} Refresh before editing again.`);
       }
@@ -1006,6 +1006,7 @@ function ReviewEditor({ row, weekStart, prefill, onClose, onSaved }: {
             <input type="time" step="60" value={timeInput(period.end)}
               onChange={(e) => changePeriod(index, 'end', e.target.value)} className={inputClass} />
           </label>
+
           <button onClick={() => setPeriods((values) => values.filter((_, i) => i !== index))} className={buttonClass}>Remove</button>
         </div>)}
         <div className="flex flex-wrap gap-2">
