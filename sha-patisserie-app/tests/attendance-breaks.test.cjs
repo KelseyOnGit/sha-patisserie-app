@@ -307,6 +307,7 @@ test('clock card enables unscheduled breaks, reflects start/end and displays fai
     if (oldWindow === undefined) delete globalThis.window;
     else globalThis.window = oldWindow;
   });
+
   t.mock.method(globalThis, 'setInterval', () => 0);
   t.mock.method(globalThis, 'clearInterval', () => {});
   t.mock.method(console, 'error', () => {});
@@ -324,7 +325,7 @@ test('clock card enables unscheduled breaks, reflects start/end and displays fai
   }).default;
   const calls = [];
   t.mock.method(globalThis, 'fetch', async (url, options) => {
-    if (url === '/api/roster/mine') return Response.json({ shifts: [] });
+    if (url === '/api/roster/mine') return Response.json({ shifts: [], leave: [] });
     assert.equal(url, '/api/shifts/breaks');
     if (options?.method === 'POST') {
       const body = JSON.parse(options.body);
@@ -359,3 +360,77 @@ test('clock card enables unscheduled breaks, reflects start/end and displays fai
   await new Promise(setImmediate);
   assert.doesNotMatch(renderToStaticMarkup(render()), /Please sign in again/);
 });
+
+for (const file of ['components/ClockInCard.tsx', 'app/clock/page.tsx']) {
+  test(`${file}: approved leave removes clock-in prompts and refreshes after cancellation`, async (t) => {
+    const values = [];
+    const effects = [];
+    const cleanups = [];
+    const focus = [];
+    let cursor = 0;
+    let first = true;
+    let status = 'APPROVED';
+    let rosterFails = false;
+    const today = require('../lib/leave.ts').perthToday().toISOString().slice(0, 10);
+    const oldWindow = globalThis.window;
+    globalThis.window = {
+      addEventListener: (event, callback) => { if (event === 'focus') focus.push(callback); },
+      removeEventListener() {},
+    };
+    t.after(() => {
+      cleanups.forEach((cleanup) => cleanup?.());
+      if (oldWindow === undefined) delete globalThis.window;
+      else globalThis.window = oldWindow;
+    });
+    t.mock.method(globalThis, 'setInterval', () => 0);
+    t.mock.method(globalThis, 'clearInterval', () => {});
+    t.mock.method(console, 'error', () => {});
+    const state = (initial) => {
+      const index = cursor++;
+      if (!(index in values)) values[index] = typeof initial === 'function' ? initial() : initial;
+      return [values[index], (next) => { values[index] = typeof next === 'function' ? next(values[index]) : next; }];
+    };
+    const Page = loadFile(file, {
+      react: { ...React, useState: state,
+        useRef(initial) { return state({ current: initial })[0]; },
+        useCallback: (callback) => callback,
+        useEffect: (effect) => { if (first) effects.push(effect); },
+      },
+      'next/navigation': { useRouter: () => ({ push() {} }) },
+    }).default;
+    t.mock.method(globalThis, 'fetch', async (url) => {
+      if (url === '/api/roster/mine') {
+        if (rosterFails) return Response.json({ error: 'Roster unavailable' }, { status: 500 });
+        return Response.json({ shifts: [], leave: [{ date: today, status, type: 'Annual leave' }] });
+      }
+      if (url === '/api/auth/me') return Response.json({ user: { id: 'staff', name: 'Staff' } });
+      if (url === '/api/shifts/breaks') return Response.json({ session: null });
+      if (url === '/api/shifts/clock') return Response.json({ activeLog: null });
+      assert.fail(`Unexpected URL: ${url}`);
+    });
+    const render = () => {
+      cursor = 0;
+      const tree = Page({ userName: 'Staff' });
+      first = false;
+      return tree;
+    };
+    render();
+    effects.forEach((effect) => cleanups.push(effect()));
+    await new Promise(setImmediate);
+    assert.match(renderToStaticMarkup(render()), /on approved leave today.*No clock-in is required/);
+    assert.ok(findElement(render(), (node) => node.type === 'button' && node.props.children === 'Clock In if Working'));
+    status = 'CANCEL_REQUESTED';
+    focus.forEach((callback) => callback());
+    await new Promise(setImmediate);
+    assert.match(renderToStaticMarkup(render()), /No clock-in is required/);
+    status = 'CANCELLED';
+    focus.forEach((callback) => callback());
+    await new Promise(setImmediate);
+    assert.doesNotMatch(renderToStaticMarkup(render()), /No clock-in is required/);
+    assert.ok(findElement(render(), (node) => node.type === 'button' && node.props.children === 'Clock In'));
+    rosterFails = true;
+    focus.forEach((callback) => callback());
+    await new Promise(setImmediate);
+    assert.match(renderToStaticMarkup(render()), /Roster unavailable/);
+  });
+}

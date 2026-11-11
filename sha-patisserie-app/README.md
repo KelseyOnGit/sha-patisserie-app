@@ -196,6 +196,14 @@ requires a Vercel plan that supports minute-level cron jobs. Before enabling:
    the attendance cron appears in the project's Cron Jobs.
 
 Only published shifts for active, approved staff are checked. Missing clock-in
+alerts are suppressed for approved Annual, Personal or Unpaid leave on the
+shift's Perth start date, across both venues. Leave awaiting cancellation review
+remains effective; pending, rejected and cancelled leave do not suppress alerts.
+The staff schedule hides retained shifts on effective leave dates, and both
+clock-in screens display "No clock-in is required" on leave days. They refresh
+leave status on focus and every minute. Actual work can still be clocked in;
+an existing open session still requires clock-out and keeps its reminder.
+Missing clock-in
 is checked from scheduled start + 15 minutes until the shift ends. Missing
 clock-out is checked from scheduled end + 15 minutes while an overlapping
 attendance session remains open. Attendance matches staff and time regardless

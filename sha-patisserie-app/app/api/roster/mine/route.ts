@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { prisma } from '@/lib/prisma';
-import { perthToday, LEAVE_LABELS, LEAVE_STATUS_LABELS } from '@/lib/leave';
+import { perthToday, isEffectiveLeave, LEAVE_LABELS, LEAVE_STATUS_LABELS } from '@/lib/leave';
 import { upcomingHolidays } from '@/lib/holidays';
 
 const TZ = 'Australia/Perth';
@@ -40,8 +40,10 @@ export async function GET() {
       }),
     ]);
 
+    const leaveDays = new Set(leave.filter((entry) => isEffectiveLeave(entry.status))
+      .map((entry) => entry.workDate.toISOString().slice(0, 10)));
     return NextResponse.json({
-      shifts: shifts.map((shift) => ({
+      shifts: shifts.filter((shift) => !leaveDays.has(dayKey(shift.startTime))).map((shift) => ({
         id: shift.id,
         date: dayKey(shift.startTime),
         day: dayLabel(shift.startTime),

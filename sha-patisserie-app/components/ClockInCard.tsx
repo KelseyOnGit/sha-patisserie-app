@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { isEffectiveLeave, perthToday } from '@/lib/leave';
 
 interface ClockInCardProps {
   userName?: string;
@@ -34,6 +35,8 @@ export default function ClockInCard({ userName = 'Team Member' }: ClockInCardPro
   const [upcomingShift, setUpcomingShift] = useState<UpcomingShift | null>(null);
   const statusRequest = useRef(0);
   const actionInFlight = useRef(false);
+  const [leaveToday, setLeaveToday] = useState(false);
+  const [rosterError, setRosterError] = useState('');
 
   // Update live clock on client side
   useEffect(() => {
@@ -135,20 +138,28 @@ export default function ClockInCard({ userName = 'Team Member' }: ClockInCardPro
   };
 
   useEffect(() => {
-    // Fetch upcoming shift for the logged-in staff
-    fetch('/api/roster/mine')
-      .then(async (res) => {
-        if (!res.ok) return null;
-        return res.json();
-      })
-      .then((data) => {
-        if (Array.isArray(data?.shifts) && data.shifts.length > 0) {
-          setUpcomingShift(data.shifts[0]);
-        }
-      })
-      .catch((err) => {
-        console.error('Failed to load upcoming shift:', err);
-      });
+    let active = true;
+    const refresh = async () => {
+      try {
+        const res = await fetch('/api/roster/mine', { cache: 'no-store' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Unable to load roster.');
+        if (!Array.isArray(data.shifts) || !Array.isArray(data.leave)) throw new Error('Invalid roster response.');
+        if (!active) return;
+        setUpcomingShift(data.shifts[0] ?? null);
+        setLeaveToday(data.leave.some((entry: { date: string; status: string }) =>
+          entry.date === perthToday().toISOString().slice(0, 10) && isEffectiveLeave(entry.status)));
+        setRosterError('');
+      } catch (error) {
+        if (!active) return;
+        console.error('Failed to load upcoming shift:', error);
+        setRosterError(error instanceof Error ? error.message : 'Unable to load roster.');
+      }
+    };
+    void refresh();
+    window.addEventListener('focus', refresh);
+    const interval = setInterval(refresh, 60000);
+    return () => { active = false; window.removeEventListener('focus', refresh); clearInterval(interval); };
   }, []);
 
   const handleClockAction = async (action: 'in' | 'out') => {
@@ -278,6 +289,10 @@ export default function ClockInCard({ userName = 'Team Member' }: ClockInCardPro
       </div>
 
       {/* Upcoming Shift Info */}
+      {leaveToday && <p role="status" className="mb-4 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">
+        You are on approved leave today. No clock-in is required.
+      </p>}
+      {rosterError && <p role="alert" className="mb-4 text-sm text-rose-700">Could not refresh your roster: {rosterError}</p>}
       <div className="mb-6 rounded-2xl bg-[#EAE3D2]/40 border border-[#D8C4B6]/60 p-4 text-left">
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500">Upcoming Shift</span>
@@ -306,7 +321,7 @@ export default function ClockInCard({ userName = 'Team Member' }: ClockInCardPro
           disabled={loading || isClockedIn}
           className="w-full py-3.5 rounded-2xl font-bold text-sm bg-emerald-700 hover:bg-emerald-800 text-white shadow-sm disabled:opacity-50 transition-all"
         >
-          {loading ? '...' : 'Clock In'}
+          {loading ? '...' : leaveToday ? 'Clock In if Working' : 'Clock In'}
         </button>
 
         <button

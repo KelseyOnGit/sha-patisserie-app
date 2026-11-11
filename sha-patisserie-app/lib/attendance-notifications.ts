@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { prisma } from '@/lib/prisma';
 import { candidateShifts, type MatchLog, type MatchShift } from '@/lib/attendance-matching';
 import { notificationConfig, notifyMissedClockIn, notifyMissedClockOut } from '@/lib/admin-notifications';
+import { perthDate } from '@/lib/timesheets';
 
 export const ATTENDANCE_GRACE_MS = 15 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -33,18 +34,34 @@ export async function checkAttendanceNotifications(now = new Date()) {
     include: { user: { select: { name: true } } },
   });
   if (!shifts.length) return { sent: 0, failed: 0 };
-  const logs = await prisma.timeLog.findMany({
-    where: {
-      userId: { in: [...new Set(shifts.map((shift) => shift.userId))] },
-      clockIn: { lte: now },
-      OR: [{ clockOut: null }, { clockOut: { gte: new Date(Math.min(...shifts.map((shift) => shift.startTime.getTime()))) } }],
-    },
-  });
+  const userIds = [...new Set(shifts.map((shift) => shift.userId))];
+  const dates = [...new Set(shifts.map((shift) => perthDate(shift.startTime)))];
+  const [logs, leave] = await Promise.all([
+    prisma.timeLog.findMany({
+      where: {
+        userId: { in: userIds },
+        clockIn: { lte: now },
+        OR: [{ clockOut: null }, { clockOut: { gte: new Date(Math.min(...shifts.map((shift) => shift.startTime.getTime()))) } }],
+      },
+    }),
+    prisma.leaveRequest.findMany({
+      where: {
+        userId: { in: userIds },
+        workDate: { in: dates.map((date) => new Date(`${date}T00:00:00Z`)) },
+        status: { in: ['APPROVED', 'CANCEL_REQUESTED'] },
+      },
+      select: { userId: true, workDate: true },
+    }),
+  ]);
+  const leaveDays = new Set(leave.map((entry) =>
+    JSON.stringify([entry.userId, entry.workDate.toISOString().slice(0, 10)])));
   const counts = { sent: 0, failed: 0 };
   for (const shift of shifts) {
     const overdue = overdueAttendance(shift, shifts, logs, now);
     for (const event of ['clockIn', 'clockOut'] as const) {
       if (!overdue[event]) continue;
+      // Leave removes the obligation to start work, not an actual open session.
+      if (event === 'clockIn' && leaveDays.has(JSON.stringify([shift.userId, perthDate(shift.startTime)]))) continue;
       for (const recipient of recipients) {
         const boundary = event === 'clockIn' ? shift.startTime : shift.endTime;
         const id = createHash('sha256').update(`${shift.id}|${event}|${boundary.toISOString()}|${recipient}`).digest('hex');

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { isEffectiveLeave, perthToday } from '@/lib/leave';
 
 interface ActiveShift {
   id: string;
@@ -28,6 +29,28 @@ export default function ClockPage() {
   } | null>(null);
 
   const [venue, setVenue] = useState('Sha');
+  const [leaveToday, setLeaveToday] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const refresh = async () => {
+      try {
+        const response = await fetch('/api/roster/mine', { cache: 'no-store' });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Unable to load leave status.');
+        if (!Array.isArray(data.leave)) throw new Error('Invalid leave status response.');
+        if (active) setLeaveToday(data.leave.some((entry: { date: string; status: string }) =>
+          entry.date === perthToday().toISOString().slice(0, 10) && isEffectiveLeave(entry.status)));
+      } catch (error) {
+        if (active) setStatusMessage({ type: 'error',
+          text: error instanceof Error ? error.message : 'Unable to load leave status.' });
+      }
+    };
+    void refresh();
+    window.addEventListener('focus', refresh);
+    const interval = setInterval(refresh, 60000);
+    return () => { active = false; window.removeEventListener('focus', refresh); clearInterval(interval); };
+  }, []);
 
   // Live Clock Display
   useEffect(() => {
@@ -260,13 +283,16 @@ export default function ClockPage() {
                   <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-stone-200/70 text-stone-700">
                     Clocked Out
                   </span>
-                  <span className="text-xs text-stone-400 font-medium">Ready for shift</span>
+                  <span className="text-xs text-stone-400 font-medium">{leaveToday ? 'On approved leave' : 'Ready for shift'}</span>
                 </div>
               )}
             </div>
           )}
 
           {/* Detailed Status Confirmation Banner */}
+          {leaveToday && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">
+            You are on approved leave today. No clock-in is required.
+          </p>}
           {statusMessage && (
             <div
               className={`p-3.5 rounded-2xl text-xs font-semibold border transition-all text-center ${
@@ -289,7 +315,7 @@ export default function ClockPage() {
               disabled={loading || !currentUser}
               className="w-full py-4 bg-[#82A083] hover:bg-[#729073] text-white font-bold rounded-2xl shadow-sm active:scale-[0.98] disabled:opacity-35 disabled:cursor-not-allowed transition-all text-sm tracking-wide"
             >
-              {loading ? 'Verifying GPS...' : 'Clock In'}
+              {loading ? 'Verifying GPS...' : leaveToday ? 'Clock In if Working' : 'Clock In'}
             </button>
           ) : (
             /* Clocked In: Show Break Toggle & Clock Out */

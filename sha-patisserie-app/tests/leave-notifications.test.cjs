@@ -185,6 +185,116 @@ const attendanceShift = {
   startTime: new Date('2026-11-05T01:00:00Z'), endTime: new Date('2026-11-05T09:00:00Z'),
   user: { name: 'Staff' },
 };
+
+test('approved leave suppresses only matching Perth-day clock-in alerts across venues and types', async () => {
+  for (const status of ['APPROVED', 'CANCEL_REQUESTED', 'PENDING', 'REJECTED', 'CANCELLED']) {
+    for (const type of ['ANNUAL', 'PERSONAL', 'UNPAID']) {
+      const now = new Date('2026-11-04T22:15:00Z');
+      const shift = { ...attendanceShift, startTime: new Date('2026-11-04T22:00:00Z') };
+      const deliveries = [];
+      let claims = 0;
+      const { checkAttendanceNotifications } = attendanceModule({
+        '@/lib/prisma': { prisma: {
+          shift: { findMany: async () => [shift] },
+          timeLog: { findMany: async () => [] },
+          leaveRequest: { findMany: async ({ where }) => {
+            assert.deepEqual(where.userId.in, ['staff']);
+            assert.deepEqual(where.workDate.in.map((date) => date.toISOString()), ['2026-11-05T00:00:00.000Z']);
+            return where.status.in.includes(status) ? [
+              { userId: 'staff', workDate: new Date('2026-11-05'), status, type },
+            ] : [];
+          } },
+          attendanceNotification: {
+            upsert: async () => { claims++; return { createdAt: now }; },
+            updateMany: async () => ({ count: 1 }),
+          },
+        } },
+        '@/lib/admin-notifications': {
+          notificationConfig: () => ({ recipients: ['admin@example.invalid'] }),
+          notifyMissedClockIn: async (...args) => { deliveries.push(args); return { sent: true }; },
+        },
+      });
+      const effective = status === 'APPROVED' || status === 'CANCEL_REQUESTED';
+      assert.deepEqual(await checkAttendanceNotifications(now), { sent: effective ? 0 : 1, failed: 0 });
+      assert.equal(deliveries.length, effective ? 0 : 1);
+      assert.equal(claims, effective ? 0 : 1);
+    }
+  }
+});
+
+test('another staff member or another day of leave never suppresses this shift reminder', async () => {
+  const now = new Date('2026-11-05T01:15:00Z');
+  let sent = 0;
+  const { checkAttendanceNotifications } = attendanceModule({
+    '@/lib/prisma': { prisma: {
+      shift: { findMany: async () => [attendanceShift] },
+      timeLog: { findMany: async () => [] },
+      leaveRequest: { findMany: async () => [
+        { userId: 'other', workDate: new Date('2026-11-05') },
+        { userId: 'staff', workDate: new Date('2026-11-06') },
+      ] },
+      attendanceNotification: { upsert: async () => ({ createdAt: now }), updateMany: async () => ({ count: 1 }) },
+    } },
+    '@/lib/admin-notifications': {
+      notificationConfig: () => ({ recipients: ['admin@example.invalid'] }),
+      notifyMissedClockIn: async () => { sent++; return { sent: true }; },
+    },
+  });
+  assert.deepEqual(await checkAttendanceNotifications(now), { sent: 1, failed: 0 });
+  assert.equal(sent, 1);
+});
+
+test('approved leave does not hide a forgotten clock-out when real attendance exists', async () => {
+  const now = new Date('2026-11-05T09:15:00Z');
+  let clockOut = 0;
+  const { checkAttendanceNotifications } = attendanceModule({
+    '@/lib/prisma': { prisma: {
+      shift: { findMany: async () => [attendanceShift] },
+      timeLog: { findMany: async () => [{
+        userId: 'staff', locationId: 'zushi', clockIn: attendanceShift.startTime, clockOut: null,
+      }] },
+      leaveRequest: { findMany: async () => [{ userId: 'staff', workDate: new Date('2026-11-05') }] },
+      attendanceNotification: { upsert: async () => ({ createdAt: now }), updateMany: async () => ({ count: 1 }) },
+    } },
+    '@/lib/admin-notifications': {
+      notificationConfig: () => ({ recipients: ['admin@example.invalid'] }),
+      notifyMissedClockIn: async () => { assert.fail('No missed clock-in should be sent'); },
+      notifyMissedClockOut: async () => { clockOut++; return { sent: true }; },
+    },
+  });
+  assert.deepEqual(await checkAttendanceNotifications(now), { sent: 1, failed: 0 });
+  assert.equal(clockOut, 1);
+});
+
+test('staff schedule excludes effective leave-day shifts but retains pending and cancelled leave days', async () => {
+  const today = require('../lib/leave.ts').perthToday();
+  const statuses = ['APPROVED', 'CANCEL_REQUESTED', 'PENDING', 'CANCELLED', 'REJECTED'];
+  const leave = statuses.map((status, index) => ({
+    id: `leave-${index}`, userId: 'staff', workDate: new Date(today.getTime() + index * 86400000),
+    type: 'ANNUAL', hours: 8, status,
+  }));
+  const shifts = leave.map((entry, index) => ({
+    id: `shift-${index}`, startTime: new Date(`${entry.workDate.toISOString().slice(0, 10)}T06:00:00+08:00`),
+    endTime: new Date(`${entry.workDate.toISOString().slice(0, 10)}T14:00:00+08:00`),
+    location: { name: index % 2 ? 'Sha Patisserie' : 'Zushi Bento' },
+  }));
+  const api = loadFile('app/api/roster/mine/route.ts', {
+    '@/lib/session': { getSession: async () => ({ userId: 'staff' }) },
+    '@/lib/prisma': { prisma: {
+      shift: { findMany: async ({ where }) => { assert.equal(where.userId, 'staff'); return shifts; } },
+      leaveRequest: { findMany: async ({ where }) => {
+        assert.equal(where.userId, 'staff');
+        return leave.filter((entry) => where.status.in.includes(entry.status));
+      } },
+    } },
+  });
+  const response = await api.GET();
+  assert.equal(response.status, 200);
+  const data = await response.json();
+  assert.deepEqual(data.shifts.map((shift) => shift.id), ['shift-2', 'shift-3', 'shift-4']);
+  assert.equal(data.leave.length, 3);
+  assert.equal(data.leave[0].date, today.toISOString().slice(0, 10));
+});
 function attendanceModule(mocks = {}) {
   return loadFile('lib/attendance-notifications.ts', {
     '@/lib/prisma': { prisma: {} },
@@ -223,6 +333,7 @@ test('attendance checker sends once per recipient, retries failed recipients and
       return [attendanceShift];
     } },
     timeLog: { findMany: async () => [] },
+    leaveRequest: { findMany: async () => [] },
     attendanceNotification: {
       upsert: async ({ where: { id }, create }) => {
         if (!records.has(id)) records.set(id, { id, createdAt: create.createdAt, sentAt: null, claimUntil: null });
@@ -264,6 +375,7 @@ test('clock-out checker honors active claims, recovers expired claims and sends 
   let sent = 0;
   const prisma = {
     shift: { findMany: async () => [attendanceShift] },
+    leaveRequest: { findMany: async () => [] },
     timeLog: { findMany: async () => [{
       userId: 'staff', locationId: 'zushi', clockIn: attendanceShift.startTime, clockOut: null,
     }] },

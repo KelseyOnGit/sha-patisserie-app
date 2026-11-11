@@ -14,6 +14,7 @@ export async function fetchRosterLeave(): Promise<RosterLeave[]> {
   if (!Array.isArray(data.requests)) throw new Error('Invalid roster leave response.');
   // Approved leave remains in effect while its cancellation awaits review.
   return data.requests.filter((entry: RosterLeave) =>
-    entry.status === 'APPROVED' || entry.status === 'CANCEL_REQUESTED'
+    isEffectiveLeave(entry.status)
   );
 }
+import { isEffectiveLeave } from '@/lib/leave';

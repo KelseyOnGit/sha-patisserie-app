@@ -1,5 +1,9 @@
 export const ANNUAL_NOTICE_DAYS = 7;
 
+export function isEffectiveLeave(status: string): boolean {
+  return status === 'APPROVED' || status === 'CANCEL_REQUESTED';
+}
+
 export function leaveDate(value: unknown): Date {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error('Choose valid leave dates.');
   const date = new Date(`${value}T00:00:00Z`);
