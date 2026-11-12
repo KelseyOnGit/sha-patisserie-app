@@ -83,6 +83,15 @@ export async function GET(req: NextRequest) {
       orderBy: { clockIn: 'desc' },
     });
 
+    const onLeave = new Set(shifts.length ? (await prisma.leaveRequest.findMany({
+      where: {
+        userId: { in: [...new Set(shifts.map((shift) => shift.userId))] },
+        workDate: new Date(`${targetDate}T00:00:00Z`),
+        status: { in: ['APPROVED', 'CANCEL_REQUESTED'] },
+      },
+      select: { userId: true },
+    })).map((entry) => entry.userId) : []);
+
     const matchedLogIds = new Set<string>();
     const rows = [];
 
@@ -110,6 +119,8 @@ export async function GET(req: NextRequest) {
         } else {
           status = 'COMPLETED';
         }
+      } else if (onLeave.has(shift.userId)) {
+        status = 'ON_LEAVE';
       } else {
         const shiftStartMs = new Date(shift.startTime).getTime();
         const nowMs = now.getTime();
@@ -162,6 +173,7 @@ export async function GET(req: NextRequest) {
       possibleAbsence: rows.filter((r) => r.status === 'POSSIBLE_ABSENCE').length,
       scheduled: rows.filter((r) => r.status === 'SCHEDULED').length,
       completed: rows.filter((r) => r.status === 'COMPLETED').length,
+      onLeave: rows.filter((r) => r.status === 'ON_LEAVE').length,
     };
 
     return NextResponse.json({

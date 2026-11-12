@@ -203,6 +203,8 @@ The staff schedule hides retained shifts on effective leave dates, and both
 clock-in screens display "No clock-in is required" on leave days. They refresh
 leave status on focus and every minute. Actual work can still be clocked in;
 an existing open session still requires clock-out and keeps its reminder.
+The admin dashboard shows rostered staff with effective leave and no clock-in
+as ON LEAVE rather than Late or Possible absence.
 Missing clock-in
 is checked from scheduled start + 15 minutes until the shift ends. Missing
 clock-out is checked from scheduled end + 15 minutes while an overlapping

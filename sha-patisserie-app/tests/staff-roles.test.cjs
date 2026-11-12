@@ -72,6 +72,7 @@ test('dashboard attendance excludes inactive scheduled and unscheduled staff and
   };
   const api = route('admin/attendance', {
     shift: { findMany: read(shifts) }, timeLog: { findMany: read(logs) },
+    leaveRequest: { findMany: async () => [] },
   });
   const response = await api.GET(new Request('http://localhost/api/admin/attendance?date=2020-10-05'));
   assert.equal(response.status, 200);
@@ -79,7 +80,7 @@ test('dashboard attendance excludes inactive scheduled and unscheduled staff and
   assert.deepEqual(data.rows.map((row) => row.staffName), ['Active scheduled', 'Active unscheduled']);
   assert.equal(data.rows[0].id, 'shift-active');
   assert.equal(data.rows[1].scheduled, 'Unscheduled');
-  assert.deepEqual(data.summary, { clockedIn: 2, onBreak: 0, late: 0, possibleAbsence: 0, scheduled: 0, completed: 0 });
+  assert.deepEqual(data.summary, { clockedIn: 2, onBreak: 0, late: 0, possibleAbsence: 0, scheduled: 0, completed: 0, onLeave: 0 });
   assert.equal(shifts.length, 2);
   assert.equal(logs.length, 4);
 });

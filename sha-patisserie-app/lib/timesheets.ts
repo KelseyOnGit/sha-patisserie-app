@@ -31,6 +31,7 @@ export interface ReviewRow {
   status: 'PENDING' | 'APPROVED';
   needsAttention: boolean;
   exceptions: string[];
+
   inProgress: boolean;
   ambiguous: boolean;
   approvalBlockedReason: string | null;

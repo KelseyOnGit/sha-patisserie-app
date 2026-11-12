@@ -29,6 +29,7 @@ function statusClass(status: string): string {
     case 'LATE': return 'bg-orange-100 text-orange-800';
     case 'POSSIBLE_ABSENCE': return 'bg-red-100 text-red-800';
     case 'COMPLETED': return 'bg-stone-100 text-stone-800';
+    case 'ON_LEAVE': return 'bg-purple-100 text-purple-800';
     default: return 'bg-blue-50 text-blue-700';
   }
 }

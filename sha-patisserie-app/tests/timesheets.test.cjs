@@ -19,6 +19,7 @@ const originalResolve = Module._resolveFilename;
 Module._resolveFilename = function (request, ...args) {
   return originalResolve.call(this, request.startsWith('@/') ? path.join(root, request.slice(2)) : request, ...args);
 };
+
 const rules = require('../lib/timesheets.ts');
 const { candidateShifts } = require('../lib/attendance-matching.ts');
 const { leavePeriod } = require('../lib/leave.ts');

@@ -235,6 +235,28 @@ test('admin attendance marks unscheduled session breaks as on break and counts t
   assert.equal(report.summary.clockedIn, 0);
 });
 
+test('admin attendance shows rostered staff on approved leave as on leave instead of late', async (t) => {
+  freeze(t);
+  const leaveQueries = [];
+  const shift = (userId, name) => ({ id: userId, userId, user: { name }, location: { name: 'Zushi Bento' },
+    startTime: new Date('2026-10-27T23:30:00Z'), endTime: new Date('2026-10-28T06:00:00Z') });
+  const api = loadFile('app/api/admin/attendance/route.ts', {
+    '@/lib/session': { getSession: async () => ({ userId: 'admin', role: 'ADMIN' }), isPrivilegedRole: () => true },
+    '@/lib/prisma': { prisma: {
+      shift: { findMany: async () => [shift('bianca', 'Bianca'), shift('late', 'Late Staff')] },
+      timeLog: { findMany: async () => [] },
+      leaveRequest: { findMany: async ({ where }) => { leaveQueries.push(where); return [{ userId: 'bianca' }]; } },
+    } },
+  });
+  const report = await (await api.GET(new Request('http://localhost/api/admin/attendance?date=2026-10-28'))).json();
+  assert.deepEqual(report.rows.map((row) => [row.staffName, row.status]),
+    [['Bianca', 'ON_LEAVE'], ['Late Staff', 'POSSIBLE_ABSENCE']]);
+  assert.equal(report.summary.onLeave, 1);
+  assert.equal(report.summary.late + report.summary.possibleAbsence, 1);
+  assert.deepEqual(leaveQueries[0].workDate, new Date('2026-10-28T00:00:00Z'));
+  assert.deepEqual(leaveQueries[0].status, { in: ['APPROVED', 'CANCEL_REQUESTED'] });
+});
+
 function findElement(node, predicate) {
   if (!React.isValidElement(node)) return null;
   if (predicate(node)) return node;
