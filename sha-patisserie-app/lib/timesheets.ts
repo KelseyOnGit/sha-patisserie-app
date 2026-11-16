@@ -39,6 +39,7 @@ export interface ReviewRow {
   snapshot: string;
   version: number;
   rate: number | null;
+  rateAtApproval?: number | null;
   approvedAt: string | null;
   approvedBy: string | null;
   history: {

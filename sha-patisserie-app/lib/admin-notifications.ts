@@ -1,6 +1,5 @@
 import { sendEmail } from '@/lib/notify';
-import { formatDMY } from '@/lib/date-format';
-import { LEAVE_LABELS, leaveDate } from '@/lib/leave';
+import { LEAVE_LABELS, formatLeaveDateRanges } from '@/lib/leave';
 
 export interface LeaveNotification {
   event: 'requested' | 'changed' | 'cancellation';
@@ -37,23 +36,7 @@ const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (character) => (
 })[character]!);
 
 export function leaveDateRanges(values: string[]): string {
-  const dates = [...new Set(values)].sort();
-  if (!dates.length) throw new Error('Leave notification requires at least one date.');
-  dates.forEach(leaveDate);
-  const ranges: string[] = [];
-  let start = dates[0];
-  let end = start;
-  const append = () => ranges.push(start === end ? formatDMY(start) : `${formatDMY(start)} to ${formatDMY(end)}`);
-  for (const date of dates.slice(1)) {
-    if (Date.parse(date) - Date.parse(end) === 86400000) {
-      end = date;
-    } else {
-      append();
-      start = end = date;
-    }
-  }
-  append();
-  return ranges.join('; ');
+  return formatLeaveDateRanges(values);
 }
 
 function summaryField(label: string, value: string): string {

@@ -1,9 +1,9 @@
 'use client';
 
 import { formatDMY } from '@/lib/date-format';
-import { PAYROLL_COLUMNS, payrollCsv, type PayrollSummaryRow } from '@/lib/payroll-summary';
+import { PAYROLL_COLUMNS, payrollCsv, payrollLeaveDates, type PayrollSummaryRow } from '@/lib/payroll-summary';
 import { useEffect, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import PayrollBreakStatus from '@/components/PayrollBreakStatus';
 import AddWorkedShiftDialog from '@/components/AddWorkedShiftDialog';
 import {
@@ -28,6 +28,13 @@ interface WeekDay {
   dayLetter: string;
   dayShort: string;
   displayDate: string;
+}
+
+interface AdjustmentSave {
+  row: ReviewRow;
+  hours: number;
+  revision: number;
+  reason: string;
 }
 
 const timeFormatter = new Intl.DateTimeFormat('en-AU', {
@@ -100,10 +107,18 @@ export default function TimesheetReview({ userId }: { userId: string }) {
   const [addTarget, setAddTarget] = useState<{ userId: string; date: string; venue: 'SHA' | 'ZB' } | null>(null);
    const [prefill, setPrefill] = useState<{ sourceKey: string; periods: PayablePeriod[]; breakMinutes: number; reason: string } | null>(null);
   const [adjustmentSaves, setAdjustmentSaves] = useState<Record<string, 'unsaved' | 'saving' | 'saved' | 'error'>>({});
-  const adjustmentSaveInFlight = useRef(false);
+  const [autosaving, setAutosaving] = useState(false);
+  const [adjustmentErrors, setAdjustmentErrors] = useState<Record<string, string>>({});
+  const adjustmentDrafts = useRef(new Map<string, { hours: number; revision: number }>());
+  const adjustmentQueue = useRef(new Map<string, AdjustmentSave>());
+  const activeAdjustment = useRef<AdjustmentSave | null>(null);
+  const adjustmentRunner = useRef<Promise<void> | null>(null);
+  const adjustmentRevision = useRef(0);
+  const queryClient = useQueryClient();
+  const reportKey = ['timesheet-report', userId, weekStart];
 
   const reportQuery = useQuery<Report>({
-    queryKey: ['timesheet-report', userId, weekStart],
+    queryKey: reportKey,
     queryFn: async ({ signal }) => {
       const res = await fetch(`/api/admin/reports?weekStart=${encodeURIComponent(weekStart)}`, {
         signal, cache: 'no-store',
@@ -119,7 +134,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
     staleTime: 60_000,
     gcTime: 10 * 60_000,
     refetchOnWindowFocus: false,
-    refetchInterval: weekStart === currentWeek() && !savingBatch && !selected &&
+    refetchInterval: weekStart === currentWeek() && !savingBatch && !autosaving && !selected &&
       Object.keys(adjustments).length === 0 ? 60_000 : false,
     refetchIntervalInBackground: false,
     retry: false,
@@ -128,15 +143,21 @@ export default function TimesheetReview({ userId }: { userId: string }) {
   const inactiveIds = new Set(report?.inactiveUserIds ?? []);
   const loading = reportQuery.isPending;
   const syncing = reportQuery.isFetching;
-  const writesBlocked = savingBatch || syncing || Boolean(reportQuery.error);
+  const inputsBlocked = savingBatch || syncing || Boolean(reportQuery.error);
+  const writesBlocked = inputsBlocked || autosaving;
+  const hasDrafts = Object.keys(adjustments).length > 0;
 
   const refreshReport = async () => {
+    if (adjustmentRunner.current) return false;
     const result = await reportQuery.refetch();
     return !result.error;
   };
   const clearDrafts = (keys: string[]) => {
+    keys.forEach((key) => adjustmentDrafts.current.delete(key));
     setAdjustments((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !keys.includes(key))));
     setReviewReasons((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !keys.includes(key))));
+    setAdjustmentSaves((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !keys.includes(key))));
+    setAdjustmentErrors((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !keys.includes(key))));
   };
   useEffect(() => {
     if (Object.keys(adjustments).length === 0) return;
@@ -260,6 +281,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
   })();
 
   const handleAdjustmentChange = (sourceKey: string, value: number) => {
+    adjustmentDrafts.current.set(sourceKey, { hours: value, revision: ++adjustmentRevision.current });
     setAdjustments((prev) => ({
       ...prev,
       [sourceKey]: value,
@@ -267,49 +289,88 @@ export default function TimesheetReview({ userId }: { userId: string }) {
     setAdjustmentSaves((current) => ({ ...current, [sourceKey]: 'unsaved' }));
   };
 
-  const saveAdjustment = async (row: ReviewRow) => {
-    const hours = adjustments[row.sourceKey];
-    if (hours === undefined || adjustmentSaveInFlight.current || savingBatch) return;
-    adjustmentSaveInFlight.current = true;
-    setSavingBatch(true);
+  const saveAdjustment = (row: ReviewRow) => {
+    const draft = adjustmentDrafts.current.get(row.sourceKey);
+    if (!draft || savingBatch) return;
+    if (activeAdjustment.current?.row.sourceKey === row.sourceKey &&
+        activeAdjustment.current.revision === draft.revision) return adjustmentRunner.current;
+    adjustmentQueue.current.set(row.sourceKey, {
+      row, ...draft, reason: (reviewReasons[row.sourceKey] ?? row.reason).trim() ||
+        `Adjusted to ${draft.hours.toFixed(2)}h and approved individually`,
+    });
+    setAdjustmentSaves((current) => ({ ...current, [row.sourceKey]: 'saving' }));
+    if (adjustmentRunner.current) return adjustmentRunner.current;
+    setAutosaving(true);
     setError('');
     setMessage('');
-    setAdjustmentSaves((current) => ({ ...current, [row.sourceKey]: 'saving' }));
-    try {
-      const { periods, breakMinutes } = adjustedPayable(row, hours);
-      validatePayable(periods, breakMinutes, row.workDate);
-      const invalid = approvalError(row, periods);
-      if (invalid) throw new Error(invalid);
-      const response = await fetch('/api/admin/reports/timesheets', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sourceKey: row.sourceKey, weekStart, version: row.version, snapshot: row.snapshot,
-          action: 'APPROVE', periods, breakMinutes,
-          reason: (reviewReasons[row.sourceKey] ?? row.reason).trim() ||
-            `Adjusted to ${hours.toFixed(2)}h and approved individually`,
-        }),
-      });
-      if (!response.headers.get('content-type')?.includes('application/json')) {
-        throw new Error(`Unexpected save response (${response.status}). Refresh and check approval status before retrying.`);
-      }
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Unable to save adjusted hours.');
-      setAdjustmentSaves((current) => ({ ...current, [row.sourceKey]: 'saved' }));
-      // The write is committed even if refreshing the read model fails.
-      clearDrafts([row.sourceKey]);
-      setMessage(`${row.staffName} (${formatDMY(row.workDate)}): hours saved and approved.`);
+    const run = async () => {
       try {
-        await refreshReport();
+        await queryClient.cancelQueries({ queryKey: reportKey, exact: true });
+        while (adjustmentQueue.current.size > 0) {
+          const [key, job] = adjustmentQueue.current.entries().next().value!;
+          adjustmentQueue.current.delete(key);
+          activeAdjustment.current = job;
+          try {
+            const latest = queryClient.getQueryData<Report>(reportKey)?.shifts
+              .find((entry) => entry.sourceKey === key) ?? job.row;
+            const { periods, breakMinutes } = adjustedPayable(latest, job.hours);
+            validatePayable(periods, breakMinutes, latest.workDate);
+            const invalid = approvalError(latest, periods);
+            if (invalid) throw new Error(invalid);
+            const response = await fetch('/api/admin/reports/timesheets', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                sourceKey: key, weekStart, version: latest.version, snapshot: latest.snapshot,
+                action: 'APPROVE', periods, breakMinutes, reason: job.reason,
+              }),
+            });
+            if (!response.headers.get('content-type')?.includes('application/json')) {
+              throw new Error(`Unexpected save response (${response.status}). Refresh and check approval status before retrying.`);
+            }
+            const data: Partial<Report> & { error?: string } = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Unable to save adjusted hours.');
+            const savedRow = data.shifts?.find((entry) => entry.sourceKey === key);
+            const { rows, approvedCount, excludedCount } = data;
+            if (!savedRow || !Number.isInteger(savedRow.version) || !Array.isArray(rows) ||
+                typeof approvedCount !== 'number' || typeof excludedCount !== 'number') {
+              throw new Error('Save response was incomplete. Refresh and check approval status before retrying.');
+            }
+            queryClient.setQueryData<Report>(reportKey, (current) => current && ({
+              ...current, rows, approvedCount, excludedCount,
+              shifts: current.shifts.map((entry) => entry.sourceKey === key ? savedRow : entry),
+            }));
+            if (adjustmentDrafts.current.get(key)?.revision === job.revision) {
+              clearDrafts([key]);
+              setAdjustmentSaves((current) => ({ ...current, [key]: 'saved' }));
+            }
+          } catch (error) {
+            adjustmentQueue.current.delete(key);
+            setAdjustmentSaves((current) => ({ ...current, [key]: 'error' }));
+            setAdjustmentErrors((current) => ({
+              ...current, [key]: `${job.row.staffName} (${formatDMY(job.row.workDate)}): ${error instanceof Error ? error.message : 'Unable to save adjusted hours.'} Your edit is still shown; it has not been confirmed saved.`,
+            }));
+          }
+          activeAdjustment.current = null;
+        }
       } catch (error) {
-        setError(`Hours were saved and approved, but refreshing the report failed: ${error instanceof Error ? error.message : 'Unable to refresh.'} Refresh before editing again.`);
+        const keys = [...adjustmentQueue.current.keys()];
+        adjustmentQueue.current.clear();
+        setAdjustmentSaves((current) => ({
+          ...current, ...Object.fromEntries(keys.map((key) => [key, 'error' as const])),
+        }));
+        setAdjustmentErrors((current) => ({
+          ...current, ...Object.fromEntries(keys.map((key) => [
+            key, `Unable to start background saves: ${error instanceof Error ? error.message : 'Report synchronization failed.'} Your edits are retained; retry saving.`,
+          ])),
+        }));
+      } finally {
+        activeAdjustment.current = null;
+        adjustmentRunner.current = null;
+        setAutosaving(false);
       }
-    } catch (error) {
-      setAdjustmentSaves((current) => ({ ...current, [row.sourceKey]: 'error' }));
-      setError(`${row.staffName} (${formatDMY(row.workDate)}): ${error instanceof Error ? error.message : 'Unable to save adjusted hours.'} Your edit is still shown; it has not been confirmed saved.`);
-    } finally {
-      adjustmentSaveInFlight.current = false;
-      setSavingBatch(false);
-    }
+    };
+    adjustmentRunner.current = Promise.resolve().then(run);
+    return adjustmentRunner.current;
   };
 
   const saveAttendance = async (row: ReviewRow, attendanceStatus: string) => {
@@ -334,7 +395,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
 
   // Bulk Save and Approve for a specific staff member or all staff
   const handleSaveAndApprove = async (targetUserId?: string) => {
-    if (adjustmentSaveInFlight.current) return;
+    if (adjustmentRunner.current) return;
     setError('');
     setMessage('');
     setSavingBatch(true);
@@ -478,12 +539,13 @@ export default function TimesheetReview({ userId }: { userId: string }) {
           Week starting Monday
           <input
             type="date"
-            disabled={savingBatch}
+            disabled={savingBatch || autosaving || hasDrafts}
             value={weekStart}
             onChange={(e) => {
               setWeekStart(e.target.value);
               setAdjustments({});
               setAdjustmentSaves({});
+              setAdjustmentErrors({});
               setReviewReasons({});
               setSelected(null);
               setError('');
@@ -540,13 +602,13 @@ export default function TimesheetReview({ userId }: { userId: string }) {
             </label>
           )}
         </div>
-        <button onClick={() => void refreshReport()} disabled={syncing || savingBatch} className={buttonClass}>
+        <button onClick={() => void refreshReport()} disabled={syncing || savingBatch || autosaving} className={buttonClass}>
           {syncing ? 'Refreshing...' : 'Refresh'}
         </button>
         {tab === 'payroll' && (
           <button
             onClick={download}
-            disabled={writesBlocked || loading || (payroll.length === 0 && !(report?.leaveRows || []).some((row) => (!venue || row.site === venue) && (!staff || row.userId === staff)))}
+            disabled={writesBlocked || hasDrafts || loading || (payroll.length === 0 && !(report?.leaveRows || []).some((row) => (!venue || row.site === venue) && (!staff || row.userId === staff)))}
             className={`${buttonClass} bg-stone-900 text-white`}
           >
             Download approved CSV
@@ -555,6 +617,9 @@ export default function TimesheetReview({ userId }: { userId: string }) {
       </div>
 
       {error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-800 border border-rose-200">{error}</p>}
+      {Object.entries(adjustmentErrors).map(([key, text]) => (
+        <p key={key} role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{text}</p>
+      ))}
       {reportQuery.error && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
         Could not refresh reports: {reportQuery.error.message} Displayed figures may be outdated. Refresh before approving or exporting.
       </p>}
@@ -745,7 +810,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
                                     min="0"
                                     max="24"
                                     aria-label={`Adjusted hours for ${row.staffName} on ${row.workDate}`}
-                                    disabled={liveAttendance || writesBlocked}
+                                    disabled={liveAttendance || inputsBlocked}
                                     value={Number.isFinite(adjVal) ? adjVal : ''}
                                     onChange={(e) =>
                                       handleAdjustmentChange(row.sourceKey, e.target.value === '' ? NaN : Number(e.target.value))
@@ -760,7 +825,7 @@ export default function TimesheetReview({ userId }: { userId: string }) {
                                       adjustmentSaves[row.sourceKey] === 'saved' ? 'Saved and approved' :
                                       adjustmentSaves[row.sourceKey] === 'error' ? 'Save failed - edit retained' : 'Not saved yet'}
                                     {adjustmentSaves[row.sourceKey] === 'error' && (
-                                      <button type="button" disabled={writesBlocked}
+                                      <button type="button" disabled={inputsBlocked}
                                         onClick={() => saveAdjustment(row)}
                                         className="ml-1 underline"
                                         aria-label={`Retry saving hours for ${row.staffName} on ${row.workDate}`}>
@@ -858,12 +923,12 @@ export default function TimesheetReview({ userId }: { userId: string }) {
                       <td data-label="Employment Status" className="p-4 text-stone-600">{employmentLabel(row.employmentType)}</td>
                       <td data-label="Venue" className="p-4 text-stone-600">{row.site}</td>
                       <td data-label="Rate ($/hr)" className="p-4 font-mono">{row.rate === null ? 'Rate not set' : `$${row.rate.toFixed(2)}`}</td>
-                      <td data-label="Worked hours" className="p-4 font-mono font-bold">{row.totalHours.toFixed(2)} h</td>
-                      <td data-label="Leave hours" className="p-4 font-mono font-bold">{row.leaveHours.toFixed(2)} h</td>
-                      <td data-label="Total" className="p-4 font-mono font-bold">{row.combinedHours.toFixed(2)} h</td>
+                      <td data-label="Worked hours (H)" className="whitespace-nowrap p-4 font-mono font-bold">{row.totalHours.toFixed(2)}</td>
+                      <td data-label="Leave hours (H)" className="whitespace-nowrap p-4 font-mono font-bold">{row.leaveHours.toFixed(2)}</td>
+                      <td data-label="Total hours (H)" className="whitespace-nowrap p-4 font-mono font-bold">{row.combinedHours.toFixed(2)}</td>
                       <td data-label="Total Gross ($)" className="p-4 font-mono font-bold text-emerald-800">{row.gross === null ? 'Rate not set' : `$${row.gross.toFixed(2)}`}</td>
                       <td data-label="Leave Type" className="p-4 text-xs">{row.leaveTypes.join(', ') || '—'}</td>
-                      <td data-label="Leave Date" className="p-4 text-xs">{row.leaveDates.map(formatDMY).join(', ') || '—'}</td>
+                      <td data-label="Leave Date Range" className="p-4 text-xs">{payrollLeaveDates(row.leaveDates) || '—'}</td>
                     </tr>
                   ))
                 )}
@@ -871,9 +936,9 @@ export default function TimesheetReview({ userId }: { userId: string }) {
               <tfoot className="border-t bg-stone-50 font-semibold">
                 <tr>
                   <td colSpan={4} className="p-4">Total</td>
-                  <td data-label="Total worked hours" className="p-4 font-mono font-extrabold">{totalHours.toFixed(2)} h</td>
-                  <td data-label="Total leave hours" className="p-4 font-mono font-extrabold">{totalLeaveHours.toFixed(2)} h</td>
-                  <td data-label="Total paid hours" className="p-4 font-mono font-extrabold">{totalPaidHours.toFixed(2)} h</td>
+                  <td data-label="Total worked hours (H)" className="whitespace-nowrap p-4 font-mono font-extrabold">{totalHours.toFixed(2)}</td>
+                  <td data-label="Total leave hours (H)" className="whitespace-nowrap p-4 font-mono font-extrabold">{totalLeaveHours.toFixed(2)}</td>
+                  <td data-label="Total paid hours (H)" className="whitespace-nowrap p-4 font-mono font-extrabold">{totalPaidHours.toFixed(2)}</td>
                   <td data-label="Total gross" className="p-4 font-mono font-extrabold text-emerald-900">${totalGross.toFixed(2)}{missingPayrollRate ? ' (incomplete)' : ''}</td>
                   <td colSpan={2} />
                 </tr>

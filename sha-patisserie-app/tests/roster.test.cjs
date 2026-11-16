@@ -82,6 +82,7 @@ test('payroll hides leave table and leave export while preserving worked payroll
   let Review;
   Module._load = function (request, ...args) {
     if (request === '@tanstack/react-query') return {
+      useQueryClient: () => ({}),
       useQuery: () => ({ data: report, isPending: false, isFetching: false, error: null }),
     };
     return request === 'react' ? hookReact : load.call(this, request, ...args);
@@ -216,7 +217,7 @@ test('reports retain table/drafts while syncing and reuse account/week cache on 
   delete require.cache[filename];
   let Review;
   Module._load = function (request, ...args) {
-    if (request === '@tanstack/react-query') return { useQuery };
+    if (request === '@tanstack/react-query') return { useQuery, useQueryClient: () => ({}) };
     return request === 'react' ? hookReact : load.call(this, request, ...args);
   };
   try { Review = require(filename).default; }
@@ -335,6 +336,7 @@ test('overlap review exposes additional same-day entries and requires a manager 
   let Review;
   Module._load = function (request, ...args) {
     if (request === '@tanstack/react-query') return {
+      useQueryClient: () => ({}),
       useQuery: () => ({ data: report, isPending: false, isFetching: false, error: null,
         refetch: async () => ({ data: report, error: null }) }),
     };
@@ -421,6 +423,7 @@ test('past unfinished attendance is editable with a reason; live and approved ho
   let Review;
   Module._load = function (request, ...args) {
     if (request === '@tanstack/react-query') return {
+      useQueryClient: () => ({}),
       useQuery: () => ({ data: report, isPending: false, isFetching: false, error: null,
         refetch: async () => ({ data: report, error: null }) }),
     };

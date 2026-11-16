@@ -1,5 +1,5 @@
-import { formatDMY } from '@/lib/date-format';
-import { csvCell, employmentLabel, type PayrollRow } from '@/lib/timesheets';
+import { formatLeaveDateRanges } from '@/lib/leave';
+import { approvalError, csvCell, employmentLabel, paidHours, paidLeaveType, workedHours, type PayrollRow, type ReviewRow } from '@/lib/timesheets';
 
 export interface PayrollLeave {
   id: string;
@@ -50,9 +50,48 @@ export function combinePayroll(worked: PayrollRow[], leave: PayrollLeave[]): Pay
   return rows;
 }
 
+export function summarizePayroll(shifts: ReviewRow[], approvedLeave: PayrollLeave[]) {
+  const summary = new Map<string, PayrollRow>();
+  const leave = [...approvedLeave];
+  let excludedCount = 0;
+  for (const row of shifts) {
+    const rate = row.rateAtApproval;
+    if (row.status !== 'APPROVED' || row.sourceChanged || rate == null ||
+        approvalError({ ...row, rate }, row.periods)) {
+      excludedCount++;
+      continue;
+    }
+    const leaveType = paidLeaveType(row.attendanceStatus);
+    if (leaveType) {
+      if (!leave.some((entry) => entry.userId === row.userId && entry.date === row.workDate && entry.type === leaveType)) {
+        leave.push({
+          id: row.sourceKey, userId: row.userId, staffName: row.staffName,
+          employmentType: row.employmentType, site: row.site, date: row.workDate, type: leaveType,
+          hours: paidHours(row.periods, row.breakMinutes), rate,
+        });
+      }
+      continue;
+    }
+    const key = JSON.stringify([row.userId, row.site, rate]);
+    const payroll = summary.get(key) ?? {
+      key, userId: row.userId, staffName: row.staffName, site: row.site,
+      employmentType: row.employmentType, rate, totalHours: 0, gross: 0,
+    };
+    payroll.totalHours += workedHours(row);
+    payroll.gross = payroll.totalHours * rate;
+    summary.set(key, payroll);
+  }
+  return {
+    rows: combinePayroll(Array.from(summary.values()), leave),
+    excludedCount, approvedCount: shifts.length - excludedCount,
+  };
+}
+
+export const payrollLeaveDates = (dates: string[]) => dates.length ? formatLeaveDateRanges(dates, true) : '';
+
 export const PAYROLL_COLUMNS = [
-  'Staff Member', 'Employment Status', 'Site', 'Rate ($/hr)', 'Worked Hours',
-  'Leave Hours', 'Total', 'Total Gross ($)', 'Leave Type', 'Leave Date',
+  'Staff Member', 'Employment Status', 'Site', 'Rate ($/hr)', 'Worked Hours (H)',
+  'Leave Hours (H)', 'Total Hours (H)', 'Total Gross ($)', 'Leave Type', 'Leave Date Range',
 ];
 
 export function payrollCsv(rows: PayrollSummaryRow[]): string {
@@ -61,7 +100,7 @@ export function payrollCsv(rows: PayrollSummaryRow[]): string {
     ...rows.map((row) => [
       row.staffName, employmentLabel(row.employmentType), row.site, row.rate?.toFixed(2) ?? '',
       row.totalHours.toFixed(2), row.leaveHours.toFixed(2), row.combinedHours.toFixed(2),
-      row.gross?.toFixed(2) ?? '', row.leaveTypes.join(', '), row.leaveDates.map(formatDMY).join(', '),
+      row.gross?.toFixed(2) ?? '', row.leaveTypes.join(', '), payrollLeaveDates(row.leaveDates),
     ]),
   ].map((line) => line.map(csvCell).join(',')).join('\r\n');
 }

@@ -6,6 +6,7 @@ import { getSession, isPrivilegedRole } from '@/lib/session';
 import { loadTimesheetReport, validateApproval } from '@/lib/timesheet-report';
 import { actualPeriods, paidHours, readPeriods, requiresReason, samePeriods, validatePayable, weekBounds } from '@/lib/timesheets';
 import { ATTENDANCE_OPTIONS } from '@/lib/timesheets';
+import { summarizePayroll } from '@/lib/payroll-summary';
 
 class ReviewError extends Error {
   constructor(message: string, public status = 400) { super(message); }
@@ -177,6 +178,19 @@ export async function POST(req: Request) {
             sourceSnapshot: row.snapshot,
           },
         });
+        const exceptions = row.exceptions.filter((exception) => exception !== 'Source changed: reopen and review');
+        rowsByKey.set(sourceKey, {
+          ...row, periods, breakMinutes: data.breakMinutes, reason: finalReason,
+          attendanceStatus: data.attendanceStatus, status: data.status,
+          approvedAt: data.approvedAt?.toISOString() ?? null,
+          approvedBy: approved ? session.email : null, rateAtApproval: data.rateAtApproval,
+          sourceChanged: false, exceptions, needsAttention: exceptions.length > 0,
+          version: version + 1,
+          history: [{
+            action, actor: session.email, at: new Date().toISOString(),
+            values: { ...data, approvedAt: data.approvedAt?.toISOString() ?? null, hours: paidHours(periods, data.breakMinutes) },
+          }, ...row.history],
+        });
       }
       stage = 'create timesheets';
       if (newSheets.length) await tx.timesheet.createMany({ data: newSheets });
@@ -245,11 +259,17 @@ export async function POST(req: Request) {
         });
       }
       stage = 'commit transaction';
+      const shifts = report.shifts.map((row) => rowsByKey.get(row.sourceKey)!);
+      return {
+        shifts: items.map((item) => rowsByKey.get(item.sourceKey)!),
+        ...summarizePayroll(shifts, report.leaveRows),
+      };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 25000 });
 
+    let saved;
     for (let attempt = 0; ; attempt++) {
       try {
-        await save();
+        saved = await save();
         break;
       } catch (error) {
         // A serialization failure rolls back everything; re-read before retrying.
@@ -265,7 +285,8 @@ export async function POST(req: Request) {
       ? (action === 'APPROVE' ? 'Worked hours approved.' : action === 'REOPEN' ? 'Approval reopened; hours excluded from payroll.' : 'Timesheet changes saved, awaiting approval.')
       : `${items.length} timesheet records successfully processed and approved.`;
 
-    return NextResponse.json({ message, count: items.length });
+    console.info('Timesheet save completed:', { batchSize, elapsedMs: Date.now() - startedAt });
+    return NextResponse.json({ message, count: items.length, ...saved });
   } catch (error) {
     if (error instanceof ReviewError) {
       return NextResponse.json({ error: error.message }, { status: error.status });

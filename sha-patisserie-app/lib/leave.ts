@@ -1,3 +1,5 @@
+import { formatDMY } from '@/lib/date-format';
+
 export const ANNUAL_NOTICE_DAYS = 7;
 
 export function isEffectiveLeave(status: string): boolean {
@@ -9,6 +11,26 @@ export function leaveDate(value: unknown): Date {
   const date = new Date(`${value}T00:00:00Z`);
   if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== value) throw new Error('Choose valid leave dates.');
   return date;
+}
+
+export function formatLeaveDateRanges(values: string[], alwaysRange = false): string {
+  const dates = [...new Set(values)].sort();
+  if (!dates.length) throw new Error('Leave notification requires at least one date.');
+  dates.forEach(leaveDate);
+  const ranges: string[] = [];
+  let start = dates[0];
+  let end = start;
+  const append = () => ranges.push(start === end && !alwaysRange ? formatDMY(start) : `${formatDMY(start)} to ${formatDMY(end)}`);
+  for (const date of dates.slice(1)) {
+    if (Date.parse(date) - Date.parse(end) === 86400000) {
+      end = date;
+    } else {
+      append();
+      start = end = date;
+    }
+  }
+  append();
+  return ranges.join('; ');
 }
 
 export function leavePeriod(startDate: unknown, endDate: unknown): Date[] {

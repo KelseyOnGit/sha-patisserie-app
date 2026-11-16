@@ -1,10 +1,10 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { candidateShifts } from '@/lib/attendance-matching';
-import { combinePayroll, type PayrollLeave } from '@/lib/payroll-summary';
+import { summarizePayroll, type PayrollLeave } from '@/lib/payroll-summary';
 import {
-  actualPeriods, approvalError, paidHours, workedHours, paidLeaveType, perthDate, readPeriods, recordedBreakMinutes, weekBounds,
-  type PayrollRow, type ReviewRow,
+  actualPeriods, approvalError, perthDate, readPeriods, recordedBreakMinutes, weekBounds,
+  type ReviewRow,
 } from '@/lib/timesheets';
 
 const reportUserSelect = {
@@ -198,6 +198,7 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
       exceptions, inProgress, ambiguous, approvalBlockedReason, sourceChanged, snapshot,
       version: sheet?.version ?? 0,
       rate: user.hourlyPayRate?.toNumber() ?? null,
+      rateAtApproval: sheet?.rateAtApproval?.toNumber() ?? null,
       approvedAt: sheet?.approvedAt?.toISOString() ?? null,
       approvedBy: sheet?.history.find((entry) => entry.action === 'APPROVE')?.actor.name ??
         sheet?.history.find((entry) => entry.action === 'APPROVE')?.actor.email ?? null,
@@ -215,46 +216,12 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
   for (const [key, attendance] of grouped) if (key.startsWith('log:')) makeRow(key, null, attendance);
   rows.sort((a, b) => a.workDate.localeCompare(b.workDate) || a.staffName.localeCompare(b.staffName));
 
-  const summary = new Map<string, PayrollRow>();
   const payrollLeave: PayrollLeave[] = approvedLeave.map((entry) => ({
     id: entry.id, userId: entry.userId, staffName: entry.user.name || 'Unnamed staff',
     employmentType: entry.user.employmentType, site: entry.user.location?.name || 'Unassigned',
     date: entry.workDate.toISOString().slice(0, 10), type: entry.type, hours: entry.hours.toNumber(),
     rate: entry.user.hourlyPayRate?.toNumber() ?? null,
   }));
-  let excludedCount = 0;
-  for (const row of rows) {
-    const sheet = savedByKey.get(row.sourceKey);
-    // Use the same eligibility rules as approval, retaining the approved rate.
-    if (!sheet || sheet.status !== 'APPROVED' || row.sourceChanged ||
-        sheet.rateAtApproval === null ||
-        approvalError({ ...row, rate: sheet.rateAtApproval.toNumber() }, row.periods)) {
-      excludedCount++;
-      continue;
-    }
-    const rate = sheet.rateAtApproval.toNumber();
-    const leaveType = paidLeaveType(row.attendanceStatus);
-    if (leaveType) {
-      if (!payrollLeave.some((entry) => entry.userId === row.userId && entry.date === row.workDate && entry.type === leaveType)) {
-        payrollLeave.push({
-          id: row.sourceKey, userId: row.userId, staffName: row.staffName,
-          employmentType: row.employmentType, site: row.site, date: row.workDate, type: leaveType,
-          hours: paidHours(row.periods, row.breakMinutes), rate,
-        });
-      }
-      continue;
-    }
-    const key = JSON.stringify([row.userId, sheet.site, rate]);
-    const payroll = summary.get(key) ?? {
-      key, userId: row.userId, staffName: row.staffName, site: sheet.site,
-      employmentType: row.employmentType,
-      rate, totalHours: 0, gross: 0,
-    };
-    payroll.totalHours += workedHours(row);
-    payroll.gross = payroll.totalHours * rate;
-    summary.set(key, payroll);
-  }
-
   const venues = Array.from(new Set([
     ...allLocations.map((loc) => loc.name),
     ...shifts.map((s) => s.location?.name).filter(Boolean) as string[],
@@ -262,13 +229,8 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
   ])).sort();
 
   return {
-    shifts: rows, rows: combinePayroll(Array.from(summary.values()), payrollLeave), excludedCount,
-    approvedCount: rows.length - excludedCount,
-    leaveRows: approvedLeave.map((entry) => ({
-      id: entry.id, userId: entry.userId, staffName: entry.user.name || 'Unnamed staff',
-      employmentType: entry.user.employmentType, site: entry.user.location?.name || 'Unassigned',
-      date: entry.workDate.toISOString().slice(0, 10), type: entry.type, hours: entry.hours.toNumber(),
-    })),
+    shifts: rows, ...summarizePayroll(rows, payrollLeave),
+    leaveRows: payrollLeave,
     venues, inactiveUserIds: Array.from(inactiveUserIds),
   };
 }

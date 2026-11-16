@@ -46,8 +46,14 @@ entry when the admin leaves the box. They persist in PostgreSQL with the existin
 approval audit, not browser local storage. Each entry shows its save status;
 failed edits remain in the editor with a retry button and an explicit error.
 Empty or invalid values are rejected rather than silently saved as zero. A
-successful approval refreshes payroll and weekly totals. If that refresh fails,
-the existing refresh warning applies; the committed save is not undone.
+successful approval updates the saved entry and payroll totals directly from
+the committed response, without reloading the full report. Saves run in a
+background queue so other adjustment boxes remain editable. Repeated edits to
+one entry keep the newest value and use the latest committed version; completing
+an older save never clears a newer draft. Bulk actions, week changes, manual
+refresh and export wait while saves are pending; week changes and export also
+wait for unsaved edits to be saved or corrected. Manual refresh retains unsaved
+edits so conflicts can be refreshed and retried without retyping.
 Background polling pauses while adjustments are unsaved. Leaving/reloading the
 page with unsaved edits triggers the browser's standard warning.
 
@@ -67,8 +73,13 @@ establish whether a failure was caused by timeout, connectivity or schema issues
 
 Timesheet entries classified as Annual leave or Personal leave are excluded
 from weekly worked-hour totals. Payroll table and CSV use matching columns:
-Staff Member, Employment Status, Site, Rate, Worked Hours, Leave Hours, Total,
-Total Gross, Leave Type and Leave Date (dd-mm-yyyy). There is no separate leave
+Staff Member, Employment Status, Site, Rate, Worked Hours (H), Leave Hours (H),
+Total Hours (H), Total Gross, Leave Type and Leave Date Range. Hour cells contain
+numeric values without repeated unit suffixes, including in the CSV. Leave dates
+use inclusive dd-mm-yyyy to dd-mm-yyyy ranges, even for one day (the same start
+and end date). Separate periods are separated by semicolons; gaps are not
+included as leave. Ranges cover the dates in the selected report week.
+There is no separate leave
 table. Total is worked plus paid leave hours; Total Gross is Total times rate.
 Unpaid leave can appear in the type/date columns but adds no paid hours.
 Approved leave

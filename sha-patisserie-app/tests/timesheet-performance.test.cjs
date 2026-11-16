@@ -108,7 +108,7 @@ const payableRow = (index = 0) => ({
   actual: [], periods: [{ start: '2020-10-05T01:00:00Z', end: '2020-10-05T09:00:00Z' }],
   breakMinutes: 0, actualBreakMinutes: null, version: 0, snapshot: 'snapshot',
   status: 'PENDING', sourceChanged: false, inProgress: false, ambiguous: false,
-  exceptions: [], approvalBlockedReason: null, rate: 30, reason: 'Verified work',
+  exceptions: [], history: [], approvalBlockedReason: null, rate: 30, reason: 'Verified work',
 });
 
 test('bulk approval preserves split periods and seconds unless net hours are explicitly changed', () => {
@@ -202,11 +202,11 @@ function saveFixture(rows, options = {}) {
   Module._load = function (request, ...args) {
     if (request === '@/lib/prisma') return { prisma: db };
     if (request === '@/lib/session') return {
-      getSession: async () => ({ userId: 'manager', role: 'MANAGER' }),
+      getSession: async () => ({ userId: 'manager', role: 'MANAGER', email: 'manager@example.com' }),
       isPrivilegedRole: (role) => role === 'MANAGER',
     };
     if (request === '@/lib/timesheet-report') return {
-      loadTimesheetReport: async () => { reads++; return { shifts: rows }; },
+      loadTimesheetReport: async () => { reads++; return { shifts: rows, leaveRows: [] }; },
       validateApproval: (row, periods) => {
         const error = rules.approvalError(row, periods);
         if (error) throw new Error(error);
@@ -246,6 +246,33 @@ test('44 new manual timesheets commit with exactly two batched writes and aligne
     assert.equal(audit.values.hours, 8);
     assert.deepEqual(audit.values.payablePeriods, sheet.payablePeriods);
   }
+});
+
+test('save returns committed row versions, audit details and recalculated payroll without an extra report read', async () => {
+  const f = saveFixture([payableRow()]);
+  const item = { ...f.items[0], periods: [{ start: '2020-10-05T01:00:00Z', end: '2020-10-05T07:45:00Z' }] };
+  const response = await f.send([item]);
+  assert.equal(response.status, 200);
+  const data = await response.json();
+  assert.equal(f.state.reads, 1);
+  assert.equal(f.state.writes, 2);
+  assert.equal(data.shifts.length, 1);
+  const saved = data.shifts[0];
+  assert.equal(saved.sourceKey, item.sourceKey);
+  assert.equal(saved.version, 1);
+  assert.equal(saved.snapshot, item.snapshot);
+  assert.equal(saved.status, 'APPROVED');
+  assert.equal(saved.rateAtApproval, 30);
+  assert.equal(saved.reason, item.reason);
+  assert.equal(saved.history[0].action, 'APPROVE');
+  assert.equal(saved.history[0].actor, 'manager@example.com');
+  assert.equal(saved.history[0].values.hours, 6.75);
+  assert.equal(saved.approvedAt, f.state.sheets[0].approvedAt.toISOString());
+  assert.equal(data.rows[0].totalHours, 6.75);
+  assert.equal(data.rows[0].combinedHours, 6.75);
+  assert.equal(data.rows[0].gross, 202.5);
+  assert.equal(data.approvedCount, 1);
+  assert.equal(data.excludedCount, 0);
 });
 
 test('bulk approval allocates logs only after sheets exist and rolls back allocation failures', async () => {
@@ -313,9 +340,14 @@ test('duplicate attendance ownership within a batch is rejected without partial 
 });
 
 test('unchanged approvals cause no writes, changed sources are reapproved and stale updates conflict', async () => {
-  const row = { ...payableRow(), version: 1, status: 'APPROVED' };
+  const row = { ...payableRow(), version: 1, status: 'APPROVED', rate: 40, rateAtApproval: 30 };
   const unchanged = saveFixture([row]);
-  assert.equal((await unchanged.send()).status, 200);
+  const response = await unchanged.send();
+  assert.equal(response.status, 200);
+  const data = await response.json();
+  assert.equal(data.shifts[0].version, 1);
+  assert.equal(data.rows[0].rate, 30);
+  assert.equal(data.rows[0].gross, 240);
   assert.equal(unchanged.state.writes, 0);
   const changed = saveFixture([{ ...row, sourceChanged: true }]);
   assert.equal((await changed.send()).status, 200);

@@ -23,7 +23,7 @@ Module._resolveFilename = function (request, ...args) {
 const rules = require('../lib/timesheets.ts');
 const { candidateShifts } = require('../lib/attendance-matching.ts');
 const { leavePeriod } = require('../lib/leave.ts');
-const { combinePayroll, payrollCsv, PAYROLL_COLUMNS } = require('../lib/payroll-summary.ts');
+const { combinePayroll, payrollCsv, payrollLeaveDates, summarizePayroll, PAYROLL_COLUMNS } = require('../lib/payroll-summary.ts');
 
 test('combined payroll matches Michelle example and exports ten aligned columns', () => {
   const worked = { key: 'michelle', userId: 'm', staffName: 'Michelle', employmentType: 'FULL_TIME',
@@ -40,7 +40,48 @@ test('combined payroll matches Michelle example and exports ten aligned columns'
   assert.equal(PAYROLL_COLUMNS.length, 10);
   assert.equal(lines[0].length, 10);
   assert.equal(lines[1].length, 10);
-  assert.deepEqual(lines[1].slice(4), ['32.00', '7.50', '39.50', '1400.28', 'ANNUAL', '30-10-2026']);
+  assert.deepEqual(lines[0].slice(4), ['Worked Hours (H)', 'Leave Hours (H)', 'Total Hours (H)',
+    'Total Gross ($)', 'Leave Type', 'Leave Date Range']);
+  assert.deepEqual(lines[1].slice(4), ['32.00', '7.50', '39.50', '1400.28', 'ANNUAL', '30-10-2026 to 30-10-2026']);
+});
+
+test('payroll always formats leave as inclusive ranges without filling gaps or changing numeric CSV hours', () => {
+  const dates = ['2026-11-22', '2026-11-16', '2026-11-17', '2026-11-18',
+    '2026-11-19', '2026-11-20', '2026-11-21', '2026-11-16'];
+  assert.equal(payrollLeaveDates(dates), '16-11-2026 to 22-11-2026');
+  assert.equal(payrollLeaveDates(['2026-11-22']), '22-11-2026 to 22-11-2026');
+  assert.equal(payrollLeaveDates(['2026-11-16', '2026-11-18', '2026-11-19']),
+    '16-11-2026 to 16-11-2026; 18-11-2026 to 19-11-2026');
+  assert.equal(payrollLeaveDates(['2026-12-31', '2027-01-01']), '31-12-2026 to 01-01-2027');
+  assert.equal(payrollLeaveDates([]), '');
+  assert.throws(() => payrollLeaveDates(['2026-02-30']));
+  const leave = dates.map((date, index) => ({
+    id: `${index}`, userId: 'staff', staffName: 'Staff', site: 'Sha',
+    rate: 30, date, type: 'UNPAID', hours: 8,
+  }));
+  const csv = payrollCsv(combinePayroll([], leave));
+  assert.ok(csv.includes('"0.00","0.00","0.00","0.00","UNPAID","16-11-2026 to 22-11-2026"'));
+  assert.deepEqual(dates.slice(0, 2), ['2026-11-22', '2026-11-16']);
+});
+
+test('payroll recalculation retains approved rates, excludes stale approvals and deduplicates classified leave', () => {
+  const row = { sourceKey: 'shift:work', userId: 'staff', staffName: 'Staff', site: 'Sha', workDate: '2020-10-05',
+    status: 'APPROVED', sourceChanged: false, rate: 40, rateAtApproval: 30, attendanceStatus: 'WORKED',
+    periods: [{ start: '2020-10-05T01:00:00Z', end: '2020-10-05T09:00:00Z' }],
+    breakMinutes: 0, actual: [], inProgress: false, ambiguous: false, approvalBlockedReason: null, exceptions: [] };
+  const leave = { id: 'leave', userId: 'staff', staffName: 'Staff', site: 'Sha', date: row.workDate,
+    type: 'ANNUAL', hours: 7.5, rate: 30 };
+  const report = summarizePayroll([row,
+    { ...row, sourceKey: 'shift:leave', attendanceStatus: 'ANNUAL_LEAVE' },
+    { ...row, sourceKey: 'shift:stale', sourceChanged: true },
+    { ...row, sourceKey: 'shift:pending', status: 'PENDING' },
+    { ...row, sourceKey: 'shift:missing-rate', rateAtApproval: null }], [leave]);
+  assert.equal(report.rows.length, 1);
+  assert.equal(report.rows[0].totalHours, 8);
+  assert.equal(report.rows[0].leaveHours, 7.5);
+  assert.equal(report.rows[0].gross, 465);
+  assert.equal(report.approvedCount, 2);
+  assert.equal(report.excludedCount, 3);
 });
 
 test('leave attaches only once across shops and rates, and leave-only staff remain visible', () => {
