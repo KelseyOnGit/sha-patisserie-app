@@ -153,6 +153,59 @@ test('login verifies hashes, preserves approval checks and rejects legacy plaint
   assert.equal(sessions, 1);
 });
 
+test('login reports a database quota outage without logging credentials or creating a session', async (t) => {
+  const logs = [];
+  let sessions = 0;
+  const failure = new Error('ERROR: Your account or project has exceeded the quota. Upgrade your plan to increase limits. postgresql://private-user:secret-password@private-host/db');
+  failure.name = 'PrismaClientInitializationError';
+  t.mock.method(console, 'error', (...args) => logs.push(args));
+  const route = loadFile('app/api/auth/login/route.ts', {
+    '@/lib/prisma': { prisma: { user: { findFirst: async () => { throw failure; } } } },
+    '@/lib/session': { createSession: async () => { sessions++; } },
+  });
+  const response = await route.POST(body({ email: 'test@example.invalid', pinCode: '5837' }));
+  assert.equal(response.status, 503);
+  assert.match((await response.json()).error, /temporarily unavailable.*database/);
+  assert.equal(sessions, 0);
+  assert.equal(logs[0][1].stage, 'database lookup');
+  assert.equal(logs[0][1].category, 'database-quota-exceeded');
+  assert.doesNotMatch(JSON.stringify(logs), /private-user|secret-password|private-host|5837|test@example/);
+});
+
+test('login distinguishes connection timeouts from unexpected verification and session failures', async (t) => {
+  const logs = [];
+  t.mock.method(console, 'error', (...args) => logs.push(args));
+  for (const code of ['P1001', 'P1002', 'P1008', 'P1017', 'P2024', 'P2037']) {
+    const failure = Object.assign(new Error('Database unavailable'), { code });
+    const route = loadFile('app/api/auth/login/route.ts', {
+      '@/lib/prisma': { prisma: { user: { findFirst: async () => { throw failure; } } } },
+      '@/lib/session': { createSession: async () => { assert.fail('Must not create a session'); } },
+    });
+    assert.equal((await route.POST(body({ email: 'test@example.invalid', pinCode: '5837' }))).status, 503);
+    assert.equal(logs.at(-1)[1].code, code);
+    assert.equal(logs.at(-1)[1].category, 'database-unavailable');
+  }
+  for (const stage of ['verify PIN', 'create session']) {
+    const route = loadFile('app/api/auth/login/route.ts', {
+      '@/lib/prisma': { prisma: { user: { findFirst: async () => ({
+        id: 'staff', email: 'test@example.invalid', pinCode: 'unused', role: 'STAFF',
+        isApproved: true, status: 'ACTIVE', emailVerified: true,
+      }) } } },
+      '@/lib/pins': { verifyPin: async () => {
+        if (stage === 'verify PIN') throw new Error('Sensitive internal error');
+        return true;
+      } },
+      '@/lib/session': { createSession: async () => { throw new Error('Sensitive internal error'); } },
+    });
+    const response = await route.POST(body({ email: 'test@example.invalid', pinCode: '5837' }));
+    assert.equal(response.status, 500);
+    assert.deepEqual(await response.json(), { error: 'An unexpected error occurred.' });
+    assert.equal(logs.at(-1)[1].stage, stage);
+    assert.equal(logs.at(-1)[1].category, 'unexpected');
+  }
+  assert.doesNotMatch(JSON.stringify(logs), /Sensitive internal error/);
+});
+
 test('user APIs restrict directory access, hash new PINs and allowlist every response', async () => {
   let role = 'STAFF';
   let writes = 0;

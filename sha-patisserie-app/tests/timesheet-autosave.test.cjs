@@ -21,7 +21,7 @@ Module._resolveFilename = function (request, ...args) {
   return resolve.call(this, request.startsWith('@/') ? path.join(root, request.slice(2)) : request, ...args);
 };
 const { paidHours } = require('../lib/timesheets.ts');
-const { combinePayroll } = require('../lib/payroll-summary.ts');
+const { combinePayroll, withManualPayrollRows, payrollCsv } = require('../lib/payroll-summary.ts');
 
 function find(node, predicate) {
   if (!React.isValidElement(node)) return null;
@@ -394,4 +394,53 @@ test('payroll table and footer use hour headings and share the CSV leave range f
   assert.match(html, /data-label="Total hours \(H\)"[^>]*>44\.00</);
   assert.match(html, /data-label="Total paid hours \(H\)"[^>]*>44\.00</);
   assert.doesNotMatch(html, />\d+\.\d+ h</);
+});
+
+test('manual payroll names appear only in payroll with blank cells and an enabled CSV download', async (t) => {
+  const f = fixture(t);
+  assert.doesNotMatch(renderToStaticMarkup(f.render()), /Tricia Chia|Kervin B Tundou/);
+  find(f.render(), (node) => node.props.role === 'tab' && node.props.children === 'Payroll Summary').props.onClick();
+  const tree = f.render();
+  const html = renderToStaticMarkup(tree);
+  for (const name of ['Tricia Chia', 'Kervin B Tundou']) {
+    assert.ok(html.includes(name));
+    const row = find(tree, (node) => node.type === 'tr' &&
+      renderToStaticMarkup(node).includes(name));
+    const cells = React.Children.toArray(row.props.children);
+    assert.equal(cells.length, 10);
+    for (const cell of cells.slice(1)) assert.equal(cell.props.children, '');
+  }
+  assert.doesNotMatch(html, /Rate not set|Some leave has no pay rate|\(incomplete\)/);
+  let csvBlob;
+  t.mock.method(URL, 'createObjectURL', (blob) => { csvBlob = blob; return 'blob:test'; });
+  t.mock.method(URL, 'revokeObjectURL', () => {});
+  const previousDocument = globalThis.document;
+  globalThis.document = { createElement: () => ({ click() {} }) };
+  t.after(() => {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  });
+  const download = find(tree, (node) => node.type === 'button' && node.props.children === 'Download approved CSV');
+  assert.equal(download.props.disabled, false);
+  download.props.onClick();
+  const lines = (await csvBlob.text()).split('\r\n').map((line) => line.split(',').map(JSON.parse));
+  assert.deepEqual(lines[1], ['Tricia Chia', '', '', '', '', '', '', '', '', '']);
+  assert.deepEqual(lines[2], ['Kervin B Tundou', '', '', '', '', '', '', '', '', '']);
+});
+
+test('manual payroll rows do not change totals or duplicate existing payroll names', () => {
+  const original = combinePayroll([{
+    key: 'real', userId: 'staff', staffName: 'Staff', site: 'Sha', rate: 30, totalHours: 8, gross: 240,
+  }], []);
+  const rows = withManualPayrollRows(original);
+  assert.equal(original.length, 1);
+  assert.equal(rows.length, 3);
+  assert.equal(rows.reduce((sum, row) => sum + row.totalHours, 0), 8);
+  assert.equal(rows.reduce((sum, row) => sum + (row.gross ?? 0), 0), 240);
+  assert.equal(withManualPayrollRows(rows).length, 3);
+  const existing = { ...original[0], staffName: ' kervin  B Tundou ' };
+  const deduplicated = withManualPayrollRows([existing]);
+  assert.equal(deduplicated.length, 2);
+  assert.equal(deduplicated[0], existing);
+  assert.equal(payrollCsv(deduplicated).split('\r\n').length, 3);
 });

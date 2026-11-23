@@ -41,6 +41,14 @@ Check: `node --test tests/roster-email.test.cjs`.
 
 ### Worked hours versus paid leave
 
+Payroll Summary and its CSV include name-only manual-pay rows for Tricia Chia
+and Kervin B Tundou when they have no existing payroll row. Their rate, hours,
+gross and other payroll fields are blank for the accountant to complete.
+These placeholders do not create accounts or timesheets, affect calculated
+totals, or trigger missing-rate warnings. They remain available under venue
+filters because no site is assigned; staff filters can select them individually.
+Existing calculated payroll rows are preserved rather than duplicated.
+
 Adjusted hours in the yellow weekly-review boxes save and approve that individual
 entry when the admin leaves the box. They persist in PostgreSQL with the existing
 approval audit, not browser local storage. Each entry shows its save status;

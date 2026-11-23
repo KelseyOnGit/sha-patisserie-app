@@ -14,12 +14,27 @@ export interface PayrollLeave {
 }
 
 export interface PayrollSummaryRow extends Omit<PayrollRow, 'rate' | 'gross'> {
+  manualPay?: boolean;
   rate: number | null;
   leaveHours: number;
   combinedHours: number;
   gross: number | null;
   leaveTypes: string[];
   leaveDates: string[];
+}
+
+export function withManualPayrollRows(rows: PayrollSummaryRow[]): PayrollSummaryRow[] {
+  const normalizeName = (name: string) => name.trim().replace(/\s+/g, ' ').toLowerCase();
+  const names = new Set(rows.map((row) => normalizeName(row.staffName)));
+  const manual = ['Tricia Chia', 'Kervin B Tundou']
+    .filter((name) => !names.has(normalizeName(name)))
+    .map((staffName): PayrollSummaryRow => ({
+      key: `manual-pay:${staffName}`, userId: `manual-pay:${staffName}`, staffName,
+      site: '', employmentType: null, manualPay: true, rate: null,
+      totalHours: 0, leaveHours: 0, combinedHours: 0, gross: null,
+      leaveTypes: [], leaveDates: [],
+    }));
+  return [...rows, ...manual];
 }
 
 export function combinePayroll(worked: PayrollRow[], leave: PayrollLeave[]): PayrollSummaryRow[] {
@@ -98,8 +113,10 @@ export function payrollCsv(rows: PayrollSummaryRow[]): string {
   return [
     PAYROLL_COLUMNS,
     ...rows.map((row) => [
-      row.staffName, employmentLabel(row.employmentType), row.site, row.rate?.toFixed(2) ?? '',
-      row.totalHours.toFixed(2), row.leaveHours.toFixed(2), row.combinedHours.toFixed(2),
+      row.staffName, row.manualPay ? '' : employmentLabel(row.employmentType), row.site, row.rate?.toFixed(2) ?? '',
+      row.manualPay ? '' : row.totalHours.toFixed(2),
+      row.manualPay ? '' : row.leaveHours.toFixed(2),
+      row.manualPay ? '' : row.combinedHours.toFixed(2),
       row.gross?.toFixed(2) ?? '', row.leaveTypes.join(', '), payrollLeaveDates(row.leaveDates),
     ]),
   ].map((line) => line.map(csvCell).join(',')).join('\r\n');

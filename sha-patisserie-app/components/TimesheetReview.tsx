@@ -1,7 +1,7 @@
 'use client';
 
 import { formatDMY } from '@/lib/date-format';
-import { PAYROLL_COLUMNS, payrollCsv, payrollLeaveDates, type PayrollSummaryRow } from '@/lib/payroll-summary';
+import { PAYROLL_COLUMNS, payrollCsv, payrollLeaveDates, withManualPayrollRows, type PayrollSummaryRow } from '@/lib/payroll-summary';
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import PayrollBreakStatus from '@/components/PayrollBreakStatus';
@@ -221,8 +221,9 @@ export default function TimesheetReview({ userId }: { userId: string }) {
     days.set(row.workDate, dayRows);
     rowsByUserDay.set(row.userId, days);
   }
-  const payroll = (report?.rows ?? []).filter((row) =>
-    (!venue || row.site === venue) && (!staff || row.userId === staff));
+  const payrollRows = withManualPayrollRows(report?.rows ?? []);
+  const payroll = payrollRows.filter((row) =>
+    (!venue || row.manualPay || row.site === venue) && (!staff || row.userId === staff));
   const leave = [
     ...(report?.leaveRows ?? []),
     ...shifts.filter((row) => paidLeaveType(row.attendanceStatus) &&
@@ -242,13 +243,14 @@ export default function TimesheetReview({ userId }: { userId: string }) {
   const people = [...new Map([
     ...shifts.map((row) => [row.userId, row.staffName] as const),
     ...(report?.leaveRows ?? []).map((row) => [row.userId, row.staffName] as const),
+    ...(tab === 'payroll' ? payrollRows.map((row) => [row.userId, row.staffName] as const) : []),
   ]).entries()]
     .sort((a, b) => a[1].localeCompare(b[1]));
   const totalHours = payroll.reduce((sum, row) => sum + row.totalHours, 0);
   const totalLeaveHours = payroll.reduce((sum, row) => sum + row.leaveHours, 0);
   const totalPaidHours = payroll.reduce((sum, row) => sum + row.combinedHours, 0);
   const totalGross = payroll.reduce((sum, row) => sum + (row.gross ?? 0), 0);
-  const missingPayrollRate = payroll.some((row) => row.rate === null);
+  const missingPayrollRate = payroll.some((row) => !row.manualPay && row.rate === null);
 
   // Group shifts by staff member to produce 1 consolidated row per staff member
   const consolidatedStaffList = (() => {
@@ -920,15 +922,15 @@ export default function TimesheetReview({ userId }: { userId: string }) {
                   payroll.map((row) => (
                     <tr key={row.key} className="border-t border-stone-100">
                       <td data-label="Staff Member" className="p-4 font-semibold">{row.staffName}{inactiveIds.has(row.userId) && <InactiveBadge />}</td>
-                      <td data-label="Employment Status" className="p-4 text-stone-600">{employmentLabel(row.employmentType)}</td>
+                      <td data-label="Employment Status" className="p-4 text-stone-600">{row.manualPay ? '' : employmentLabel(row.employmentType)}</td>
                       <td data-label="Venue" className="p-4 text-stone-600">{row.site}</td>
-                      <td data-label="Rate ($/hr)" className="p-4 font-mono">{row.rate === null ? 'Rate not set' : `$${row.rate.toFixed(2)}`}</td>
-                      <td data-label="Worked hours (H)" className="whitespace-nowrap p-4 font-mono font-bold">{row.totalHours.toFixed(2)}</td>
-                      <td data-label="Leave hours (H)" className="whitespace-nowrap p-4 font-mono font-bold">{row.leaveHours.toFixed(2)}</td>
-                      <td data-label="Total hours (H)" className="whitespace-nowrap p-4 font-mono font-bold">{row.combinedHours.toFixed(2)}</td>
-                      <td data-label="Total Gross ($)" className="p-4 font-mono font-bold text-emerald-800">{row.gross === null ? 'Rate not set' : `$${row.gross.toFixed(2)}`}</td>
-                      <td data-label="Leave Type" className="p-4 text-xs">{row.leaveTypes.join(', ') || '—'}</td>
-                      <td data-label="Leave Date Range" className="p-4 text-xs">{payrollLeaveDates(row.leaveDates) || '—'}</td>
+                      <td data-label="Rate ($/hr)" className="p-4 font-mono">{row.manualPay ? '' : row.rate === null ? 'Rate not set' : `$${row.rate.toFixed(2)}`}</td>
+                      <td data-label="Worked hours (H)" className="whitespace-nowrap p-4 font-mono font-bold">{row.manualPay ? '' : row.totalHours.toFixed(2)}</td>
+                      <td data-label="Leave hours (H)" className="whitespace-nowrap p-4 font-mono font-bold">{row.manualPay ? '' : row.leaveHours.toFixed(2)}</td>
+                      <td data-label="Total hours (H)" className="whitespace-nowrap p-4 font-mono font-bold">{row.manualPay ? '' : row.combinedHours.toFixed(2)}</td>
+                      <td data-label="Total Gross ($)" className="p-4 font-mono font-bold text-emerald-800">{row.manualPay ? '' : row.gross === null ? 'Rate not set' : `$${row.gross.toFixed(2)}`}</td>
+                      <td data-label="Leave Type" className="p-4 text-xs">{row.manualPay ? '' : row.leaveTypes.join(', ') || '—'}</td>
+                      <td data-label="Leave Date Range" className="p-4 text-xs">{row.manualPay ? '' : payrollLeaveDates(row.leaveDates) || '—'}</td>
                     </tr>
                   ))
                 )}

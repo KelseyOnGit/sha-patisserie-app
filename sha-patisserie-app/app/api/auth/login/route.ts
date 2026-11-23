@@ -5,6 +5,7 @@ import { verifyPin } from '@/lib/pins';
 import { emailVerificationRequired } from '@/lib/auth-config';
 
 export async function POST(request: Request) {
+  let stage = 'validate request';
   try {
     const body = await request.json().catch(() => null);
     const { email, pinCode } = body || {};
@@ -21,11 +22,13 @@ export async function POST(request: Request) {
 
     const normalizedEmail = email.trim().toLowerCase();
 
+    stage = 'database lookup';
     const user = await prisma.user.findFirst({
       where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
     });
 
     // 3. Verify user and PIN
+    stage = 'verify PIN';
     if (!user || !await verifyPin(pinCode, user.pinCode)) {
       return NextResponse.json(
         { error: 'Invalid credentials.' },
@@ -50,6 +53,7 @@ export async function POST(request: Request) {
     }
 
     // 4. Create HTTP-Only Cookie Session
+    stage = 'create session';
     await createSession({
       userId: user.id,
       email: user.email,
@@ -60,8 +64,26 @@ export async function POST(request: Request) {
       { message: 'Login successful', role: user.role },
       { status: 200 }
     );
-  } catch {
-    console.error('Login failed.');
+  } catch (error) {
+    const code = error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code :
+      error instanceof Error && 'errorCode' in error && typeof error.errorCode === 'string' ? error.errorCode : null;
+    const quotaExceeded = stage === 'database lookup' && error instanceof Error &&
+      /exceeded the quota|reaching its monthly free plan limit/i.test(error.message);
+    const databaseUnavailable = stage === 'database lookup' && (
+      quotaExceeded || ['P1001', 'P1002', 'P1008', 'P1017', 'P2024', 'P2037'].includes(code ?? '') ||
+      (error instanceof Error && error.name === 'PrismaClientInitializationError')
+    );
+    // Prisma messages may contain connection details; log only safe diagnostics.
+    console.error('Login failed:', {
+      stage, code, errorName: error instanceof Error ? error.name : 'UnknownError',
+      category: quotaExceeded ? 'database-quota-exceeded' : databaseUnavailable ? 'database-unavailable' : 'unexpected',
+    });
+    if (databaseUnavailable) {
+      return NextResponse.json(
+        { error: 'Sign-in is temporarily unavailable because the database is unavailable. Please contact your manager.' },
+        { status: 503 }
+      );
+    }
     return NextResponse.json(
       { error: 'An unexpected error occurred.' },
       { status: 500 }
