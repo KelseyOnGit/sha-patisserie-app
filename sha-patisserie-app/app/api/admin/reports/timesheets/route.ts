@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSession, isPrivilegedRole } from '@/lib/session';
 import { loadTimesheetReport, validateApproval } from '@/lib/timesheet-report';
-import { actualPeriods, paidHours, readPeriods, requiresReason, samePeriods, validatePayable, weekBounds } from '@/lib/timesheets';
+import { actualPeriods, paidHours, readPeriods, requiresReason, samePeriods, validatePayable, weekBounds, type PayablePeriod } from '@/lib/timesheets';
 import { ATTENDANCE_OPTIONS } from '@/lib/timesheets';
 import { summarizePayroll } from '@/lib/payroll-summary';
 
@@ -85,6 +85,9 @@ export async function POST(req: Request) {
       const audits: (Omit<Prisma.TimesheetAuditCreateManyInput, 'timesheetId'> & { sourceKey: string })[] = [];
       const allocations: { sourceKey: string; logId: string }[] = [];
       const idsByKey = new Map<string, string>();
+      const proposedApprovals: {
+        sourceKey: string; userId: string; staffName: string; workDate: string; periods: PayablePeriod[];
+      }[] = [];
 
       stage = 'validate timesheets';
       for (const item of items) {
@@ -133,6 +136,9 @@ export async function POST(req: Request) {
 
 
         const approved = action === 'APPROVE';
+        if (approved && periods.length) {
+          proposedApprovals.push({ sourceKey, userId: row.userId, staffName: row.staffName, workDate: row.workDate, periods });
+        }
         const data = {
           attendanceStatus: action === 'REOPEN' ? row.attendanceStatus : attendanceStatus,
           payablePeriods: periods.map((period) => ({ ...period })),
@@ -191,6 +197,35 @@ export async function POST(req: Request) {
             values: { ...data, approvedAt: data.approvedAt?.toISOString() ?? null, hours: paidHours(periods, data.breakMinutes) },
           }, ...row.history],
         });
+      }
+      if (proposedApprovals.length) {
+        stage = 'check overlapping payable hours';
+        const replacedKeys = new Set([...newSheets, ...updates].map((sheet) => sheet.sourceKey));
+        const existing = await tx.timesheet.findMany({
+          where: { userId: { in: [...new Set(proposedApprovals.map((entry) => entry.userId))] }, status: 'APPROVED' },
+          select: { sourceKey: true, userId: true, payablePeriods: true },
+        });
+        const otherApprovals = existing.filter((sheet) => !replacedKeys.has(sheet.sourceKey))
+          .map((sheet) => ({ sourceKey: sheet.sourceKey, userId: sheet.userId, periods: readPeriods(sheet.payablePeriods) }));
+        const intervals = (periods: PayablePeriod[]) => periods.map((period) => {
+          const start = new Date(period.start).getTime();
+          const end = new Date(period.end).getTime();
+          if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+            throw new Error('An approved timesheet has invalid payable periods.');
+          }
+          return { start, end };
+        });
+        const comparisons = [...otherApprovals, ...proposedApprovals].map((entry) => ({
+          ...entry, intervals: intervals(entry.periods),
+        }));
+        for (const approval of proposedApprovals) {
+          const approvedIntervals = intervals(approval.periods);
+          if (comparisons.some((other) => other.userId === approval.userId && other.sourceKey !== approval.sourceKey &&
+              approvedIntervals.some((period) => other.intervals.some((existing) =>
+                period.start < existing.end && period.end > existing.start)))) {
+            throw new ReviewError(`Payable periods for ${approval.staffName} (${approval.workDate}) overlap another approved timesheet. Reopen or correct the other entry first.`);
+          }
+        }
       }
       stage = 'create timesheets';
       if (newSheets.length) await tx.timesheet.createMany({ data: newSheets });

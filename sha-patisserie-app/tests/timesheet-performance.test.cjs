@@ -53,13 +53,17 @@ test('weekly report launches independent reads together and limits matching to e
     timesheet: { findMany: read('saved', [], ({ include }) => {
       checkUser(include.user.select);
       checkUser(include.shift.select.user.select);
-      checkUser(include.logs.select.user.select);
     }) },
-    timeLog: { findMany: read('logs', logs, ({ select }) => {
+    timesheetAudit: { findMany: read('history', [], ({ include }) => {
+      assert.deepEqual(include.actor.select, { name: true, email: true });
+    }) },
+    timeLog: { findMany: async (query) => query.where.timesheet
+      ? read('allocatedLogs', [], ({ select }) => checkUser(select.user.select))(query)
+      : read('logs', logs, ({ select }) => {
       checkUser(select.user.select);
       assert.equal(select.lat, undefined);
       assert.equal(select.lng, undefined);
-    }) },
+    })(query) },
     location: { findMany: read('locations', [venue]) },
     shift: { findMany: read('shifts', shifts, ({ select }) => {
       checkUser(select.user.select);
@@ -90,7 +94,7 @@ test('weekly report launches independent reads together and limits matching to e
   const readsAtStart = [...started];
   release();
   const result = await pending;
-  assert.deepEqual(readsAtStart.sort(), ['leave', 'locations', 'logs', 'saved', 'shifts']);
+  assert.deepEqual(readsAtStart.sort(), ['allocatedLogs', 'history', 'leave', 'locations', 'logs', 'saved', 'shifts']);
   assert.equal(result.shifts.length, 280);
   assert.equal(result.shifts.reduce((sum, row) => sum + row.actual.length, 0), 280);
   assert.ok(result.shifts.every((row) => !row.ambiguous && row.periods.length === 1));
@@ -118,7 +122,8 @@ test('overnight logs use the parallel padded shift window without losing cross-w
   const bounds = [];
   const db = {
     leaveRequest: { findMany: async () => [] }, timesheet: { findMany: async () => [] },
-    timeLog: { findMany: async () => [log] }, location: { findMany: async () => [location] },
+    timesheetAudit: { findMany: async () => [] },
+    timeLog: { findMany: async ({ where }) => where.timesheet ? [] : [log] }, location: { findMany: async () => [location] },
     shift: { findMany: async ({ where }) => {
       bounds.push([where.endTime.gt, where.startTime.lt]);
       return shifts.filter((entry) => entry.endTime > where.endTime.gt && entry.startTime < where.startTime.lt);
@@ -167,7 +172,8 @@ test('long attendance beyond the padded window falls back to the full matching r
   const bounds = [];
   const db = {
     leaveRequest: { findMany: async () => [] }, timesheet: { findMany: async () => [] },
-    timeLog: { findMany: async () => [log] }, location: { findMany: async () => [location] },
+    timesheetAudit: { findMany: async () => [] },
+    timeLog: { findMany: async ({ where }) => where.timesheet ? [] : [log] }, location: { findMany: async () => [location] },
     shift: { findMany: async ({ where }) => {
       bounds.push([where.endTime.gt, where.startTime.lt]);
       return shifts.filter((entry) => entry.endTime > where.endTime.gt && entry.startTime < where.startTime.lt);
@@ -206,7 +212,8 @@ test('attendance ending beyond the padded window falls back and retains later ov
   const bounds = [];
   const db = {
     leaveRequest: { findMany: async () => [] }, timesheet: { findMany: async () => [] },
-    timeLog: { findMany: async () => [log] }, location: { findMany: async () => [location] },
+    timesheetAudit: { findMany: async () => [] },
+    timeLog: { findMany: async ({ where }) => where.timesheet ? [] : [log] }, location: { findMany: async () => [location] },
     shift: { findMany: async ({ where }) => {
       bounds.push([where.endTime.gt, where.startTime.lt]);
       return shifts.filter((entry) => entry.endTime > where.endTime.gt && entry.startTime < where.startTime.lt);
@@ -290,6 +297,37 @@ test('bulk approval preserves split periods and seconds unless net hours are exp
   }
 });
 
+test('duplicate approvals consider other weeks while allowing adjacent periods and other staff', async () => {
+  const row = payableRow();
+  const existing = { sourceKey: 'shift:previous-week', userId: row.userId,
+    payablePeriods: [{ start: '2020-10-04T23:00:00Z', end: '2020-10-05T02:00:00Z' }] };
+  const conflict = saveFixture([row], { existingApprovals: [existing] });
+  const rejected = await conflict.send();
+  assert.equal(rejected.status, 400);
+  assert.match((await rejected.json()).error, /overlap another approved timesheet/);
+  assert.equal(conflict.state.writes, 0);
+
+  const adjacent = saveFixture([row], { existingApprovals: [{
+    ...existing, payablePeriods: [{ start: '2020-10-04T23:00:00Z', end: row.periods[0].start }],
+  }] });
+  assert.equal((await adjacent.send()).status, 200);
+
+  const otherStaff = saveFixture([row], { existingApprovals: [{ ...existing, userId: 'other-staff' }] });
+  assert.equal((await otherStaff.send()).status, 200);
+});
+
+test('a batch can reopen an old approval and approve its replacement without partial writes', async () => {
+  const old = { ...payableRow(), version: 1, status: 'APPROVED' };
+  const replacement = { ...payableRow(1), userId: old.userId };
+  for (const reverse of [false, true]) {
+    const f = saveFixture([old, replacement]);
+    const reopen = { ...f.items[0], action: 'REOPEN', reason: 'Correct duplicate hours' };
+    const batch = reverse ? [f.items[1], reopen] : [reopen, f.items[1]];
+    assert.equal((await f.send(batch)).status, 200);
+    assert.equal(f.state.audits.length, 2);
+  }
+});
+
 function saveFixture(rows, options = {}) {
   let sheets = rows.filter((row) => row.version > 0).map((row) => ({
     id: `saved-${row.sourceKey}`, sourceKey: row.sourceKey, version: row.version,
@@ -305,6 +343,12 @@ function saveFixture(rows, options = {}) {
   });
   const db = {
     timesheet: {
+      findMany: async ({ where }) => [
+        ...rows.filter((row) => row.version > 0 && row.status === 'APPROVED').map((row) => ({
+          sourceKey: row.sourceKey, userId: row.userId, payablePeriods: row.periods,
+        })),
+        ...(options.existingApprovals ?? []),
+      ].filter((sheet) => where.userId.in.includes(sheet.userId)),
       createMany: async ({ data }) => {
         writes++;
         sheets.push(...data);
@@ -583,7 +627,7 @@ test('batched correction and allocation SQL runs in PostgreSQL with per-row valu
       await db.query('INSERT INTO "TimeLog" (id) VALUES ($1)', [row.actual[0].id]);
     }
     const f = saveFixture(rows);
-    const corrections = f.items.map((item, index) => ({
+        const corrections = f.items.map((item, index) => ({
       ...item, breakMinutes: index % 2 ? 15 : 0, reason: `Verified O'Brien ${index}`,
       periods: [{ start: '2020-10-05T01:00:00Z', end: '2020-10-05T08:30:00Z' }],
     }));

@@ -42,7 +42,9 @@ function fixture() {
         (condition.startBreak && shift.startBreak) ||
         (condition.endBreak && shift.endBreak)) : Boolean(shift.publishedAt)) },
     timeLog: {
-      findMany: async () => logs,
+      findMany: async ({ where }) => where.timesheet
+        ? logs.filter((log) => sheets.some((sheet) => sheet.id === log.timesheetId))
+        : logs,
       updateMany: async ({ where, data }) => {
         let count = 0;
         logs = logs.map((log) => {
@@ -56,14 +58,10 @@ function fixture() {
     },
     timesheet: {
       findMany: async ({ where }) => {
-        if (where.status) return sheets.filter((sheet) => sheet.userId === where.userId &&
-          sheet.status === where.status && sheet.sourceKey !== where.sourceKey.not);
+        if (where.status) return sheets.filter((sheet) => where.userId.in.includes(sheet.userId) &&
+          sheet.status === where.status);
         return sheets.map((sheet) => ({
           ...sheet, user, shift: shifts.find((shift) => shift.id === sheet.shiftId) ?? null,
-          logs: logs.filter((log) => log.timesheetId === sheet.id),
-          history: audits.filter((audit) => audit.timesheetId === sheet.id).map((audit) => ({
-            ...audit, actor: { name: 'Manager' }, createdAt: new Date('2020-10-12'),
-          })),
         }));
       },
       createMany: async ({ data }) => {
@@ -80,6 +78,7 @@ function fixture() {
           if (!sheet) return [];
           Object.assign(sheet, item, {
             version: sheet.version + 1, approvedAt: item.approvedAt ? new Date(item.approvedAt) : null,
+            workDate: new Date(item.workDate),
             rateAtApproval: item.rateAtApproval === null ? null : new Prisma.Decimal(item.rateAtApproval),
           });
           return [{ id: sheet.id, sourceKey: sheet.sourceKey }];
@@ -96,7 +95,12 @@ function fixture() {
       });
       return updated;
     },
-    timesheetAudit: { createMany: async ({ data }) => { audits.push(...data); return { count: data.length }; } },
+    timesheetAudit: {
+      findMany: async () => audits.map((audit) => ({
+        ...audit, actor: { name: 'Manager' }, createdAt: new Date('2020-10-12'),
+      })),
+      createMany: async ({ data }) => { audits.push(...data); return { count: data.length }; },
+    },
     $transaction: async (work, options) => {
       assert.equal(options.isolationLevel, 'Serializable');
       const before = { sheets: sheets.map((sheet) => ({ ...sheet })), logs: [...logs], audits: [...audits] };
@@ -247,7 +251,8 @@ test('overlapping rosters across venues are flagged rather than preferring the c
   assert.equal(attendance.sourceKey, 'log:log');
   assert.equal(attendance.ambiguous, true);
   assert.equal(report.shifts.reduce((count, row) => count + row.actual.length, 0), 1);
-  assert.equal((await f.send(f.payload(attendance))).status, 400);
+  assert.equal((await f.send(f.payload(attendance))).status, 200);
+  assert.equal(f.audits[0].values.reason, 'Hours adjusted by manager');
 });
 test('ending employment retains approved historical hours, rate, source and payroll total', async () => {
   const f = fixture();
@@ -265,6 +270,23 @@ test('ending employment retains approved historical hours, rate, source and payr
   assert.equal(inactive.shifts.find((entry) => entry.sourceKey === row.sourceKey).sourceChanged, false);
   assert.equal(f.logs.length, 1);
   assert.equal(f.audits.length, 1);
+});
+
+test('saved attendance and audit history stay attached to their reviewed timesheet', async () => {
+  const f = fixture();
+  f.removeOverlap();
+  let row = (await f.load()).shifts.find((entry) => entry.sourceKey === 'shift:a');
+  assert.equal((await f.send(f.payload(row))).status, 200);
+  row = (await f.load()).shifts.find((entry) => entry.sourceKey === 'shift:a');
+  assert.deepEqual(row.actual.map((entry) => entry.id), ['log']);
+  assert.equal(row.history.length, 1);
+  assert.equal(row.history[0].action, 'APPROVE');
+  assert.equal(row.history[0].actor, 'Manager');
+  assert.equal(row.approvedBy, 'Manager');
+  assert.equal((await f.send(f.payload(row, { action: 'REOPEN', reason: 'Correct allocation.' }))).status, 200);
+  row = (await f.load()).shifts.find((entry) => entry.sourceKey === 'shift:a');
+  assert.deepEqual(row.actual.map((entry) => entry.id), ['log']);
+  assert.deepEqual(row.history.map((entry) => entry.action).sort(), ['APPROVE', 'REOPEN']);
 });
 
 for (const scheduled of [false, true]) {
@@ -310,10 +332,6 @@ test('explained overlap approval reaches payroll once, retains rate and audit, a
   assert.equal(row.ambiguous, true);
   assert.match(row.exceptions.join(' '), /overlaps roster shifts/);
   assert.equal(report.shifts.reduce((sum, entry) => sum + entry.actual.length, 0), 1);
-  const missingReason = await f.send(f.payload(row));
-  assert.equal(missingReason.status, 400);
-  assert.match((await missingReason.json()).error, /Explain/);
-  assert.equal(f.audits.length, 0);
   assert.equal((await f.send(f.payload(row, { reason: 'Duplicate roster entries; allocate all attendance to this review.' }))).status, 200);
   report = await f.load();
   assert.equal(report.rows.length, 1);

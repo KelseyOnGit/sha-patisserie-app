@@ -45,7 +45,8 @@ The weekly report loads shifts for the week plus a day either side concurrently
 with leave, attendance and saved timesheets. If attendance extends outside that
 window, it reloads the wider shift range to preserve overnight and overlap
 matching. Otherwise it filters the prefetched shifts to the exact attendance
-matching window.
+matching window. Saved timesheets, their allocated attendance and full audit
+history are loaded in parallel and assembled by timesheet ID.
 Successful report responses expose `Server-Timing` durations for report
 building, total server handling, each database read (`leave`, `saved`, `logs`,
 `locations`, `shifts`, and `extendedShifts` when needed), and `calculate`
@@ -87,6 +88,9 @@ serializable transaction, rather than a query per row. Existing corrections
 and allocations use parameterized PostgreSQL updates with per-row version and
 ownership checks; any mismatch rolls back the entire batch. A failed save
 commits no partial approvals.
+Approval rejects overlapping payable periods for the same staff member,
+including periods in another week or in the same batch. Reopen or correct the
+other approval before retrying; adjacent periods and different staff are allowed.
 Serialization conflicts are retried at most twice against freshly loaded data.
 Stale versions still require a refresh. Database transaction timeouts are shown
 explicitly; retry after refreshing or approve one staff member at a time.

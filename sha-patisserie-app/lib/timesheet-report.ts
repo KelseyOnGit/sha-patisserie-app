@@ -57,21 +57,53 @@ export async function loadTimesheetReport(
     select: reportShiftSelect,
     orderBy: { startTime: 'asc' },
   });
+  const loadSaved = async () => {
+    const workDate = { gte: dateStart, lt: dateEnd };
+    const [sheets, allocatedLogs, history] = await Promise.all([
+      db.timesheet.findMany({
+        where: { workDate },
+        include: {
+          user: { select: reportUserSelect },
+          shift: { select: reportShiftSelect },
+        },
+      }),
+      db.timeLog.findMany({
+        where: { timesheet: { workDate } },
+        select: reportLogSelect,
+        orderBy: { clockIn: 'asc' },
+      }),
+      db.timesheetAudit.findMany({
+        where: { timesheet: { workDate } },
+        include: { actor: { select: { name: true, email: true } } },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+    const logsBySheet = new Map<string, typeof allocatedLogs>();
+    for (const log of allocatedLogs) {
+      if (!log.timesheetId) throw new Error('Allocated attendance has no timesheet.');
+      const entries = logsBySheet.get(log.timesheetId) ?? [];
+      entries.push(log);
+      logsBySheet.set(log.timesheetId, entries);
+    }
+    const historyBySheet = new Map<string, typeof history>();
+    for (const entry of history) {
+      const entries = historyBySheet.get(entry.timesheetId) ?? [];
+      entries.push(entry);
+      historyBySheet.set(entry.timesheetId, entries);
+    }
+    return sheets.map((sheet) => ({
+      ...sheet,
+      logs: logsBySheet.get(sheet.id) ?? [],
+      history: historyBySheet.get(sheet.id) ?? [],
+    }));
+  };
   const [approvedLeave, saved, logs, allLocations, weeklyShifts] = await Promise.all([
     timed('leave', db.leaveRequest.findMany({
       where: { status: { in: ['APPROVED', 'CANCEL_REQUESTED'] }, workDate: { gte: dateStart, lt: dateEnd } },
       include: { user: { select: { name: true, employmentType: true, hourlyPayRate: true, location: { select: { name: true } } } } },
       orderBy: { workDate: 'asc' },
     })),
-    timed('saved', db.timesheet.findMany({
-      where: { workDate: { gte: dateStart, lt: dateEnd } },
-      include: {
-        user: { select: reportUserSelect },
-        shift: { select: reportShiftSelect },
-        logs: { select: reportLogSelect, orderBy: { clockIn: 'asc' } },
-        history: { include: { actor: { select: { name: true, email: true } } }, orderBy: { createdAt: 'desc' } },
-      },
-    })),
+    timed('saved', loadSaved()),
     timed('logs', db.timeLog.findMany({
       where: {
         // Include overnight logs crossing the week boundary; the row still belongs
