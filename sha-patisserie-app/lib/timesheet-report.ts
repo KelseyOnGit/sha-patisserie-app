@@ -29,7 +29,16 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
   const dateStart = new Date(`${weekStart}T00:00:00Z`);
   const dateEnd = new Date(dateStart.getTime() + 7 * 86400000);
   const now = new Date();
-  const [approvedLeave, saved, logs, allLocations] = await Promise.all([
+  const findShifts = (from: Date, to: Date) => db.shift.findMany({
+    where: {
+      OR: [{ publishedAt: { not: null } }, { startBreak: { not: null } }, { endBreak: { not: null } }],
+      startTime: { lt: to },
+      endTime: { gt: from },
+    },
+    select: reportShiftSelect,
+    orderBy: { startTime: 'asc' },
+  });
+  const [approvedLeave, saved, logs, allLocations, weeklyShifts] = await Promise.all([
     db.leaveRequest.findMany({
       where: { status: { in: ['APPROVED', 'CANCEL_REQUESTED'] }, workDate: { gte: dateStart, lt: dateEnd } },
       include: { user: { select: { name: true, employmentType: true, hourlyPayRate: true, location: { select: { name: true } } } } },
@@ -55,20 +64,14 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
       orderBy: { clockIn: 'asc' },
     }),
     db.location.findMany({ select: { name: true }, orderBy: { name: 'asc' } }),
+    findShifts(start, end),
   ]);
   const earliest = logs.reduce((date, log) => log.clockIn < date ? log.clockIn : date, start);
   const latest = logs.reduce((date, log) => (log.clockOut ?? now) > date ? (log.clockOut ?? now) : date, end);
-  const fetchedShifts = await db.shift.findMany({
-    where: {
-      // Draft roster entries may contain real breaks recorded by older clients.
-      // Keep that evidence visible; approval still requires a published roster.
-      OR: [{ publishedAt: { not: null } }, { startBreak: { not: null } }, { endBreak: { not: null } }],
-      startTime: { lt: latest },
-      endTime: { gt: earliest },
-    },
-    select: reportShiftSelect,
-    orderBy: { startTime: 'asc' },
-  });
+  // Long or overnight logs can match shifts outside the displayed week.
+  const fetchedShifts = earliest < start || latest > end
+    ? await findShifts(earliest, latest)
+    : weeklyShifts;
   // Saved reviews remain visible even if their roster shift was unpublished.
   const shifts = Array.from(new Map([
     ...fetchedShifts.map((shift) => [shift.id, shift] as const),

@@ -113,18 +113,18 @@ test('payroll hides leave table and leave export while preserving worked payroll
 
 test('roster leave loads reviewed requests and includes only effective approvals', async (t) => {
   t.mock.method(globalThis, 'fetch', async (url) => {
-    assert.equal(url, '/api/leave?view=review');
+    assert.equal(url, '/api/leave?view=roster&weekStart=2026-10-19');
     return Response.json({ requests });
   });
-  assert.deepEqual((await fetchRosterLeave()).map((entry) => entry.id),
+  assert.deepEqual((await fetchRosterLeave('2026-10-19')).map((entry) => entry.id),
     ['approved', 'cancelling', 'other-venue', 'next-week']);
 });
 
 test('roster leave rejects HTTP errors and malformed responses', async (t) => {
   const fetchMock = t.mock.method(globalThis, 'fetch', async () => Response.json({ error: 'Forbidden' }, { status: 403 }));
-  await assert.rejects(fetchRosterLeave(), /Forbidden/);
+  await assert.rejects(fetchRosterLeave('2026-10-19'), /Forbidden/);
   fetchMock.mock.mockImplementation(async () => Response.json({}));
-  await assert.rejects(fetchRosterLeave(), /Invalid roster leave response/);
+  await assert.rejects(fetchRosterLeave('2026-10-19'), /Invalid roster leave response/);
 });
 
 function findElement(node, predicate) {

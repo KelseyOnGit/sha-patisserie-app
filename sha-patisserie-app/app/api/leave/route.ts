@@ -5,6 +5,7 @@ import { getSession, isPrivilegedRole } from '@/lib/session';
 import { randomUUID } from 'node:crypto';
 import { annualNoticeError, leaveDate, leavePeriod, perthToday } from '@/lib/leave';
 import { notifyLeaveReview, type LeaveNotification } from '@/lib/admin-notifications';
+import { weekBounds } from '@/lib/timesheets';
 
 class LeaveError extends Error {
   constructor(message: string, public status = 400) { super(message); }
@@ -127,8 +128,22 @@ export async function GET(request: Request) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   try {
-    const manage = new URL(request.url).searchParams.get('view') === 'review';
+    const params = new URL(request.url).searchParams;
+    const view = params.get('view');
+    const manage = view === 'review' || view === 'roster';
     if (manage && !isPrivilegedRole(session.role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    if (view === 'roster') {
+      const weekStart = params.get('weekStart') ?? '';
+      try { weekBounds(weekStart); }
+      catch { throw new LeaveError('Choose a valid week starting Monday.'); }
+      const start = dateValue(weekStart);
+      const end = new Date(start.getTime() + 7 * 86400000);
+      const requests = await prisma.leaveRequest.findMany({
+        where: { workDate: { gte: start, lt: end }, status: { in: ['APPROVED', 'CANCEL_REQUESTED'] } },
+        select: { id: true, userId: true, workDate: true, type: true, status: true, hours: true },
+      });
+      return NextResponse.json({ requests });
+    }
     const [staff, requests] = await Promise.all([
       prisma.user.findMany({ where: manage ? {} : { id: session.userId }, select: staffSelect, orderBy: { name: 'asc' } }),
       prisma.leaveRequest.findMany({

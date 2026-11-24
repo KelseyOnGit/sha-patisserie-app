@@ -41,6 +41,13 @@ Check: `node --test tests/roster-email.test.cjs`.
 
 ### Worked hours versus paid leave
 
+The weekly report loads its normal shift window concurrently with leave,
+attendance and saved timesheets. If attendance extends outside that window,
+it reloads the wider shift range to preserve overnight and overlap matching.
+Successful report responses expose `Server-Timing` durations for report
+building and total server handling; browser network timing also includes
+connection, transfer and rendering. Use both when diagnosing a slow load.
+
 Payroll Summary and its CSV include name-only manual-pay rows for Tricia Chia
 and Kervin B Tundou when they have no existing payroll row. Their rate, hours,
 gross and other payroll fields are blank for the accountant to complete.

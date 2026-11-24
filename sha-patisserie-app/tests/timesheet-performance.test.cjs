@@ -61,11 +61,10 @@ test('weekly report launches independent reads together and limits matching to e
       assert.equal(select.lng, undefined);
     }) },
     location: { findMany: read('locations', [venue]) },
-    shift: { findMany: async ({ select }) => {
+    shift: { findMany: read('shifts', shifts, ({ select }) => {
       checkUser(select.user.select);
       assert.equal(select.shiftReport, undefined);
-      return shifts;
-    } },
+    }) },
   };
   const { candidateShifts } = require('../lib/attendance-matching.ts');
   let comparisons = 0;
@@ -90,7 +89,7 @@ test('weekly report launches independent reads together and limits matching to e
   const readsAtStart = [...started];
   release();
   const result = await pending;
-  assert.deepEqual(readsAtStart.sort(), ['leave', 'locations', 'logs', 'saved']);
+  assert.deepEqual(readsAtStart.sort(), ['leave', 'locations', 'logs', 'saved', 'shifts']);
   assert.equal(result.shifts.length, 280);
   assert.equal(result.shifts.reduce((sum, row) => sum + row.actual.length, 0), 280);
   assert.ok(result.shifts.every((row) => !row.ambiguous && row.periods.length === 1));
@@ -98,6 +97,67 @@ test('weekly report launches independent reads together and limits matching to e
   assert.equal(logs.length * shifts.length, 78400);
   assert.equal(result.excludedCount, 280);
   assert.deepEqual(result.rows, []);
+});
+
+test('overnight logs extend shift lookup without losing cross-week ambiguity', async () => {
+  const user = { id: 'staff', name: 'Staff', status: 'ACTIVE', employmentType: 'CASUAL', hourlyPayRate: new Prisma.Decimal(30) };
+  const location = { name: 'Sha Patisserie' };
+  const shift = (id, start, end) => ({ id, userId: user.id, user, location, locationId: 'sha',
+    startTime: new Date(start), endTime: new Date(end), breakMinutes: 0, publishedAt: new Date('2020-09-01') });
+  const shifts = [
+    shift('previous', '2020-10-04T15:00:00Z', '2020-10-04T17:00:00Z'),
+    shift('current', '2020-10-04T16:30:00Z', '2020-10-04T19:00:00Z'),
+  ];
+  const log = { id: 'log', userId: user.id, user, location, locationId: 'sha',
+    clockIn: new Date('2020-10-04T15:30:00Z'), clockOut: new Date('2020-10-04T18:00:00Z'), timesheetId: null };
+  const bounds = [];
+  const db = {
+    leaveRequest: { findMany: async () => [] }, timesheet: { findMany: async () => [] },
+    timeLog: { findMany: async () => [log] }, location: { findMany: async () => [location] },
+    shift: { findMany: async ({ where }) => {
+      bounds.push([where.endTime.gt, where.startTime.lt]);
+      return shifts.filter((entry) => entry.endTime > where.endTime.gt && entry.startTime < where.startTime.lt);
+    } },
+  };
+  const filename = path.join(root, 'lib', 'timesheet-report.ts');
+  const load = Module._load;
+  delete require.cache[filename];
+  Module._load = function (request, ...args) {
+    return request === '@/lib/prisma' ? { prisma: db } : load.call(this, request, ...args);
+  };
+  let report;
+  try { report = require(filename).loadTimesheetReport; }
+  finally { Module._load = load; delete require.cache[filename]; }
+  const result = await report('2020-10-05', db);
+  assert.equal(bounds.length, 2);
+  assert.equal(bounds[0][0].toISOString(), '2020-10-04T16:00:00.000Z');
+  assert.equal(bounds[1][0].toISOString(), '2020-10-04T15:30:00.000Z');
+  assert.equal(result.shifts.length, 1);
+  assert.equal(result.shifts[0].sourceKey, 'shift:current');
+  assert.equal(result.shifts[0].ambiguous, true);
+});
+
+test('report endpoint exposes server timings without exposing staff or attendance data', async () => {
+  const filename = path.join(root, 'app', 'api', 'admin', 'reports', 'route.ts');
+  const load = Module._load;
+  delete require.cache[filename];
+  Module._load = function (request, ...args) {
+    if (request === '@/lib/session') return {
+      getSession: async () => ({ role: 'ADMIN' }),
+      isPrivilegedRole: (role) => role === 'ADMIN',
+    };
+    if (request === '@/lib/timesheet-report') return {
+      loadTimesheetReport: async () => ({ shifts: [], rows: [] }),
+    };
+    return load.call(this, request, ...args);
+  };
+  let api;
+  try { api = require(filename); }
+  finally { Module._load = load; delete require.cache[filename]; }
+  const response = await api.GET(new Request('http://localhost/api/admin/reports?weekStart=2020-10-05'));
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('server-timing'), /^report;dur=\d+\.\d, total;dur=\d+\.\d$/);
+  assert.deepEqual(await response.json(), { shifts: [], rows: [] });
 });
 
 const rules = require('../lib/timesheets.ts');

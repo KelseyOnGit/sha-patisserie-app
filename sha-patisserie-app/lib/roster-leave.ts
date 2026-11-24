@@ -7,8 +7,8 @@ export interface RosterLeave {
   hours: number | string;
 }
 
-export async function fetchRosterLeave(): Promise<RosterLeave[]> {
-  const response = await fetch('/api/leave?view=review');
+export async function fetchRosterLeave(weekStart: string): Promise<RosterLeave[]> {
+  const response = await fetch(`/api/leave?view=roster&weekStart=${encodeURIComponent(weekStart)}`);
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Failed to load roster leave.');
   if (!Array.isArray(data.requests)) throw new Error('Invalid roster leave response.');

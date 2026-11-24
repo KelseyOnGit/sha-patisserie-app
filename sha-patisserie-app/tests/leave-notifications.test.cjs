@@ -52,6 +52,35 @@ const sample = {
   note: '<script>bad</script>\n"Family"',
 };
 
+test('roster leave endpoint restricts dates, statuses, fields and access', async () => {
+  let session = { userId: 'manager', role: 'MANAGER' };
+  const calls = [];
+  const api = loadFile('app/api/leave/route.ts', {
+    '@/lib/session': { getSession: async () => session, isPrivilegedRole: (role) => role === 'MANAGER' },
+    '@/lib/prisma': { prisma: { leaveRequest: { findMany: async (query) => {
+      calls.push(query);
+      return [{ id: 'leave', userId: 'staff', workDate: new Date('2026-10-19T00:00:00Z'),
+        type: 'ANNUAL', status: 'APPROVED', hours: 8 }];
+    } } } },
+  });
+  const request = (week) => new Request(`http://localhost/api/leave?view=roster&weekStart=${week}`);
+  const response = await api.GET(request('2026-10-19'));
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).requests.length, 1);
+  assert.deepEqual(calls[0].where, {
+    workDate: { gte: new Date('2026-10-19T00:00:00Z'), lt: new Date('2026-10-26T00:00:00Z') },
+    status: { in: ['APPROVED', 'CANCEL_REQUESTED'] },
+  });
+  assert.deepEqual(Object.keys(calls[0].select).sort(), ['hours', 'id', 'status', 'type', 'userId', 'workDate']);
+  assert.equal((await api.GET(request('2026-10-20'))).status, 400);
+  assert.equal((await api.GET(request('2026-02-30'))).status, 400);
+  session = { userId: 'staff', role: 'STAFF' };
+  assert.equal((await api.GET(request('2026-10-19'))).status, 403);
+  session = null;
+  assert.equal((await api.GET(request('2026-10-19'))).status, 401);
+  assert.equal(calls.length, 1);
+});
+
 test('accepted delivery is traceable by request, recipient and Resend ID without logging note or key', async (t) => {
   environment(t);
   const previous = console.info;

@@ -128,7 +128,7 @@ export default function ShiftRoster() {
     const monday = new Date(`${localDate(mondayOf(weekStart))}T00:00:00+08:00`).getTime();
     const range = `from=${new Date(monday - 86400000).toISOString()}&to=${new Date(monday + 8 * 86400000).toISOString()}`;
     return Promise.all([
-      fetch('/api/users'), fetch(`/api/shifts?${range}`), fetchRosterLeave(),
+      fetch('/api/users'), fetch(`/api/shifts?${range}`), fetchRosterLeave(localDate(mondayOf(weekStart))),
     ]).then(async ([usersResponse, shiftsResponse, leaveData]) => {
       const usersData = await usersResponse.json();
       const shiftsData = await shiftsResponse.json();
