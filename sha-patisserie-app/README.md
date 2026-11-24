@@ -41,9 +41,11 @@ Check: `node --test tests/roster-email.test.cjs`.
 
 ### Worked hours versus paid leave
 
-The weekly report loads its normal shift window concurrently with leave,
-attendance and saved timesheets. If attendance extends outside that window,
-it reloads the wider shift range to preserve overnight and overlap matching.
+The weekly report loads shifts for the week plus a day either side concurrently
+with leave, attendance and saved timesheets. If attendance extends outside that
+window, it reloads the wider shift range to preserve overnight and overlap
+matching. Otherwise it filters the prefetched shifts to the exact attendance
+matching window.
 Successful report responses expose `Server-Timing` durations for report
 building, total server handling, each database read (`leave`, `saved`, `logs`,
 `locations`, `shifts`, and `extendedShifts` when needed), and `calculate`

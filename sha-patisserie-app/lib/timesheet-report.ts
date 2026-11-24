@@ -41,6 +41,8 @@ export async function loadTimesheetReport(
   const dateStart = new Date(`${weekStart}T00:00:00Z`);
   const dateEnd = new Date(dateStart.getTime() + 7 * 86400000);
   const now = new Date();
+  const shiftWindowStart = new Date(start.getTime() - 86400000);
+  const shiftWindowEnd = new Date(end.getTime() + 86400000);
   const timed = async <T>(name: keyof TimesheetReportTimings, query: PromiseLike<T>): Promise<T> => {
     const started = performance.now();
     try { return await query; }
@@ -81,14 +83,14 @@ export async function loadTimesheetReport(
       orderBy: { clockIn: 'asc' },
     })),
     timed('locations', db.location.findMany({ select: { name: true }, orderBy: { name: 'asc' } })),
-    timed('shifts', findShifts(start, end)),
+    timed('shifts', findShifts(shiftWindowStart, shiftWindowEnd)),
   ]);
   const earliest = logs.reduce((date, log) => log.clockIn < date ? log.clockIn : date, start);
   const latest = logs.reduce((date, log) => (log.clockOut ?? now) > date ? (log.clockOut ?? now) : date, end);
-  // Long or overnight logs can match shifts outside the displayed week.
-  const fetchedShifts = earliest < start || latest > end
+  // Keep the exact matching window while avoiding a second read for ordinary overnight logs.
+  const fetchedShifts = earliest < shiftWindowStart || latest > shiftWindowEnd
     ? await timed('extendedShifts', findShifts(earliest, latest))
-    : weeklyShifts;
+    : weeklyShifts.filter((shift) => shift.startTime < latest && shift.endTime > earliest);
   const calculationStarted = performance.now();
   // Saved reviews remain visible even if their roster shift was unpublished.
   const shifts = Array.from(new Map([

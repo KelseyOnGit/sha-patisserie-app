@@ -102,17 +102,68 @@ test('weekly report launches independent reads together and limits matching to e
   assert.ok(Object.values(timings).every((duration) => Number.isFinite(duration) && duration >= 0));
 });
 
-test('overnight logs extend shift lookup without losing cross-week ambiguity', async () => {
+test('overnight logs use the parallel padded shift window without losing cross-week ambiguity', async () => {
   const user = { id: 'staff', name: 'Staff', status: 'ACTIVE', employmentType: 'CASUAL', hourlyPayRate: new Prisma.Decimal(30) };
   const location = { name: 'Sha Patisserie' };
   const shift = (id, start, end) => ({ id, userId: user.id, user, location, locationId: 'sha',
     startTime: new Date(start), endTime: new Date(end), breakMinutes: 0, publishedAt: new Date('2020-09-01') });
   const shifts = [
+    shift('outside-before', '2020-10-03T18:00:00Z', '2020-10-04T15:30:00Z'),
     shift('previous', '2020-10-04T15:00:00Z', '2020-10-04T17:00:00Z'),
     shift('current', '2020-10-04T16:30:00Z', '2020-10-04T19:00:00Z'),
+    shift('outside-after', '2020-10-11T16:00:00Z', '2020-10-11T18:00:00Z'),
   ];
   const log = { id: 'log', userId: user.id, user, location, locationId: 'sha',
     clockIn: new Date('2020-10-04T15:30:00Z'), clockOut: new Date('2020-10-04T18:00:00Z'), timesheetId: null };
+  const bounds = [];
+  const db = {
+    leaveRequest: { findMany: async () => [] }, timesheet: { findMany: async () => [] },
+    timeLog: { findMany: async () => [log] }, location: { findMany: async () => [location] },
+    shift: { findMany: async ({ where }) => {
+      bounds.push([where.endTime.gt, where.startTime.lt]);
+      return shifts.filter((entry) => entry.endTime > where.endTime.gt && entry.startTime < where.startTime.lt);
+    } },
+  };
+  const filename = path.join(root, 'lib', 'timesheet-report.ts');
+  const load = Module._load;
+  const { candidateShifts } = require('../lib/attendance-matching.ts');
+  let candidates;
+  delete require.cache[filename];
+  Module._load = function (request, ...args) {
+    if (request === '@/lib/prisma') return { prisma: db };
+    if (request === '@/lib/attendance-matching') return {
+      candidateShifts(log, shifts, now) {
+        candidates = shifts.map((entry) => entry.id);
+        return candidateShifts(log, shifts, now);
+      },
+    };
+    return load.call(this, request, ...args);
+  };
+  let report;
+  try { report = require(filename).loadTimesheetReport; }
+  finally { Module._load = load; delete require.cache[filename]; }
+  const timings = {};
+  const result = await report('2020-10-05', db, timings);
+  assert.equal(bounds.length, 1);
+  assert.equal(bounds[0][0].toISOString(), '2020-10-03T16:00:00.000Z');
+  assert.deepEqual(candidates, ['previous', 'current']);
+  assert.equal(result.shifts.length, 1);
+  assert.equal(result.shifts[0].sourceKey, 'shift:current');
+  assert.equal(result.shifts[0].ambiguous, true);
+  assert.equal(timings.extendedShifts, undefined);
+});
+
+test('long attendance beyond the padded window falls back to the full matching range', async () => {
+  const user = { id: 'staff', name: 'Staff', status: 'ACTIVE', employmentType: 'CASUAL', hourlyPayRate: new Prisma.Decimal(30) };
+  const location = { name: 'Sha Patisserie' };
+  const makeShift = (id, start, end) => ({ id, userId: user.id, user, location, locationId: 'sha',
+    startTime: new Date(start), endTime: new Date(end), breakMinutes: 0, publishedAt: new Date('2020-09-01') });
+  const shifts = [
+    makeShift('old', '2020-10-02T18:00:00Z', '2020-10-02T23:00:00Z'),
+    makeShift('current', '2020-10-04T16:30:00Z', '2020-10-04T19:00:00Z'),
+  ];
+  const log = { id: 'long', userId: user.id, user, location, locationId: 'sha',
+    clockIn: new Date('2020-10-02T19:00:00Z'), clockOut: new Date('2020-10-04T18:00:00Z'), timesheetId: null };
   const bounds = [];
   const db = {
     leaveRequest: { findMany: async () => [] }, timesheet: { findMany: async () => [] },
@@ -134,11 +185,48 @@ test('overnight logs extend shift lookup without losing cross-week ambiguity', a
   const timings = {};
   const result = await report('2020-10-05', db, timings);
   assert.equal(bounds.length, 2);
-  assert.equal(bounds[0][0].toISOString(), '2020-10-04T16:00:00.000Z');
-  assert.equal(bounds[1][0].toISOString(), '2020-10-04T15:30:00.000Z');
+  assert.equal(bounds[1][0].toISOString(), '2020-10-02T19:00:00.000Z');
   assert.equal(result.shifts.length, 1);
   assert.equal(result.shifts[0].sourceKey, 'shift:current');
   assert.equal(result.shifts[0].ambiguous, true);
+  assert.ok(Number.isFinite(timings.extendedShifts) && timings.extendedShifts >= 0);
+});
+
+test('attendance ending beyond the padded window falls back and retains later overlapping shifts', async () => {
+  const user = { id: 'staff', name: 'Staff', status: 'ACTIVE', employmentType: 'CASUAL', hourlyPayRate: new Prisma.Decimal(30) };
+  const location = { name: 'Sha Patisserie' };
+  const makeShift = (id, start, end) => ({ id, userId: user.id, user, location, locationId: 'sha',
+    startTime: new Date(start), endTime: new Date(end), breakMinutes: 0, publishedAt: new Date('2020-09-01') });
+  const shifts = [
+    makeShift('current', '2020-10-11T14:00:00Z', '2020-10-11T16:00:00Z'),
+    makeShift('later', '2020-10-13T10:00:00Z', '2020-10-13T12:00:00Z'),
+  ];
+  const log = { id: 'long', userId: user.id, user, location, locationId: 'sha',
+    clockIn: new Date('2020-10-11T15:00:00Z'), clockOut: new Date('2020-10-13T18:00:00Z'), timesheetId: null };
+  const bounds = [];
+  const db = {
+    leaveRequest: { findMany: async () => [] }, timesheet: { findMany: async () => [] },
+    timeLog: { findMany: async () => [log] }, location: { findMany: async () => [location] },
+    shift: { findMany: async ({ where }) => {
+      bounds.push([where.endTime.gt, where.startTime.lt]);
+      return shifts.filter((entry) => entry.endTime > where.endTime.gt && entry.startTime < where.startTime.lt);
+    } },
+  };
+  const filename = path.join(root, 'lib', 'timesheet-report.ts');
+  const load = Module._load;
+  delete require.cache[filename];
+  Module._load = function (request, ...args) {
+    return request === '@/lib/prisma' ? { prisma: db } : load.call(this, request, ...args);
+  };
+  let report;
+  try { report = require(filename).loadTimesheetReport; }
+  finally { Module._load = load; delete require.cache[filename]; }
+  const timings = {};
+  const result = await report('2020-10-05', db, timings);
+  assert.equal(bounds.length, 2);
+  assert.equal(bounds[1][1].toISOString(), '2020-10-13T18:00:00.000Z');
+  assert.equal(result.shifts.find((row) => row.sourceKey === 'shift:current').ambiguous, true);
+  assert.equal(result.shifts.find((row) => row.sourceKey === 'log:long').ambiguous, true);
   assert.ok(Number.isFinite(timings.extendedShifts) && timings.extendedShifts >= 0);
 });
 
