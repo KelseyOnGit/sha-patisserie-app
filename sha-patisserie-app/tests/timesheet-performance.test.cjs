@@ -85,7 +85,8 @@ test('weekly report launches independent reads together and limits matching to e
   let report;
   try { report = require(filename).loadTimesheetReport; }
   finally { Module._load = load; delete require.cache[filename]; }
-  const pending = report('2020-10-05', db);
+  const timings = {};
+  const pending = report('2020-10-05', db, timings);
   const readsAtStart = [...started];
   release();
   const result = await pending;
@@ -97,6 +98,8 @@ test('weekly report launches independent reads together and limits matching to e
   assert.equal(logs.length * shifts.length, 78400);
   assert.equal(result.excludedCount, 280);
   assert.deepEqual(result.rows, []);
+  assert.deepEqual(Object.keys(timings).sort(), ['calculate', 'leave', 'locations', 'logs', 'saved', 'shifts']);
+  assert.ok(Object.values(timings).every((duration) => Number.isFinite(duration) && duration >= 0));
 });
 
 test('overnight logs extend shift lookup without losing cross-week ambiguity', async () => {
@@ -128,13 +131,15 @@ test('overnight logs extend shift lookup without losing cross-week ambiguity', a
   let report;
   try { report = require(filename).loadTimesheetReport; }
   finally { Module._load = load; delete require.cache[filename]; }
-  const result = await report('2020-10-05', db);
+  const timings = {};
+  const result = await report('2020-10-05', db, timings);
   assert.equal(bounds.length, 2);
   assert.equal(bounds[0][0].toISOString(), '2020-10-04T16:00:00.000Z');
   assert.equal(bounds[1][0].toISOString(), '2020-10-04T15:30:00.000Z');
   assert.equal(result.shifts.length, 1);
   assert.equal(result.shifts[0].sourceKey, 'shift:current');
   assert.equal(result.shifts[0].ambiguous, true);
+  assert.ok(Number.isFinite(timings.extendedShifts) && timings.extendedShifts >= 0);
 });
 
 test('report endpoint exposes server timings without exposing staff or attendance data', async () => {
@@ -147,7 +152,13 @@ test('report endpoint exposes server timings without exposing staff or attendanc
       isPrivilegedRole: (role) => role === 'ADMIN',
     };
     if (request === '@/lib/timesheet-report') return {
-      loadTimesheetReport: async () => ({ shifts: [], rows: [] }),
+      loadTimesheetReport: async (week, db, timings) => {
+        assert.equal(week, '2020-10-05');
+        assert.equal(db, undefined);
+        Object.assign(timings, { leave: 12.34, saved: 45.67, logs: 78.9, locations: 1.2,
+          shifts: 3.4, extendedShifts: 5.6, calculate: 7.8 });
+        return { shifts: [], rows: [] };
+      },
     };
     return load.call(this, request, ...args);
   };
@@ -156,7 +167,7 @@ test('report endpoint exposes server timings without exposing staff or attendanc
   finally { Module._load = load; delete require.cache[filename]; }
   const response = await api.GET(new Request('http://localhost/api/admin/reports?weekStart=2020-10-05'));
   assert.equal(response.status, 200);
-  assert.match(response.headers.get('server-timing'), /^report;dur=\d+\.\d, total;dur=\d+\.\d$/);
+  assert.match(response.headers.get('server-timing'), /^report;dur=\d+\.\d, total;dur=\d+\.\d, leave;dur=12\.3, saved;dur=45\.7, logs;dur=78\.9, locations;dur=1\.2, shifts;dur=3\.4, extendedShifts;dur=5\.6, calculate;dur=7\.8$/);
   assert.deepEqual(await response.json(), { shifts: [], rows: [] });
 });
 

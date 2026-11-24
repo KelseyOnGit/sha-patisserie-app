@@ -22,13 +22,30 @@ const reportLogSelect = {
   user: { select: reportUserSelect }, location: { select: reportLocationSelect },
 } satisfies Prisma.TimeLogSelect;
 
+export interface TimesheetReportTimings {
+  leave?: number;
+  saved?: number;
+  logs?: number;
+  locations?: number;
+  shifts?: number;
+  extendedShifts?: number;
+  calculate?: number;
+}
+
 // The same read model drives GET, transactional saves and payroll. Re-reading it
 // inside the save transaction prevents approving stale browser attendance.
-export async function loadTimesheetReport(weekStart: string, db: Prisma.TransactionClient = prisma) {
+export async function loadTimesheetReport(
+  weekStart: string, db: Prisma.TransactionClient = prisma, timings?: TimesheetReportTimings,
+) {
   const { start, end } = weekBounds(weekStart);
   const dateStart = new Date(`${weekStart}T00:00:00Z`);
   const dateEnd = new Date(dateStart.getTime() + 7 * 86400000);
   const now = new Date();
+  const timed = async <T>(name: keyof TimesheetReportTimings, query: PromiseLike<T>): Promise<T> => {
+    const started = performance.now();
+    try { return await query; }
+    finally { if (timings) timings[name] = performance.now() - started; }
+  };
   const findShifts = (from: Date, to: Date) => db.shift.findMany({
     where: {
       OR: [{ publishedAt: { not: null } }, { startBreak: { not: null } }, { endBreak: { not: null } }],
@@ -39,12 +56,12 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
     orderBy: { startTime: 'asc' },
   });
   const [approvedLeave, saved, logs, allLocations, weeklyShifts] = await Promise.all([
-    db.leaveRequest.findMany({
+    timed('leave', db.leaveRequest.findMany({
       where: { status: { in: ['APPROVED', 'CANCEL_REQUESTED'] }, workDate: { gte: dateStart, lt: dateEnd } },
       include: { user: { select: { name: true, employmentType: true, hourlyPayRate: true, location: { select: { name: true } } } } },
       orderBy: { workDate: 'asc' },
-    }),
-    db.timesheet.findMany({
+    })),
+    timed('saved', db.timesheet.findMany({
       where: { workDate: { gte: dateStart, lt: dateEnd } },
       include: {
         user: { select: reportUserSelect },
@@ -52,8 +69,8 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
         logs: { select: reportLogSelect, orderBy: { clockIn: 'asc' } },
         history: { include: { actor: { select: { name: true, email: true } } }, orderBy: { createdAt: 'desc' } },
       },
-    }),
-    db.timeLog.findMany({
+    })),
+    timed('logs', db.timeLog.findMany({
       where: {
         // Include overnight logs crossing the week boundary; the row still belongs
         // to the Perth date its shift (or unscheduled attendance) started.
@@ -62,16 +79,17 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
       },
       select: reportLogSelect,
       orderBy: { clockIn: 'asc' },
-    }),
-    db.location.findMany({ select: { name: true }, orderBy: { name: 'asc' } }),
-    findShifts(start, end),
+    })),
+    timed('locations', db.location.findMany({ select: { name: true }, orderBy: { name: 'asc' } })),
+    timed('shifts', findShifts(start, end)),
   ]);
   const earliest = logs.reduce((date, log) => log.clockIn < date ? log.clockIn : date, start);
   const latest = logs.reduce((date, log) => (log.clockOut ?? now) > date ? (log.clockOut ?? now) : date, end);
   // Long or overnight logs can match shifts outside the displayed week.
   const fetchedShifts = earliest < start || latest > end
-    ? await findShifts(earliest, latest)
+    ? await timed('extendedShifts', findShifts(earliest, latest))
     : weeklyShifts;
+  const calculationStarted = performance.now();
   // Saved reviews remain visible even if their roster shift was unpublished.
   const shifts = Array.from(new Map([
     ...fetchedShifts.map((shift) => [shift.id, shift] as const),
@@ -231,11 +249,13 @@ export async function loadTimesheetReport(weekStart: string, db: Prisma.Transact
     ...rows.map((r) => r.site).filter(Boolean),
   ])).sort();
 
-  return {
+  const result = {
     shifts: rows, ...summarizePayroll(rows, payrollLeave),
     leaveRows: payrollLeave,
     venues, inactiveUserIds: Array.from(inactiveUserIds),
   };
+  if (timings) timings.calculate = performance.now() - calculationStarted;
+  return result;
 }
 
 export function validateApproval(row: ReviewRow, periods: Parameters<typeof approvalError>[1]) {

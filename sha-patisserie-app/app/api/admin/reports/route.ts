@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSession, isPrivilegedRole } from '@/lib/session';
-import { loadTimesheetReport } from '@/lib/timesheet-report';
+import { loadTimesheetReport, type TimesheetReportTimings } from '@/lib/timesheet-report';
 import { weekBounds } from '@/lib/timesheets';
 
 export async function GET(req: Request) {
@@ -17,10 +17,13 @@ export async function GET(req: Request) {
   }
   try {
     const reportStarted = performance.now();
-    const report = await loadTimesheetReport(weekStart);
+    const timings: TimesheetReportTimings = {};
+    const report = await loadTimesheetReport(weekStart, undefined, timings);
     const reportMs = performance.now() - reportStarted;
+    const breakdown = Object.entries(timings)
+      .map(([name, duration]) => `${name};dur=${duration.toFixed(1)}`).join(', ');
     return NextResponse.json(report, {
-      headers: { 'Server-Timing': `report;dur=${reportMs.toFixed(1)}, total;dur=${(performance.now() - started).toFixed(1)}` },
+      headers: { 'Server-Timing': `report;dur=${reportMs.toFixed(1)}, total;dur=${(performance.now() - started).toFixed(1)}${breakdown ? `, ${breakdown}` : ''}` },
     });
   } catch (error) {
     console.error('Failed to load timesheet review:', error);

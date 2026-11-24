@@ -45,8 +45,14 @@ The weekly report loads its normal shift window concurrently with leave,
 attendance and saved timesheets. If attendance extends outside that window,
 it reloads the wider shift range to preserve overnight and overlap matching.
 Successful report responses expose `Server-Timing` durations for report
-building and total server handling; browser network timing also includes
-connection, transfer and rendering. Use both when diagnosing a slow load.
+building, total server handling, each database read (`leave`, `saved`, `logs`,
+`locations`, `shifts`, and `extendedShifts` when needed), and `calculate`
+for in-memory processing after the reads. Database reads run concurrently, so
+their durations overlap and must not be added together. Each read duration
+includes application/database network latency as well as query execution;
+it is not a database-only execution plan. Browser network timing also includes
+connection and transfer; page rendering is separate. Use both when diagnosing
+a slow load. The timing header contains no staff or payroll values.
 
 Payroll Summary and its CSV include name-only manual-pay rows for Tricia Chia
 and Kervin B Tundou when they have no existing payroll row. Their rate, hours,
